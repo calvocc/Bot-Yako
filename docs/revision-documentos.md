@@ -85,20 +85,52 @@ correcto en los cuatro pasos.
 
 | # | Propuesta | Estado |
 |---|---|---|
-| M1 | RF-3.5 compara solo `tipo + equipo_origen`. Si Jacob marca y Andrés marca 40s después, el bot pregunta sin motivo. Propuesta: si **ambos eventos tienen jugador identificado y son distintos**, guardar sin preguntar. | Fase 3 |
+| M1 | RF-3.5 compara solo `tipo + equipo_origen`. Si Jacob marca y Andrés marca 40s después, el bot pregunta sin motivo. **Decidido**: si ambos eventos tienen jugador identificado y son distintos, se guarda sin preguntar. | Fase 3 |
 | M2 | Los códigos de invitación eran de un solo uso, pero el caso real es mandar el link al grupo de papás. Se agregó `usos_maximos` + tabla de canjes. | **Resuelto** en el esquema |
 | M3 | Si Redis se caía, el bot moría. Ahora arranca igual y degrada a Postgres. | **Resuelto y verificado**: sin Redis, `/health` responde `degradado` y el proceso sigue vivo. |
-| M4 | "MVP del partido" no tenía regla definida. Propuesta: más goles → desempate por asistencias → desempate por dorsal. | Fase 4 |
+| M4 | "MVP del partido" no tenía regla definida. **Decidido**: sistema de puntos por evento (ver abajo). | Fase 4 |
 | M5 | El deep link `t.me/YakoBot?start=inv_x7f2a` se menciona en el flujo pero el manejo de `/start <payload>` no está especificado. | Fase 2 |
 
 ---
 
-## Pendiente de tu decisión
+## MVP del partido: cómo se calcula (M4)
 
-Nada bloqueante. Los puntos abiertos son de producto, no de arquitectura:
+Cada evento suma o resta puntos al jugador, y el que más acumula en el partido es el MVP.
+Un sistema de puntos, en vez de "el que más goles hizo", reconoce al que asistió tres
+veces sin marcar.
 
-1. **M1** — ¿te sirve la regla de "jugador distinto = no preguntar", o preferís que
-   pregunte siempre dentro de los 60s?
-2. **M4** — ¿la regla de MVP propuesta es la que querés, o preferís otra (por ejemplo,
-   que el DT lo elija a mano al cerrar)?
-3. **C8** — confirmar el cambio a `/nuevoequipo` y `/nuevopartido`.
+| Evento | Puntos |
+|---|---:|
+| Gol | +3 |
+| Asistencia | +2 |
+| Tarjeta amarilla | −1 |
+| Tarjeta roja | −3 |
+| Autogol | −3 |
+| Cambio | 0 |
+
+Reglas:
+
+- Solo entran jugadores del equipo propio.
+- Para ser MVP hay que tener **al menos un evento positivo**: si en un partido solo hubo
+  tarjetas, no se elige MVP en vez de premiar al menos amonestado.
+- Empate en puntos: gana más goles, después más asistencias, después menor dorsal.
+- En modo post partido se calcula igual, con los eventos que se hayan cargado.
+
+La escala vive en un solo lugar del código (`src/eventos/puntaje.ts`) para poder ajustarla
+sin tocar la lógica. Si más adelante conviene que cada academia use la suya, pasa a ser
+una columna de `academias` sin cambiar nada más.
+
+---
+
+## Decisiones cerradas
+
+- **M1** — jugadores distintos e identificados: no se pregunta.
+- **M4** — MVP por sistema de puntos, según la tabla de arriba.
+- **C8** — los comandos pasan a `/nuevoequipo` y `/nuevopartido`.
+
+## Agregado durante la implementación
+
+- **`/cancelar`** — no estaba en el diseño original, pero con flujos de varios pasos hace
+  falta una salida: sin él, un usuario que se arrepiente a mitad del alta de la plantilla
+  queda atrapado hasta que vence la sesión. Además, cualquier comando interrumpe el flujo
+  en curso por el mismo motivo.

@@ -63,7 +63,7 @@ commitearlo.
 | Fase | Estado |
 |---|---|
 | 0 · Fundaciones: scaffold, esquema, migraciones, health, CI | ✅ |
-| 1 · Capa de canal y motor conversacional | pendiente |
+| 1 · Capa de canal y motor conversacional | ✅ |
 | 2 · Identidad, organización y permisos | pendiente |
 | 3 · Partidos y carga en vivo | pendiente |
 | 4 · Cierre, post partido y estadísticas | pendiente |
