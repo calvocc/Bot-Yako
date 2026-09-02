@@ -302,10 +302,15 @@ Liga del Atlántico
 ⚽ Goles: Jacob '23, Jacob '41
 🟨 Amarillas: Andrés '35
 
-MVP del partido: Jacob (2 goles)
+MVP del partido: Jacob (8 pts — 2 goles, 1 asistencia)
 
      [Compartir al grupo]  [Editar]
 ```
+
+> **MVP del partido:** se calcula por puntos — gol +3, asistencia +2, amarilla −1,
+> roja −3, autogol −3. Gana el jugador propio con más puntos, siempre que tenga al menos
+> un evento positivo; si empatan, desempata por goles, luego asistencias, luego dorsal.
+> La escala está en `src/eventos/puntaje.ts` y se puede ajustar sin tocar la lógica.
 
 ---
 
@@ -392,3 +397,4 @@ Bot: 📋 Ringo Amaya Sub-11 — temporada 2026
 | `/stats [jugador]` | Viewer | Estadísticas acumuladas |
 | `/tabla` | Viewer | Resumen del equipo en la temporada |
 | `/ayuda` | — | Lista de comandos |
+| `/cancelar` | — | Salir de un flujo a medias sin quedar atrapado |
