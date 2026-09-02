@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: yako
+          POSTGRES_PASSWORD: yako
+          POSTGRES_DB: yako
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U yako"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://yako:yako@localhost:5432/yako
+      DATABASE_MIGRATION_URL: postgres://yako:yako@localhost:5432/yako
+      REDIS_URL: redis://localhost:6379
+      TELEGRAM_BOT_TOKEN: 123456:token-de-ci
+      TELEGRAM_WEBHOOK_SECRET: 0123456789abcdef0123456789abcdef
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Formato
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      # Falla si el esquema Drizzle y las migraciones se desincronizaron.
+      - name: Coherencia de migraciones
+        run: pnpm db:check
+
+      - name: Migraciones
+        run: pnpm db:migrate
+
+      - name: Tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
