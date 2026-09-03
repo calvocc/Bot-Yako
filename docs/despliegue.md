@@ -2,6 +2,17 @@
 
 Yako corre como un servicio Node en **Railway**, con Postgres en **Supabase** y Redis en **Upstash**.
 
+| Recurso | Dónde |
+|---|---|
+| Servicio | Railway · proyecto `3r-connect-crm-api` · servicio `yako-bot` |
+| URL pública | `https://yako-bot-production.up.railway.app` |
+| Base de datos | Supabase · proyecto `yako` (`hooyfaxknoetfmweazmy`, región `us-east-1`) |
+| Redis | Upstash (pendiente de crear) |
+
+> El servicio quedó dentro de un proyecto llamado `3r-connect-crm-api` porque el plan gratuito de
+> Railway no permitía crear uno nuevo, y ese proyecto estaba vacío. Conviene renombrarlo a `yako-bot`
+> desde el panel.
+
 ```
 Telegram ──webhook──▶ Railway (servicio yako-bot) ──▶ Supabase (Postgres)
                                                   └──▶ Upstash (Redis, opcional)
@@ -39,6 +50,27 @@ necesitan la conexión directa, porque ejecutan DDL en una sola sesión larga.
 Sin `REDIS_URL` el bot arranca igual y `/health` responde `degradado`. Redis acelera el partido en
 vivo (caché de sesión, ventana de duplicados, locks) pero no es fuente de verdad: todo tiene respaldo
 en Postgres. Exigirlo solo lograría que una caída de la caché tumbara el bot.
+
+---
+
+## Pasos que quedan pendientes
+
+Lo demás ya está configurado; falta cargar los secretos y un ajuste en GitHub.
+
+1. **Revocar el token de Telegram.** En BotFather, `/revoke` sobre el bot. Invalida el token viejo
+   —que se compartió por chat y hay que dar por comprometido— y entrega uno nuevo.
+2. **Contraseña de la base.** Supabase → Settings → Database. Si no la tienes, *Reset database
+   password*. La cadena de conexión trae `[YOUR-PASSWORD]`: hay que reemplazarlo por esa contraseña.
+3. **Crear el Redis en Upstash** (opcional; se puede dejar para después).
+4. **Cargar las variables en Railway** (servicio `yako-bot` → Variables):
+   `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` (genéralo con `openssl rand -hex 32`),
+   `DATABASE_URL`, `DATABASE_MIGRATION_URL` y, si lo creaste, `REDIS_URL`.
+   Al guardar, el servicio redespliega solo.
+5. **Rama por defecto en GitHub.** Settings → General → Default branch: cambiar a `main`. Después se
+   puede borrar `claude/football-stats-bot-i95v3b`, cuyos commits ya viven en las ramas de fase.
+6. **Apuntar Railway a `main`.** El servicio está siguiendo `fase-1-canal-y-motor` para poder validar
+   el pipeline antes del merge. Una vez mergeados los PR, hay que cambiarlo a `main` en
+   Settings → Source.
 
 ---
 
