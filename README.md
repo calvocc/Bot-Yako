@@ -67,7 +67,7 @@ Desplegado en `https://yako-bot-production.up.railway.app`.
 |---|---|
 | 0 · Fundaciones: scaffold, esquema, migraciones, health, CI | ✅ |
 | 1 · Capa de canal y motor conversacional | ✅ |
-| 2 · Identidad, organización y permisos | pendiente |
+| 2 · Identidad, organización y permisos | ✅ |
 | 3 · Partidos y carga en vivo | pendiente |
 | 4 · Cierre, post partido y estadísticas | pendiente |
 | 5 · WhatsApp | pendiente |

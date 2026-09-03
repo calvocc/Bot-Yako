@@ -1,15 +1,35 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { MensajeEntrante, RespuestaBot } from '../channels/channel.types';
-import { parsearComando, PREFIJO_BOTON_COMANDO } from './comandos';
+import { esComandoDeFlujo, parsearComando, PREFIJO_BOTON_COMANDO } from './comandos';
 import { FlowEngine } from './flow-engine.service';
+import type { DatosFlujo } from './flow.types';
 
 /** Salida de emergencia de cualquier flujo. La atiende el router, no un handler. */
 const COMANDO_CANCELAR = 'cancelar';
 
+/**
+ * Permite que un handler simple decida, ya con los datos en la mano, que en
+ * realidad hace falta abrir un flujo. Es lo que hace que `/unirme CODIGO`
+ * responda de una y `/unirme` a secas pregunte el código.
+ */
+export interface DelegarAFlujo {
+  tipo: 'delegar';
+  flujoId: string;
+  datos?: DatosFlujo;
+}
+
 /** Qué hace un comando: responder de una, o abrir un flujo de varios pasos. */
 export type ManejadorComando =
-  | { tipo: 'respuesta'; ejecutar: (ctx: ContextoComando) => Promise<RespuestaBot> }
-  | { tipo: 'flujo'; flujoId: string };
+  | {
+      tipo: 'respuesta';
+      ejecutar: (ctx: ContextoComando, usuarioId?: string) => Promise<RespuestaBot | DelegarAFlujo>;
+    }
+  | {
+      tipo: 'flujo';
+      flujoId: string;
+      /** Datos con los que arranca el flujo, derivados del comando. */
+      datosIniciales?: (ctx: ContextoComando) => DatosFlujo;
+    };
 
 export interface ContextoComando {
   mensaje: MensajeEntrante;
@@ -54,6 +74,14 @@ export class Router {
         return this.cancelar(mensaje);
       }
 
+      // Palabras que le pertenecen al flujo en curso (/listo y compañía) se le
+      // entregan a él; fuera de un flujo no significan nada.
+      if (esComandoDeFlujo(comando.nombre) && (await this.motor.tieneFlujoActivo(mensaje))) {
+        const enFlujo = await this.motor.continuar(mensaje, usuarioId);
+
+        if (enFlujo.manejado) return enFlujo.respuesta;
+      }
+
       const manejador = this.manejadores.get(comando.nombre);
 
       if (!manejador) {
@@ -64,16 +92,31 @@ export class Router {
       // explícita del usuario de cambiar de tema.
       await this.motor.abandonar(mensaje);
 
+      const contexto: ContextoComando = { mensaje, argumento: comando.argumento };
+
       if (manejador.tipo === 'flujo') {
-        return this.motor.iniciar(mensaje, manejador.flujoId, {}, usuarioId);
+        return this.motor.iniciar(
+          mensaje,
+          manejador.flujoId,
+          manejador.datosIniciales?.(contexto) ?? {},
+          usuarioId,
+        );
       }
 
-      return manejador.ejecutar({ mensaje, argumento: comando.argumento });
+      const resultado = await manejador.ejecutar(contexto, usuarioId);
+
+      if (esDelegacion(resultado)) {
+        return this.motor.iniciar(mensaje, resultado.flujoId, resultado.datos ?? {}, usuarioId);
+      }
+
+      return resultado;
     }
 
     const enFlujo = await this.motor.continuar(mensaje, usuarioId);
 
-    if (enFlujo !== null) return enFlujo;
+    // Solo si de verdad no había flujo se orienta al usuario; un flujo que
+    // terminó sin nada que decir no es un botón caducado.
+    if (enFlujo.manejado) return enFlujo.respuesta;
 
     return this.sinContexto(mensaje);
   }
@@ -136,4 +179,8 @@ export class Router {
       botones: [{ id: 'cmd:ayuda', texto: 'Ver qué puedo hacer' }],
     };
   }
+}
+
+function esDelegacion(valor: RespuestaBot | DelegarAFlujo): valor is DelegarAFlujo {
+  return 'tipo' in valor && valor.tipo === 'delegar';
 }

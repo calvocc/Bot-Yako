@@ -60,13 +60,13 @@ separadas.
 | # | Dónde | Problema | Estado |
 |---|---|---|---|
 | C1 | DTOs | `@IsEnum(['amarilla','roja'])` es incorrecto: `IsEnum` espera un objeto enum, no un array. Debe ser `@IsIn` o un enum propio. | Fase 4 |
-| C2 | DTOs | `DeshacerEventoDto.comoAdmin` y `CambiarRolDto.ejecutadoPor` son datos de **autorización** viajando en el DTO: si los aporta el cliente, se pueden falsificar. Deben derivarse del contexto. | Fase 2-3 |
-| C3 | Arquitectura §2.2 | `resolver-equipo.interceptor.ts` no puede "cortar el flujo y devolver botones" sin lanzar una excepción. Pasa a ser un **paso de flujo reutilizable**. | Fase 2 |
+| C2 | DTOs | `DeshacerEventoDto.comoAdmin` y `CambiarRolDto.ejecutadoPor` son datos de **autorización** viajando en el DTO: si los aporta el cliente, se pueden falsificar. Deben derivarse del contexto. | **Resuelto**: el rol se lee siempre del servidor, y se revalida justo antes de escribir. |
+| C3 | Arquitectura §2.2 | `resolver-equipo.interceptor.ts` no puede "cortar el flujo y devolver botones" sin lanzar una excepción. Pasa a ser un **paso de flujo reutilizable**. | **Resuelto** (`pasos-comunes/selector-equipo.ts`) |
 | C4 | Esquema | Sin tabla de tiempos, el minuto se calculaba con la duración *configurada*: un primer tiempo con adición desfasaba todo el segundo. Además Redis era el único lugar donde vivía el estado del partido, contra lo que dice el propio RNF. Se agregó `partido_tiempos`. | **Resuelto** |
 | C5 | Esquema / DTOs | `FinalizarPartidoDto` pide un marcador confirmado y el flujo §6 permite corregirlo, pero no había columnas donde guardarlo. Se agregaron `marcador_*_confirmado`. | **Resuelto** |
 | C6 | Arquitectura | `POST /webhook/telegram` quedaba expuesto a internet sin autenticación: cualquiera podía inyectar updates falsos. Se valida el header `X-Telegram-Bot-Api-Secret-Token`. | Fase 1 (`TELEGRAM_WEBHOOK_SECRET` ya es obligatoria) |
 | C7 | Requerimientos vs. flujo | Requerimientos dice "español (Colombia)" pero todo el copy del flujo está en voseo rioplatense ("decime", "sos", "querés", "pegá"). **Decidido**: español de Colombia con "tú". | Se aplica al reescribir el flujo |
-| C8 | Flujo §2-3 | `/equipo nuevo` y `/partido nuevo` no son comandos válidos para el menú de BotFather (no admite espacios): funcionan como texto pero sin autocompletado. Pasan a `/nuevoequipo` y `/nuevopartido`. | Fase 2-3 |
+| C8 | Flujo §2-3 | `/equipo nuevo` y `/partido nuevo` no son comandos válidos para el menú de BotFather (no admite espacios): funcionan como texto pero sin autocompletado. Pasan a `/nuevoequipo` y `/nuevopartido`. | **Resuelto** |
 | C9 | Esquema | Faltaban `check (marcador >= 0)`, unicidad de dorsal por equipo y validación de que un evento tenga jugador cuando corresponde. | **Resuelto** |
 | C10 | Esquema | RLS desactivado deja las tablas expuestas si se filtra la anon key de Supabase. Se activa RLS sin policies (deny-all para todos menos el backend). Deliberadamente **sin** `FORCE`, que dejaría sin acceso al propio backend. | **Resuelto** |
 | C11 | Arquitectura §1 | Faltaban del árbol los `*.module.ts`, la validación de entorno, el healthcheck que Railway/Render requieren, las migraciones y los tests. | **Resuelto** |
@@ -86,10 +86,10 @@ correcto en los cuatro pasos.
 | # | Propuesta | Estado |
 |---|---|---|
 | M1 | RF-3.5 compara solo `tipo + equipo_origen`. Si Jacob marca y Andrés marca 40s después, el bot pregunta sin motivo. **Decidido**: si ambos eventos tienen jugador identificado y son distintos, se guarda sin preguntar. | Fase 3 |
-| M2 | Los códigos de invitación eran de un solo uso, pero el caso real es mandar el link al grupo de papás. Se agregó `usos_maximos` + tabla de canjes. | **Resuelto** en el esquema |
+| M2 | Los códigos de invitación eran de un solo uso, pero el caso real es mandar el link al grupo de papás. Se agregó `usos_maximos` + tabla de canjes. | **Resuelto**: `/invitar` ofrece "una persona" o "todo el grupo". |
 | M3 | Si Redis se caía, el bot moría. Ahora arranca igual y degrada a Postgres. | **Resuelto y verificado**: sin Redis, `/health` responde `degradado` y el proceso sigue vivo. |
 | M4 | "MVP del partido" no tenía regla definida. **Decidido**: sistema de puntos por evento (ver abajo). | Fase 4 |
-| M5 | El deep link `t.me/YakoBot?start=inv_x7f2a` se menciona en el flujo pero el manejo de `/start <payload>` no está especificado. | Fase 2 |
+| M5 | El deep link `t.me/YakoBot?start=inv_x7f2a` se menciona en el flujo pero el manejo de `/start <payload>` no está especificado. | **Resuelto**: `/start inv_XXXXXX` canjea directo. |
 
 ---
 

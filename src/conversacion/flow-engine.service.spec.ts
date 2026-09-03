@@ -1,6 +1,6 @@
-import type { MensajeEntrante } from '../channels/channel.types';
+import type { MensajeEntrante, RespuestaBot } from '../channels/channel.types';
 import { textoDePrueba } from '../channels/testing/fake.adapter';
-import { FlowEngine } from './flow-engine.service';
+import { FlowEngine, type ResultadoFlujo } from './flow-engine.service';
 import { FlowRegistry } from './flow-registry.service';
 import type { EstadoSesion, Flujo, Paso } from './flow.types';
 import type { SesionStore } from './sesion.store';
@@ -29,6 +29,12 @@ class SesionesEnMemoria {
     return Promise.resolve();
   }
 }
+
+/** Extrae la respuesta de un resultado del motor, fallando si no lo manejó. */
+const respuestaDe = (resultado: ResultadoFlujo): RespuestaBot | null => {
+  if (!resultado.manejado) throw new Error('esperaba que el flujo manejara el mensaje');
+  return resultado.respuesta;
+};
 
 const paso = (id: string, definicion: Partial<Paso>): Paso => ({
   id,
@@ -89,7 +95,7 @@ describe('FlowEngine', () => {
 
     await motor.iniciar(mensaje, 'alta');
     await motor.continuar(textoDePrueba('Jacob'));
-    const fin = await motor.continuar(textoDePrueba('10'));
+    const fin = respuestaDe(await motor.continuar(textoDePrueba('10')));
 
     expect(capturado).toEqual({ nombre: 'Jacob', dorsal: '10' });
     expect(fin?.texto).toBe('guardado');
@@ -113,12 +119,12 @@ describe('FlowEngine', () => {
     });
 
     await motor.iniciar(mensaje, 'alta');
-    const invalido = await motor.continuar(textoDePrueba('diez'));
+    const invalido = respuestaDe(await motor.continuar(textoDePrueba('diez')));
 
     expect(invalido?.texto).toBe('Necesito un número');
     expect(await motor.tieneFlujoActivo(mensaje)).toBe(true);
 
-    const valido = await motor.continuar(textoDePrueba('10'));
+    const valido = respuestaDe(await motor.continuar(textoDePrueba('10')));
     expect(valido?.texto).toBe('ok');
   });
 
@@ -160,8 +166,29 @@ describe('FlowEngine', () => {
     await expect(motor.iniciar(mensaje, 'ciclo')).rejects.toThrow(/ciclo/i);
   });
 
-  it('devuelve null cuando no hay conversación abierta', async () => {
-    expect(await motor.continuar(mensaje)).toBeNull();
+  it('reporta que no manejó el mensaje si no hay conversación abierta', async () => {
+    expect(await motor.continuar(mensaje)).toEqual({ manejado: false });
+  });
+
+  it('distingue "no había flujo" de "el flujo no tuvo nada que decir"', async () => {
+    // Confundirlos hacía que terminar un flujo en silencio se respondiera con
+    // "ese botón ya no está disponible".
+    registro.registrar({
+      id: 'silencioso',
+      pasoInicial: 'unico',
+      pasos: [
+        paso('unico', {
+          recibir: () => Promise.resolve({ tipo: 'finalizar' }),
+        }),
+      ],
+    });
+
+    await motor.iniciar(mensaje, 'silencioso');
+
+    expect(await motor.continuar(textoDePrueba('lo que sea'))).toEqual({
+      manejado: true,
+      respuesta: null,
+    });
   });
 
   it('descarta la sesión si el paso dejó de existir entre despliegues', async () => {
@@ -170,7 +197,7 @@ describe('FlowEngine', () => {
       { flujoId: 'viejo', pasoId: 'ya-no-existe', datos: {} },
     );
 
-    expect(await motor.continuar(mensaje)).toBeNull();
+    expect(await motor.continuar(mensaje)).toEqual({ manejado: false });
     expect(await motor.tieneFlujoActivo(mensaje)).toBe(false);
   });
 

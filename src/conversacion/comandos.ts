@@ -74,6 +74,20 @@ export function parsearComando(mensaje: MensajeEntrante): ComandoParseado | null
 }
 
 /**
+ * Palabras con barra que pertenecen a un flujo, no al bot.
+ *
+ * `/listo` solo significa algo dentro de la carga de plantilla. Sin esta lista
+ * el router las tomaría por comandos desconocidos y respondería "no conozco
+ * ese comando" en vez de entregárselas al flujo abierto — que es justo el
+ * momento en que el usuario está siguiendo una instrucción del propio bot.
+ */
+export const COMANDOS_DE_FLUJO: readonly string[] = ['listo', 'ninguna', 'ninguno', 'saltar'];
+
+export function esComandoDeFlujo(nombre: string): boolean {
+  return COMANDOS_DE_FLUJO.includes(nombre.toLowerCase());
+}
+
+/**
  * Prefijo de los botones que disparan un comando. Permite ofrecer
  * "Ver qué puedo hacer" como botón sin obligar al usuario a escribir `/ayuda`.
  */

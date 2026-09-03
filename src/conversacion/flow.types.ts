@@ -17,8 +17,12 @@ export interface ContextoFlujo {
 /** A dónde va el flujo después de procesar la respuesta del usuario. */
 export type Transicion =
   | { tipo: 'ir'; pasoId: string; datos?: DatosFlujo }
-  /** La respuesta no sirvió: se queda en el paso y explica por qué. */
-  | { tipo: 'repetir'; respuesta: RespuestaBot }
+  /**
+   * La respuesta no sirvió, o el paso admite varias entradas seguidas: se
+   * queda en el paso y explica. `datos` permite acumular entre repeticiones,
+   * como al cargar la plantilla de a varios jugadores.
+   */
+  | { tipo: 'repetir'; respuesta: RespuestaBot; datos?: DatosFlujo }
   | { tipo: 'finalizar'; respuesta?: RespuestaBot };
 
 /**
@@ -53,6 +57,30 @@ export interface EstadoSesion {
   pasoId: string;
   datos: DatosFlujo;
   actualizadoEn: string;
+}
+
+/**
+ * Lee un dato del flujo como texto.
+ *
+ * `datos` se serializa a JSON, así que su contenido es `unknown` al releerlo.
+ * Sin este estrechamiento, un `String(...)` sobre un valor inesperado
+ * imprimiría "[object Object]" en medio de un mensaje al usuario.
+ */
+export function leerTexto(datos: DatosFlujo, clave: string, porDefecto = ''): string {
+  const valor = datos[clave];
+
+  if (typeof valor === 'string') return valor;
+  if (typeof valor === 'number') return String(valor);
+
+  return porDefecto;
+}
+
+/** Lee un dato del flujo como número, con respaldo si no lo es. */
+export function leerNumero(datos: DatosFlujo, clave: string, porDefecto = 0): number {
+  const valor = datos[clave];
+  const numero = typeof valor === 'number' ? valor : Number(valor);
+
+  return Number.isFinite(numero) ? numero : porDefecto;
 }
 
 export function construirRespuesta(
