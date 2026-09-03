@@ -21,6 +21,13 @@ export type ResultadoInicio =
   | { tipo: 'cerrado'; partido: Partido }
   | { tipo: 'no_existe' };
 
+export type ResultadoInicioPostPartido =
+  | { tipo: 'iniciado'; partido: Partido }
+  /** Ya tiene un modo elegido (en vivo o post partido); no hay nada que arrancar. */
+  | { tipo: 'ya_tiene_modo'; partido: Partido }
+  | { tipo: 'cerrado'; partido: Partido }
+  | { tipo: 'no_existe' };
+
 export type ResultadoTiempo =
   /** Hay un tiempo corriendo. `recienIniciado` distingue si lo arrancó esta llamada. */
   | { tipo: 'en_curso'; partido: Partido; recienIniciado: boolean }
@@ -79,6 +86,40 @@ export class TiemposService {
           tiempoActual: 1,
           tiempoEstado: 'en_curso',
           tiempoIniciadoEn: ahora,
+        })
+        .where(eq(partidos.id, partidoId))
+        .returning();
+
+      return { tipo: 'iniciado' as const, partido: mapearPartido(fila) };
+    });
+  }
+
+  /**
+   * Pasa el partido a modo post partido (RF-4.1): sin reloj, así que a
+   * diferencia de `iniciarEnVivo` no toca `partido_tiempos` ni `tiempoEstado`
+   * — se queda en `no_iniciado`, que es exactamente lo correcto: nunca corre
+   * un reloj.
+   */
+  async iniciarPostPartido(
+    partidoId: string,
+    usuarioId: string,
+  ): Promise<ResultadoInicioPostPartido> {
+    return this.db.db.transaction(async (tx) => {
+      const partido = await this.bloquear(tx, partidoId);
+
+      if (!partido) return { tipo: 'no_existe' as const };
+      if (partido.estado === 'cerrado') return { tipo: 'cerrado' as const, partido };
+
+      if (partido.modoCarga !== null) {
+        return { tipo: 'ya_tiene_modo' as const, partido };
+      }
+
+      const [fila] = await tx
+        .update(partidos)
+        .set({
+          modoCarga: 'post_partido',
+          estado: 'en_progreso',
+          iniciadoPor: partido.iniciadoPor ?? usuarioId,
         })
         .where(eq(partidos.id, partidoId))
         .returning();

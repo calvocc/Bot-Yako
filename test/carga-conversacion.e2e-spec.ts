@@ -287,6 +287,76 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     expect(plantilla.map((j) => j.nombre)).toContain('Samuel');
   });
 
+  describe('post partido (RF-4)', () => {
+    it('carga goleadores y tarjetas sin reloj, y el resumen trae el MVP', async () => {
+      const { equipo, decir, tocar } = await escenario('Post partido');
+      await crearPartido(equipo.id);
+
+      await decir('/cargar');
+      expect(adaptador.ultimoTexto).toContain('¿Vas a cargar en vivo');
+
+      await tocar('md:post');
+      expect(adaptador.ultimoTexto).toContain('¿Quién anotó?');
+
+      await decir('Jacob 2, Andrés 1');
+      expect(adaptador.ultimoTexto).toContain('¿Hubo tarjetas?');
+
+      await decir('Andrés amarilla');
+      // El derivado de los tres goles es 3-0; el marcador real (3-1) se
+      // confirma en el mismo paso de siempre, sin preguntarlo dos veces.
+      expect(adaptador.ultimoTexto).toContain('¿Confirmas el marcador final? 3-0');
+
+      await decir('3-1');
+
+      const textos = adaptador.enviados.map((e) => e.respuesta.texto).join('\n');
+      expect(textos).toContain('Partido cerrado ✅');
+      expect(textos).toContain('3 - 1');
+      expect(textos).toContain('⚽ Gol: Jacob, Jacob, Andrés');
+      expect(textos).toContain('🟨 Amarilla: Andrés');
+      // Jacob: 2 goles = 6 pts. Andrés: 1 gol - 1 amarilla = 2 pts.
+      expect(textos).toContain('MVP del partido: Jacob (6 pts — 2 goles)');
+
+      const partido = (await partidos.recientesDe(equipo.id))[0];
+      expect(partido.modoCarga).toBe('post_partido');
+      expect(partido.marcadorPropioConfirmado).toBe(3);
+      expect(partido.marcadorRivalConfirmado).toBe(1);
+
+      const cargados = await eventos.delPartido(partido.id);
+      expect(cargados).toHaveLength(4);
+      expect(cargados.every((e) => e.tiempo === null && e.minutoCalculado === null)).toBe(true);
+    });
+
+    it('"Corregir todo" borra lo cargado y deja empezar de nuevo', async () => {
+      const { equipo, decir, tocar } = await escenario('Post partido corregir');
+      const partido = await crearPartido(equipo.id);
+
+      await decir('/cargar');
+      await tocar('md:post');
+      await decir('Jacob 3');
+      await decir('/ninguna');
+      expect(adaptador.ultimoTexto).toContain('¿Confirmas el marcador final?');
+
+      // Antes de cerrar, se vuelve a /cargar: RF-4.2 tiene que mostrar el
+      // resumen ya cargado en vez de preguntar el modo de nuevo.
+      adaptador.limpiar();
+      await decir('/cargar');
+      expect(adaptador.ultimoTexto).toContain('Jacob');
+      expect(adaptador.ultimoTexto).toContain('¿Agregas o corriges algo?');
+
+      await tocar('pp:corregir');
+      expect(adaptador.ultimoTexto).toContain('¿Quién anotó?');
+      expect(await eventos.delPartido(partido.id)).toHaveLength(0);
+
+      await decir('Andrés 1');
+      await decir('/ninguna');
+      await decir('1-0');
+
+      const cargados = await eventos.delPartido(partido.id);
+      expect(cargados).toHaveLength(1);
+      expect(cargados[0].jugadorNombre).toBe('Andrés');
+    });
+  });
+
   const crearPartido = (equipoId: string) =>
     identidad.resolverUsuario(textoDePrueba('', nuevoCanal())).then((creadoPor) =>
       partidos.crear({

@@ -94,4 +94,34 @@ describe('componerResumen', () => {
 
     expect(texto).toContain('todavía está abierto');
   });
+
+  it('incluye el MVP del partido (M4)', () => {
+    const texto = componerResumen({
+      partido: partido(),
+      equipoNombre: 'Ringo Amaya',
+      eventos: [gol('Jacob', 23), gol('Jacob', 41)],
+    });
+
+    expect(texto).toContain('MVP del partido: Jacob (6 pts — 2 goles)');
+  });
+
+  it('no muestra MVP si solo hubo tarjetas (sin evento positivo)', () => {
+    const texto = componerResumen({
+      partido: partido(),
+      equipoNombre: 'Ringo Amaya',
+      eventos: [{ ...gol('Andrés', 35), tipo: 'tarjeta_amarilla' }],
+    });
+
+    expect(texto).not.toContain('MVP del partido');
+  });
+
+  it('no muestra MVP sin eventos cargados', () => {
+    const texto = componerResumen({
+      partido: partido(),
+      equipoNombre: 'Ringo Amaya',
+      eventos: [],
+    });
+
+    expect(texto).not.toContain('MVP del partido');
+  });
 });
