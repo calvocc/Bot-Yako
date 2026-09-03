@@ -61,6 +61,8 @@ commitearlo.
 
 ## Estado
 
+Desplegado en `https://yako-bot-production.up.railway.app`.
+
 | Fase | Estado |
 |---|---|
 | 0 · Fundaciones: scaffold, esquema, migraciones, health, CI | ✅ |

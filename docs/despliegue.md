@@ -7,7 +7,7 @@ Yako corre como un servicio Node en **Railway**, con Postgres en **Supabase** y 
 | Servicio | Railway · proyecto `3r-connect-crm-api` · servicio `yako-bot` |
 | URL pública | `https://yako-bot-production.up.railway.app` |
 | Base de datos | Supabase · proyecto `yako` (`hooyfaxknoetfmweazmy`, región `us-east-1`) |
-| Redis | Upstash (pendiente de crear) |
+| Redis | Upstash (pendiente de crear — el bot funciona sin él) |
 
 > El servicio quedó dentro de un proyecto llamado `3r-connect-crm-api` porque el plan gratuito de
 > Railway no permitía crear uno nuevo, y ese proyecto estaba vacío. Conviene renombrarlo a `yako-bot`
@@ -39,11 +39,21 @@ Las cuatro obligatorias se validan al arrancar: si falta alguna, el proceso no l
 cuál. Es deliberado — es preferible un despliegue que falla claro a un bot a medio configurar
 respondiéndole mal a la gente en mitad de un partido.
 
-### Por qué dos URLs de base de datos
+### Por qué dos URLs, y por qué las dos van por el pooler
 
-La aplicación se conecta por el **pooler en modo transaction**, que aguanta muchas conexiones cortas
-pero no soporta prepared statements (por eso el cliente usa `prepare: false`). Las **migraciones**
-necesitan la conexión directa, porque ejecutan DDL en una sola sesión larga.
+La aplicación usa el **pooler en modo transaction** (puerto 6543), que aguanta muchas conexiones
+cortas pero no soporta prepared statements — por eso el cliente va con `prepare: false`. Las
+**migraciones** usan el **pooler en modo session** (puerto 5432), que sí mantiene una sesión larga
+para ejecutar DDL.
+
+> **No uses la conexión directa (`db.<ref>.supabase.co`).** En el plan gratuito de Supabase ese host
+> resuelve **solo a IPv6**, y desde Railway no es alcanzable: el despliegue se queda ~40 segundos
+> intentando conectar y falla por timeout. El pooler sí tiene IPv4.
+>
+> Ambas URLs usan el host `aws-0-us-east-1.pooler.supabase.com` y el usuario
+> `postgres.<ref-del-proyecto>`. Si el host no es el correcto, el error es explícito:
+> `tenant/user postgres.<ref> not found`. La cadena buena está siempre en
+> Settings → Database → Connection string.
 
 ### Redis es opcional a propósito
 
@@ -53,24 +63,27 @@ en Postgres. Exigirlo solo lograría que una caída de la caché tumbara el bot.
 
 ---
 
-## Pasos que quedan pendientes
+## Estado
 
-Lo demás ya está configurado; falta cargar los secretos y un ajuste en GitHub.
+El servicio está **desplegado y funcionando**. El arranque deja esta traza:
 
-1. **Revocar el token de Telegram.** En BotFather, `/revoke` sobre el bot. Invalida el token viejo
-   —que se compartió por chat y hay que dar por comprometido— y entrega uno nuevo.
-2. **Contraseña de la base.** Supabase → Settings → Database. Si no la tienes, *Reset database
-   password*. La cadena de conexión trae `[YOUR-PASSWORD]`: hay que reemplazarlo por esa contraseña.
-3. **Crear el Redis en Upstash** (opcional; se puede dejar para después).
-4. **Cargar las variables en Railway** (servicio `yako-bot` → Variables):
-   `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` (genéralo con `openssl rand -hex 32`),
-   `DATABASE_URL`, `DATABASE_MIGRATION_URL` y, si lo creaste, `REDIS_URL`.
-   Al guardar, el servicio redespliega solo.
-5. **Rama por defecto en GitHub.** Settings → General → Default branch: cambiar a `main`. Después se
+```
+Aplicando migraciones... → Migraciones aplicadas.
+Mapped {/health, GET} · Mapped {/webhook/telegram, POST}
+Webhook registrado en https://yako-bot-production.up.railway.app
+Yako escuchando en el puerto 8080
+```
+
+### Pendientes
+
+1. **Rotar las credenciales.** El token del bot y la contraseña de la base se compartieron por chat
+   durante la puesta en marcha, así que hay que darlos por comprometidos: `/revoke` en BotFather y
+   *Reset database password* en Supabase. Después se actualizan en Railway → Variables.
+2. **Redis en Upstash** (opcional). Sin él, `/health` responde `degradado` y el bot funciona igual.
+3. **Rama por defecto en GitHub.** Settings → General → Default branch: cambiar a `main`. Después se
    puede borrar `claude/football-stats-bot-i95v3b`, cuyos commits ya viven en las ramas de fase.
-6. **Apuntar Railway a `main`.** El servicio está siguiendo `fase-1-canal-y-motor` para poder validar
-   el pipeline antes del merge. Una vez mergeados los PR, hay que cambiarlo a `main` en
-   Settings → Source.
+4. **Apuntar Railway a `main`.** El servicio sigue `fase-1-canal-y-motor` para haber podido validar
+   el pipeline antes del merge. Una vez mergeados los PR, se cambia en Settings → Source.
 
 ---
 
