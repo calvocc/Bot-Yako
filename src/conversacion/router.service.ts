@@ -3,6 +3,9 @@ import type { MensajeEntrante, RespuestaBot } from '../channels/channel.types';
 import { parsearComando, PREFIJO_BOTON_COMANDO } from './comandos';
 import { FlowEngine } from './flow-engine.service';
 
+/** Salida de emergencia de cualquier flujo. La atiende el router, no un handler. */
+const COMANDO_CANCELAR = 'cancelar';
+
 /** Qué hace un comando: responder de una, o abrir un flujo de varios pasos. */
 export type ManejadorComando =
   | { tipo: 'respuesta'; ejecutar: (ctx: ContextoComando) => Promise<RespuestaBot> }
@@ -38,14 +41,16 @@ export class Router {
   }
 
   get comandosRegistrados(): string[] {
-    return [...this.manejadores.keys()];
+    // 'cancelar' no pasa por registrarComando —lo atiende el propio router—
+    // pero existe, así que tiene que aparecer en el menú y en /ayuda.
+    return [COMANDO_CANCELAR, ...this.manejadores.keys()];
   }
 
   async resolver(mensaje: MensajeEntrante, usuarioId?: string): Promise<RespuestaBot | null> {
     const comando = parsearComando(mensaje) ?? this.comandoDesdeBoton(mensaje);
 
     if (comando) {
-      if (comando.nombre === 'cancelar') {
+      if (comando.nombre === COMANDO_CANCELAR) {
         return this.cancelar(mensaje);
       }
 

@@ -44,7 +44,15 @@ export class TelegramController {
     const mensaje = mapearUpdate(update);
 
     if (mensaje) {
-      void this.procesador.procesar(mensaje, idDeUpdate(update));
+      // El .catch() es la última red: `procesar` ya captura lo suyo, pero un
+      // fallo antes de su try se volvería un rechazo sin capturar, y ya
+      // respondimos 200 así que nadie más lo vería.
+      void this.procesador.procesar(mensaje, idDeUpdate(update)).catch((error: unknown) => {
+        this.logger.error(
+          'Fallo no capturado al procesar el update',
+          error instanceof Error ? error.stack : String(error),
+        );
+      });
     }
 
     return { ok: true };

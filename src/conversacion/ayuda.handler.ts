@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { RespuestaBot } from '../channels/channel.types';
-import { COMANDOS } from './comandos';
+import { comandosDisponibles } from './comandos';
+import { Router } from './router.service';
 
 const ETIQUETA_ROL: Record<string, string> = {
   cualquiera: '',
@@ -15,8 +16,10 @@ const ETIQUETA_ROL: Record<string, string> = {
  */
 @Injectable()
 export class AyudaHandler {
+  constructor(private readonly router: Router) {}
+
   ejecutar(): Promise<RespuestaBot> {
-    const lineas = COMANDOS.filter((comando) => comando.visible !== false).map(
+    const lineas = comandosDisponibles(this.router.comandosRegistrados).map(
       (comando) => `/${comando.nombre} — ${comando.descripcion}${ETIQUETA_ROL[comando.rolMinimo]}`,
     );
 

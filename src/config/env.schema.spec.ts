@@ -32,6 +32,27 @@ describe('validarEnv', () => {
     expect(() => validarEnv({ ...base, WHATSAPP_ENABLED: 'true' })).toThrow(/WHATSAPP_/);
   });
 
+  it('trata una variable vacía como no configurada', () => {
+    // dotenv convierte la línea `CLAVE=` en cadena vacía, y .env.example trae
+    // varias así. Si `''` no pasara la validación, seguir el README
+    // (cp .env.example .env) dejaría el proceso sin arrancar.
+    const env = validarEnv({
+      ...base,
+      TELEGRAM_WEBHOOK_URL: '',
+      REDIS_URL: '',
+      WHATSAPP_PHONE_NUMBER_ID: '',
+    });
+
+    expect(env.TELEGRAM_WEBHOOK_URL).toBeUndefined();
+    expect(env.REDIS_URL).toBeUndefined();
+  });
+
+  it('sigue rechazando una URL de webhook mal formada', () => {
+    expect(() => validarEnv({ ...base, TELEGRAM_WEBHOOK_URL: 'no-es-una-url' })).toThrow(
+      /TELEGRAM_WEBHOOK_URL/,
+    );
+  });
+
   it('acepta WhatsApp con la configuracion completa', () => {
     const env = validarEnv({
       ...base,

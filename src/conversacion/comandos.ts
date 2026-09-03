@@ -82,3 +82,19 @@ export const PREFIJO_BOTON_COMANDO = 'cmd:';
 export function botonComando(nombre: string, texto: string): { id: string; texto: string } {
   return { id: `${PREFIJO_BOTON_COMANDO}${nombre}`, texto };
 }
+
+/**
+ * Comandos del catálogo que además están implementados.
+ *
+ * El catálogo describe el MVP completo, pero cada fase habilita solo una parte.
+ * Anunciar los que todavía no existen —en el menú de Telegram o en /ayuda— hace
+ * que el bot prometa cosas que responden "No conozco el comando". Filtrando por
+ * lo que el router tiene registrado, cada fase los va habilitando sola.
+ */
+export function comandosDisponibles(registrados: readonly string[]): DefinicionComando[] {
+  const activos = new Set(registrados.map((nombre) => nombre.toLowerCase()));
+
+  return COMANDOS.filter(
+    (comando) => comando.visible !== false && activos.has(comando.nombre.toLowerCase()),
+  );
+}

@@ -26,9 +26,14 @@ export class ProcesadorMensajes {
   ) {}
 
   async procesar(mensaje: MensajeEntrante, updateId?: number): Promise<void> {
-    const adaptador = this.canales.obtener(mensaje.canal);
+    // Resolver el adaptador va dentro del try: si el canal no tiene uno
+    // registrado, `obtener` lanza, y fuera del try eso sería un rechazo sin
+    // capturar que en Node termina el proceso.
+    let adaptador: ChannelAdapter | undefined;
 
     try {
+      adaptador = this.canales.obtener(mensaje.canal);
+
       if (updateId !== undefined && (await this.yaProcesado(mensaje.canal, updateId))) {
         this.logger.debug(`Update ${updateId} ya procesado, se descarta`);
         return;
@@ -53,7 +58,9 @@ export class ProcesadorMensajes {
         error instanceof Error ? error.stack : String(error),
       );
 
-      await this.avisarDelError(adaptador, mensaje);
+      if (adaptador) {
+        await this.avisarDelError(adaptador, mensaje);
+      }
     }
   }
 
@@ -67,15 +74,17 @@ export class ProcesadorMensajes {
    * chequeo de duplicados del dominio.
    */
   private async yaProcesado(canal: Canal, updateId: number): Promise<boolean> {
-    if (!this.redis.disponible) return false;
-
-    const reservado = await this.redis.intentar((redis) =>
+    const resultado = await this.redis.ejecutar((redis) =>
       redis.set(`update:${canal}:${updateId}`, '1', 'EX', TTL_DEDUP_UPDATE_SEGUNDOS, 'NX'),
     );
 
-    // 'OK' = la reserva es nuestra, es la primera vez. null = ya estaba (o
-    // Redis se cayó entre medio, en cuyo caso reprocesar es lo seguro).
-    return reservado === null && this.redis.disponible;
+    // Si Redis no respondió, se deja pasar. Descartar por un fallo de la caché
+    // dejaría al usuario sin respuesta y sin rastro visible; procesar de más,
+    // en cambio, lo cubre el chequeo de duplicados del dominio.
+    if (!resultado.ok) return false;
+
+    // Con el comando ejecutado, `null` sí es inequívoco: la clave ya existía.
+    return resultado.valor === null;
   }
 
   private async avisarDelError(adaptador: ChannelAdapter, mensaje: MensajeEntrante): Promise<void> {

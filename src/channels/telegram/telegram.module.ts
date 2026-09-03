@@ -1,7 +1,8 @@
 import { Logger, Module, type OnModuleInit } from '@nestjs/common';
 import { TypedConfigService } from '../../config/config.service';
 import { ConversacionModule } from '../../conversacion/conversacion.module';
-import { COMANDOS } from '../../conversacion/comandos';
+import { comandosDisponibles } from '../../conversacion/comandos';
+import { Router } from '../../conversacion/router.service';
 import { ChannelRegistry } from '../channel.registry';
 import { ProcesadorMensajes } from '../procesador-mensajes.service';
 import { TelegramAdapter } from './telegram.adapter';
@@ -20,6 +21,7 @@ export class TelegramModule implements OnModuleInit {
     private readonly adaptador: TelegramAdapter,
     private readonly registro: ChannelRegistry,
     private readonly config: TypedConfigService,
+    private readonly router: Router,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -29,15 +31,23 @@ export class TelegramModule implements OnModuleInit {
     await this.registrarWebhook();
   }
 
-  /** Deja los comandos en el menú de Telegram, tomados del mismo catálogo que /ayuda. */
+  /**
+   * Publica en el menú de Telegram solo los comandos que el router tiene
+   * registrados. Anunciar el catálogo completo haría que el menú ofreciera
+   * comandos de fases que todavía no existen.
+   */
   private async publicarMenuDeComandos(): Promise<void> {
+    const disponibles = comandosDisponibles(this.router.comandosRegistrados);
+
     try {
       await this.adaptador.telegraf.telegram.setMyCommands(
-        COMANDOS.filter((comando) => comando.visible !== false).map((comando) => ({
+        disponibles.map((comando) => ({
           command: comando.nombre,
           description: comando.descripcion,
         })),
       );
+
+      this.logger.log(`Menú publicado con ${disponibles.length} comando(s)`);
     } catch (error) {
       // Que no se pueda publicar el menú no justifica no arrancar el bot.
       this.logger.warn(

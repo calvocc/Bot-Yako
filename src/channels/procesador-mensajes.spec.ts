@@ -35,9 +35,24 @@ class SesionesEnMemoria {
 const redisCaido = {
   disponible: false,
   intentar: () => Promise.resolve(null),
+  ejecutar: () => Promise.resolve({ ok: false }),
 } as unknown as RedisService;
 
-function armar(canal: Canal = 'telegram') {
+/** Redis conectado pero cuyos comandos fallan: el caso peligroso del dedup. */
+const redisQueFalla = {
+  disponible: true,
+  intentar: () => Promise.resolve(null),
+  ejecutar: () => Promise.resolve({ ok: false }),
+} as unknown as RedisService;
+
+/** Redis sano que reporta la clave como ya existente. */
+const redisConClaveExistente = {
+  disponible: true,
+  intentar: () => Promise.resolve(null),
+  ejecutar: () => Promise.resolve({ ok: true, valor: null }),
+} as unknown as RedisService;
+
+function armar(canal: Canal = 'telegram', redis: RedisService = redisCaido) {
   const adaptador = new FakeChannelAdapter(canal);
   const canales = new ChannelRegistry();
   canales.registrar(adaptador);
@@ -46,25 +61,49 @@ function armar(canal: Canal = 'telegram') {
   const motor = new FlowEngine(registro, new SesionesEnMemoria() as unknown as SesionStore);
   const router = new Router(motor);
 
-  const ayuda = new AyudaHandler();
+  const ayuda = new AyudaHandler(router);
   router.registrarComando('ayuda', { tipo: 'respuesta', ejecutar: () => ayuda.ejecutar() });
 
-  const procesador = new ProcesadorMensajes(canales, router, redisCaido);
+  const procesador = new ProcesadorMensajes(canales, router, redis);
 
-  return { adaptador, procesador, router, registro, motor };
+  return { adaptador, procesador, router, registro, motor, canales };
 }
 
 describe('Conversación de punta a punta', () => {
-  it('responde /ayuda con el catálogo de comandos', async () => {
+  it('lista en /ayuda solo los comandos que existen de verdad', async () => {
     const { adaptador, procesador } = armar();
 
     await procesador.procesar(textoDePrueba('/ayuda'));
 
     expect(adaptador.enviados).toHaveLength(1);
+    expect(adaptador.ultimoTexto).toContain('/ayuda');
+    expect(adaptador.ultimoTexto).toContain('/cancelar');
+
+    // Prometer comandos de fases futuras hace que el bot ofrezca cosas que
+    // responden "No conozco el comando".
+    expect(adaptador.ultimoTexto).not.toContain('/nuevopartido');
+    expect(adaptador.ultimoTexto).not.toContain('/cargar');
+  });
+
+  it('suma comandos a /ayuda a medida que se registran', async () => {
+    const { adaptador, procesador, router, registro } = armar();
+
+    registro.registrar({
+      id: 'partido',
+      pasoInicial: 'rival',
+      pasos: [
+        {
+          id: 'rival',
+          entrar: () => Promise.resolve({ respuesta: { texto: '¿Contra quién?' } }),
+          recibir: () => Promise.resolve({ tipo: 'finalizar' }),
+        },
+      ],
+    });
+    router.registrarComando('nuevopartido', { tipo: 'flujo', flujoId: 'partido' });
+
+    await procesador.procesar(textoDePrueba('/ayuda'));
+
     expect(adaptador.ultimoTexto).toContain('/nuevopartido');
-    expect(adaptador.ultimoTexto).toContain('/cargar');
-    // C8: los comandos con espacio ya no existen.
-    expect(adaptador.ultimoTexto).not.toContain('/partido nuevo');
   });
 
   it('acepta la forma con mención que usa Telegram en grupos', async () => {
@@ -164,6 +203,36 @@ describe('Conversación de punta a punta', () => {
     await procesador.procesar(textoDePrueba('/roto'));
 
     expect(adaptador.ultimoTexto).toContain('Se me complicó');
+  });
+
+  it('no descarta el mensaje si Redis falla al chequear reentregas', async () => {
+    // Un fallo del comando devuelve el mismo `null` que "la clave ya existía".
+    // Tratarlos igual haría que un error transitorio de la caché dejara al
+    // usuario sin respuesta y sin más rastro que un log de depuración.
+    const { adaptador, procesador } = armar('telegram', redisQueFalla);
+
+    await procesador.procesar(textoDePrueba('/ayuda'), 4242);
+
+    expect(adaptador.enviados).toHaveLength(1);
+    expect(adaptador.ultimoTexto).toContain('Soy Yako');
+  });
+
+  it('descarta la reentrega de un update ya procesado', async () => {
+    const { adaptador, procesador } = armar('telegram', redisConClaveExistente);
+
+    await procesador.procesar(textoDePrueba('/ayuda'), 4242);
+
+    expect(adaptador.enviados).toHaveLength(0);
+  });
+
+  it('no deja escapar el error si el canal no tiene adaptador', async () => {
+    // Resolver el adaptador fuera del try convertía esto en un rechazo sin
+    // capturar, que en Node termina el proceso.
+    const { procesador } = armar();
+
+    await expect(
+      procesador.procesar(textoDePrueba('/ayuda', { canal: 'whatsapp' })),
+    ).resolves.toBeUndefined();
   });
 
   it('el mismo flujo funciona igual entrando por WhatsApp', async () => {

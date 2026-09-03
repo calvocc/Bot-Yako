@@ -5,6 +5,22 @@ import type { ChannelAdapter } from '../channel-adapter.interface';
 import type { Boton, Canal, DestinoMensaje, MensajeEnviado, RespuestaBot } from '../channel.types';
 import { LIMITE_BYTES_ID_BOTON } from '../channel.types';
 
+/**
+ * Telegram rechaza una edición cuyo resultado sería idéntico al mensaje actual.
+ * Se detecta por el texto de la descripción, que es lo único que la Bot API
+ * ofrece para distinguirlo: el código es 400 para muchos otros motivos.
+ */
+function esContenidoSinCambios(error: unknown): boolean {
+  const descripcion =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'object' && error !== null && 'description' in error
+        ? String(error.description)
+        : '';
+
+  return descripcion.includes('message is not modified');
+}
+
 /** Botones por fila en el teclado. Dos entran cómodos en un teléfono. */
 const BOTONES_POR_FILA = 2;
 /** Con rótulos largos conviene una sola columna. */
@@ -41,9 +57,15 @@ export class TelegramAdapter implements ChannelAdapter {
 
         return { mensajeId: respuesta.editarMensajeId };
       } catch (error) {
-        // Telegram rechaza la edición si el contenido es idéntico, y falla si
-        // el mensaje es viejo o fue borrado. Ninguno de esos casos justifica
-        // perder la respuesta: se manda uno nuevo.
+        // Telegram responde 400 cuando el contenido es idéntico. Eso no es un
+        // fallo: el mensaje ya dice lo que queríamos. Reenviarlo publicaría un
+        // panel duplicado, justo lo que la edición en el sitio evita.
+        if (esContenidoSinCambios(error)) {
+          return { mensajeId: respuesta.editarMensajeId };
+        }
+
+        // El resto —mensaje viejo, borrado, sin permisos— sí justifica mandar
+        // uno nuevo antes que perder la respuesta.
         this.logger.debug(
           `No se pudo editar el mensaje ${respuesta.editarMensajeId}, se envía uno nuevo: ${
             error instanceof Error ? error.message : String(error)

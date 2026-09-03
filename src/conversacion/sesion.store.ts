@@ -70,10 +70,21 @@ export class SesionStore {
     };
   }
 
+  /**
+   * Escribe el estado con el patrón invalidar → escribir → poblar.
+   *
+   * El orden importa: si se escribiera Postgres y luego la caché, un fallo al
+   * poblarla (con Redis arriba) dejaría el valor viejo mandando durante toda
+   * la vigencia de la clave, y el flujo del usuario retrocedería. Invalidando
+   * primero, el peor caso es una caché vacía y una lectura que cae a Postgres,
+   * que siempre tiene el estado correcto.
+   */
   async guardar(ref: ReferenciaCanal, estado: Omit<EstadoSesion, 'actualizadoEn'>): Promise<void> {
     const ahora = new Date();
     const completo: EstadoSesion = { ...estado, actualizadoEn: ahora.toISOString() };
     const expiraEn = new Date(ahora.getTime() + TTL_SESION_SEGUNDOS * 1000);
+
+    await this.invalidarCache(ref);
 
     await this.db.db
       .insert(sesionesConversacion)
@@ -97,12 +108,22 @@ export class SesionStore {
         },
       });
 
-    await this.redis.intentar((redis) =>
+    const poblada = await this.redis.ejecutar((redis) =>
       redis.set(this.clave(ref), JSON.stringify(completo), 'EX', TTL_SESION_SEGUNDOS),
     );
+
+    if (!poblada.ok) {
+      // Sin caché las lecturas van a Postgres: más lento, pero correcto.
+      this.logger.debug(`No se pudo poblar la caché de ${claveReferencia(ref)}`);
+    }
   }
 
   async borrar(ref: ReferenciaCanal): Promise<void> {
+    // También aquí primero la caché: si el borrado en Redis fallara después de
+    // borrar en Postgres, la sesión seguiría viva en caché y `/cancelar`
+    // dejaría al usuario atrapado en el flujo que acaba de cancelar.
+    await this.invalidarCache(ref);
+
     await this.db.db
       .delete(sesionesConversacion)
       .where(
@@ -112,6 +133,14 @@ export class SesionStore {
         ),
       );
 
+    await this.invalidarCache(ref);
+  }
+
+  /**
+   * Quita la clave de la caché. Si Redis no responde, tampoco responderá a las
+   * lecturas, así que estas caerán a Postgres igual.
+   */
+  private async invalidarCache(ref: ReferenciaCanal): Promise<void> {
     await this.redis.intentar((redis) => redis.del(this.clave(ref)));
   }
 

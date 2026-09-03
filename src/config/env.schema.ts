@@ -58,9 +58,16 @@ export type Env = z.infer<typeof envSchema>;
 /**
  * Valida el entorno al arrancar. Preferimos que el proceso no levante a que
  * descubra una variable faltante en medio de un partido.
+ *
+ * Antes de validar se descartan las claves con cadena vacía: dotenv convierte
+ * una línea `CLAVE=` en `''`, y `''` no pasa `.url()` ni `.min(1)`. Sin esto,
+ * copiar `.env.example` —que trae varias así— impediría arrancar, cuando la
+ * intención evidente de esa línea es "no configurada".
  */
 export function validarEnv(config: Record<string, unknown>): Env {
-  const resultado = envSchema.safeParse(config);
+  const sinVacias = Object.fromEntries(Object.entries(config).filter(([, valor]) => valor !== ''));
+
+  const resultado = envSchema.safeParse(sinVacias);
 
   if (!resultado.success) {
     const detalle = resultado.error.issues
