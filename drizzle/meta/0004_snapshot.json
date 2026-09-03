@@ -1,0 +1,1516 @@
+{
+  "id": "0c9a9b80-3189-4a96-be90-f8345cdb1b60",
+  "prevId": "0ede2c6b-c3c6-448e-af63-e22a90a96e45",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.academias": {
+      "name": "academias",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "nombre": {
+          "name": "nombre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.equipos": {
+      "name": "equipos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "academia_id": {
+          "name": "academia_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nombre": {
+          "name": "nombre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cantidad_tiempos_default": {
+          "name": "cantidad_tiempos_default",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 2
+        },
+        "minutos_por_tiempo_default": {
+          "name": "minutos_por_tiempo_default",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 25
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_equipos_academia": {
+          "name": "idx_equipos_academia",
+          "columns": [
+            {
+              "expression": "academia_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "equipos_academia_id_academias_id_fk": {
+          "name": "equipos_academia_id_academias_id_fk",
+          "tableFrom": "equipos",
+          "tableTo": "academias",
+          "columnsFrom": [
+            "academia_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "equipos_academia_nombre_key": {
+          "name": "equipos_academia_nombre_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "academia_id",
+            "nombre"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "equipos_cantidad_tiempos_check": {
+          "name": "equipos_cantidad_tiempos_check",
+          "value": "\"equipos\".\"cantidad_tiempos_default\" between 1 and 6"
+        },
+        "equipos_minutos_por_tiempo_check": {
+          "name": "equipos_minutos_por_tiempo_check",
+          "value": "\"equipos\".\"minutos_por_tiempo_default\" between 1 and 60"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.jugadores": {
+      "name": "jugadores",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "equipo_id": {
+          "name": "equipo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "persona_id": {
+          "name": "persona_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "nombre": {
+          "name": "nombre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dorsal": {
+          "name": "dorsal",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "activo": {
+          "name": "activo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_jugadores_equipo": {
+          "name": "idx_jugadores_equipo",
+          "columns": [
+            {
+              "expression": "equipo_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "activo",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "jugadores_equipo_dorsal_key": {
+          "name": "jugadores_equipo_dorsal_key",
+          "columns": [
+            {
+              "expression": "equipo_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "dorsal",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "activo and dorsal is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "jugadores_equipo_id_equipos_id_fk": {
+          "name": "jugadores_equipo_id_equipos_id_fk",
+          "tableFrom": "jugadores",
+          "tableTo": "equipos",
+          "columnsFrom": [
+            "equipo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "jugadores_persona_id_personas_id_fk": {
+          "name": "jugadores_persona_id_personas_id_fk",
+          "tableFrom": "jugadores",
+          "tableTo": "personas",
+          "columnsFrom": [
+            "persona_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "jugadores_dorsal_check": {
+          "name": "jugadores_dorsal_check",
+          "value": "\"jugadores\".\"dorsal\" is null or \"jugadores\".\"dorsal\" between 0 and 99"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.personas": {
+      "name": "personas",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "nombre": {
+          "name": "nombre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.identidades_usuario": {
+      "name": "identidades_usuario",
+      "schema": "",
+      "columns": {
+        "usuario_id": {
+          "name": "usuario_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "canal": {
+          "name": "canal",
+          "type": "canal_mensajeria",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "canal_user_id": {
+          "name": "canal_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chat_id": {
+          "name": "chat_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_identidades_usuario": {
+          "name": "idx_identidades_usuario",
+          "columns": [
+            {
+              "expression": "usuario_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "identidades_usuario_usuario_id_usuarios_id_fk": {
+          "name": "identidades_usuario_usuario_id_usuarios_id_fk",
+          "tableFrom": "identidades_usuario",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "usuario_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "identidades_usuario_canal_canal_user_id_pk": {
+          "name": "identidades_usuario_canal_canal_user_id_pk",
+          "columns": [
+            "canal",
+            "canal_user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.usuarios": {
+      "name": "usuarios",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "nombre": {
+          "name": "nombre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.usuarios_equipos": {
+      "name": "usuarios_equipos",
+      "schema": "",
+      "columns": {
+        "usuario_id": {
+          "name": "usuario_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "equipo_id": {
+          "name": "equipo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rol": {
+          "name": "rol",
+          "type": "rol_equipo",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_usuarios_equipos_equipo": {
+          "name": "idx_usuarios_equipos_equipo",
+          "columns": [
+            {
+              "expression": "equipo_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "rol",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "usuarios_equipos_usuario_id_usuarios_id_fk": {
+          "name": "usuarios_equipos_usuario_id_usuarios_id_fk",
+          "tableFrom": "usuarios_equipos",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "usuario_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "usuarios_equipos_equipo_id_equipos_id_fk": {
+          "name": "usuarios_equipos_equipo_id_equipos_id_fk",
+          "tableFrom": "usuarios_equipos",
+          "tableTo": "equipos",
+          "columnsFrom": [
+            "equipo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "usuarios_equipos_usuario_id_equipo_id_pk": {
+          "name": "usuarios_equipos_usuario_id_equipo_id_pk",
+          "columns": [
+            "usuario_id",
+            "equipo_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.invitaciones": {
+      "name": "invitaciones",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "equipo_id": {
+          "name": "equipo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "codigo": {
+          "name": "codigo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rol": {
+          "name": "rol",
+          "type": "rol_equipo",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "usos_maximos": {
+          "name": "usos_maximos",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "creado_por": {
+          "name": "creado_por",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expira_en": {
+          "name": "expira_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revocada_en": {
+          "name": "revocada_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_invitaciones_codigo": {
+          "name": "idx_invitaciones_codigo",
+          "columns": [
+            {
+              "expression": "codigo",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_invitaciones_equipo": {
+          "name": "idx_invitaciones_equipo",
+          "columns": [
+            {
+              "expression": "equipo_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "invitaciones_equipo_id_equipos_id_fk": {
+          "name": "invitaciones_equipo_id_equipos_id_fk",
+          "tableFrom": "invitaciones",
+          "tableTo": "equipos",
+          "columnsFrom": [
+            "equipo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "invitaciones_creado_por_usuarios_id_fk": {
+          "name": "invitaciones_creado_por_usuarios_id_fk",
+          "tableFrom": "invitaciones",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "creado_por"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "invitaciones_codigo_unique": {
+          "name": "invitaciones_codigo_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "codigo"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "invitaciones_usos_maximos_check": {
+          "name": "invitaciones_usos_maximos_check",
+          "value": "\"invitaciones\".\"usos_maximos\" between 1 and 100"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.invitaciones_canjes": {
+      "name": "invitaciones_canjes",
+      "schema": "",
+      "columns": {
+        "invitacion_id": {
+          "name": "invitacion_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "usuario_id": {
+          "name": "usuario_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "canjeado_en": {
+          "name": "canjeado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "invitaciones_canjes_invitacion_id_invitaciones_id_fk": {
+          "name": "invitaciones_canjes_invitacion_id_invitaciones_id_fk",
+          "tableFrom": "invitaciones_canjes",
+          "tableTo": "invitaciones",
+          "columnsFrom": [
+            "invitacion_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "invitaciones_canjes_usuario_id_usuarios_id_fk": {
+          "name": "invitaciones_canjes_usuario_id_usuarios_id_fk",
+          "tableFrom": "invitaciones_canjes",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "usuario_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "invitaciones_canjes_invitacion_id_usuario_id_pk": {
+          "name": "invitaciones_canjes_invitacion_id_usuario_id_pk",
+          "columns": [
+            "invitacion_id",
+            "usuario_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.partido_tiempos": {
+      "name": "partido_tiempos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "partido_id": {
+          "name": "partido_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "numero": {
+          "name": "numero",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "iniciado_en": {
+          "name": "iniciado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "finalizado_en": {
+          "name": "finalizado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "iniciado_por": {
+          "name": "iniciado_por",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "finalizado_por": {
+          "name": "finalizado_por",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "partido_tiempos_partido_id_partidos_id_fk": {
+          "name": "partido_tiempos_partido_id_partidos_id_fk",
+          "tableFrom": "partido_tiempos",
+          "tableTo": "partidos",
+          "columnsFrom": [
+            "partido_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "partido_tiempos_iniciado_por_usuarios_id_fk": {
+          "name": "partido_tiempos_iniciado_por_usuarios_id_fk",
+          "tableFrom": "partido_tiempos",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "iniciado_por"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "partido_tiempos_finalizado_por_usuarios_id_fk": {
+          "name": "partido_tiempos_finalizado_por_usuarios_id_fk",
+          "tableFrom": "partido_tiempos",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "finalizado_por"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "partido_tiempos_partido_numero_key": {
+          "name": "partido_tiempos_partido_numero_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "partido_id",
+            "numero"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "partido_tiempos_numero_check": {
+          "name": "partido_tiempos_numero_check",
+          "value": "\"partido_tiempos\".\"numero\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.partidos": {
+      "name": "partidos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "equipo_id": {
+          "name": "equipo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rival": {
+          "name": "rival",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fecha": {
+          "name": "fecha",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "competencia": {
+          "name": "competencia",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cantidad_tiempos": {
+          "name": "cantidad_tiempos",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "minutos_por_tiempo": {
+          "name": "minutos_por_tiempo",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "modo_carga": {
+          "name": "modo_carga",
+          "type": "modo_carga_partido",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "estado": {
+          "name": "estado",
+          "type": "estado_partido",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pendiente'"
+        },
+        "tiempo_actual": {
+          "name": "tiempo_actual",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "tiempo_estado": {
+          "name": "tiempo_estado",
+          "type": "estado_tiempo",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'no_iniciado'"
+        },
+        "tiempo_iniciado_en": {
+          "name": "tiempo_iniciado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "marcador_propio": {
+          "name": "marcador_propio",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "marcador_rival": {
+          "name": "marcador_rival",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "marcador_propio_confirmado": {
+          "name": "marcador_propio_confirmado",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "marcador_rival_confirmado": {
+          "name": "marcador_rival_confirmado",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "iniciado_por": {
+          "name": "iniciado_por",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "creado_por": {
+          "name": "creado_por",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "cerrado_en": {
+          "name": "cerrado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cerrado_por": {
+          "name": "cerrado_por",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_partidos_equipo_estado": {
+          "name": "idx_partidos_equipo_estado",
+          "columns": [
+            {
+              "expression": "equipo_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "estado",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_partidos_equipo_fecha": {
+          "name": "idx_partidos_equipo_fecha",
+          "columns": [
+            {
+              "expression": "equipo_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "fecha",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "partidos_equipo_id_equipos_id_fk": {
+          "name": "partidos_equipo_id_equipos_id_fk",
+          "tableFrom": "partidos",
+          "tableTo": "equipos",
+          "columnsFrom": [
+            "equipo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "partidos_iniciado_por_usuarios_id_fk": {
+          "name": "partidos_iniciado_por_usuarios_id_fk",
+          "tableFrom": "partidos",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "iniciado_por"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "partidos_creado_por_usuarios_id_fk": {
+          "name": "partidos_creado_por_usuarios_id_fk",
+          "tableFrom": "partidos",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "creado_por"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "partidos_cerrado_por_usuarios_id_fk": {
+          "name": "partidos_cerrado_por_usuarios_id_fk",
+          "tableFrom": "partidos",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "cerrado_por"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "partidos_cantidad_tiempos_check": {
+          "name": "partidos_cantidad_tiempos_check",
+          "value": "\"partidos\".\"cantidad_tiempos\" between 1 and 6"
+        },
+        "partidos_minutos_por_tiempo_check": {
+          "name": "partidos_minutos_por_tiempo_check",
+          "value": "\"partidos\".\"minutos_por_tiempo\" between 1 and 60"
+        },
+        "partidos_tiempo_actual_check": {
+          "name": "partidos_tiempo_actual_check",
+          "value": "\"partidos\".\"tiempo_actual\" >= 0"
+        },
+        "partidos_marcador_propio_check": {
+          "name": "partidos_marcador_propio_check",
+          "value": "\"partidos\".\"marcador_propio\" >= 0"
+        },
+        "partidos_marcador_rival_check": {
+          "name": "partidos_marcador_rival_check",
+          "value": "\"partidos\".\"marcador_rival\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.eventos": {
+      "name": "eventos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "partido_id": {
+          "name": "partido_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tipo": {
+          "name": "tipo",
+          "type": "tipo_evento",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "equipo_origen": {
+          "name": "equipo_origen",
+          "type": "equipo_origen_evento",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "jugador_id": {
+          "name": "jugador_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tiempo": {
+          "name": "tiempo",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "minuto_calculado": {
+          "name": "minuto_calculado",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "origen": {
+          "name": "origen",
+          "type": "origen_evento",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'en_vivo'"
+        },
+        "reportado_por": {
+          "name": "reportado_por",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "eliminado_en": {
+          "name": "eliminado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "eliminado_por": {
+          "name": "eliminado_por",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_eventos_dedup": {
+          "name": "idx_eventos_dedup",
+          "columns": [
+            {
+              "expression": "partido_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "tipo",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "equipo_origen",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "creado_en",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "eliminado_en is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_eventos_partido": {
+          "name": "idx_eventos_partido",
+          "columns": [
+            {
+              "expression": "partido_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "eliminado_en is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_eventos_jugador": {
+          "name": "idx_eventos_jugador",
+          "columns": [
+            {
+              "expression": "jugador_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "eliminado_en is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_eventos_partido_origen": {
+          "name": "idx_eventos_partido_origen",
+          "columns": [
+            {
+              "expression": "partido_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "origen",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "eliminado_en is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "eventos_partido_id_partidos_id_fk": {
+          "name": "eventos_partido_id_partidos_id_fk",
+          "tableFrom": "eventos",
+          "tableTo": "partidos",
+          "columnsFrom": [
+            "partido_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "eventos_jugador_id_jugadores_id_fk": {
+          "name": "eventos_jugador_id_jugadores_id_fk",
+          "tableFrom": "eventos",
+          "tableTo": "jugadores",
+          "columnsFrom": [
+            "jugador_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "eventos_reportado_por_usuarios_id_fk": {
+          "name": "eventos_reportado_por_usuarios_id_fk",
+          "tableFrom": "eventos",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "reportado_por"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "eventos_eliminado_por_usuarios_id_fk": {
+          "name": "eventos_eliminado_por_usuarios_id_fk",
+          "tableFrom": "eventos",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "eliminado_por"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "eventos_tiempo_en_vivo_check": {
+          "name": "eventos_tiempo_en_vivo_check",
+          "value": "(origen = 'post_partido') or (tiempo is not null and minuto_calculado is not null)"
+        },
+        "eventos_tiempo_check": {
+          "name": "eventos_tiempo_check",
+          "value": "\"eventos\".\"tiempo\" is null or \"eventos\".\"tiempo\" >= 1"
+        },
+        "eventos_minuto_check": {
+          "name": "eventos_minuto_check",
+          "value": "\"eventos\".\"minuto_calculado\" is null or \"eventos\".\"minuto_calculado\" >= 0"
+        },
+        "eventos_jugador_requerido_check": {
+          "name": "eventos_jugador_requerido_check",
+          "value": "equipo_origen = 'rival' or tipo in ('gol', 'autogol') or jugador_id is not null"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.sesiones_conversacion": {
+      "name": "sesiones_conversacion",
+      "schema": "",
+      "columns": {
+        "canal": {
+          "name": "canal",
+          "type": "canal_mensajeria",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "canal_user_id": {
+          "name": "canal_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "flujo_id": {
+          "name": "flujo_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "paso_id": {
+          "name": "paso_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "datos": {
+          "name": "datos",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "expira_en": {
+          "name": "expira_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actualizado_en": {
+          "name": "actualizado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_sesiones_expiracion": {
+          "name": "idx_sesiones_expiracion",
+          "columns": [
+            {
+              "expression": "expira_en",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "sesiones_conversacion_canal_canal_user_id_pk": {
+          "name": "sesiones_conversacion_canal_canal_user_id_pk",
+          "columns": [
+            "canal",
+            "canal_user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.canal_mensajeria": {
+      "name": "canal_mensajeria",
+      "schema": "public",
+      "values": [
+        "telegram",
+        "whatsapp"
+      ]
+    },
+    "public.equipo_origen_evento": {
+      "name": "equipo_origen_evento",
+      "schema": "public",
+      "values": [
+        "propio",
+        "rival"
+      ]
+    },
+    "public.estado_partido": {
+      "name": "estado_partido",
+      "schema": "public",
+      "values": [
+        "pendiente",
+        "en_progreso",
+        "cerrado"
+      ]
+    },
+    "public.estado_tiempo": {
+      "name": "estado_tiempo",
+      "schema": "public",
+      "values": [
+        "no_iniciado",
+        "en_curso",
+        "finalizado"
+      ]
+    },
+    "public.modo_carga_partido": {
+      "name": "modo_carga_partido",
+      "schema": "public",
+      "values": [
+        "en_vivo",
+        "post_partido"
+      ]
+    },
+    "public.origen_evento": {
+      "name": "origen_evento",
+      "schema": "public",
+      "values": [
+        "en_vivo",
+        "post_partido"
+      ]
+    },
+    "public.rol_equipo": {
+      "name": "rol_equipo",
+      "schema": "public",
+      "values": [
+        "admin",
+        "editor",
+        "viewer"
+      ]
+    },
+    "public.tipo_evento": {
+      "name": "tipo_evento",
+      "schema": "public",
+      "values": [
+        "gol",
+        "autogol",
+        "asistencia",
+        "tarjeta_amarilla",
+        "tarjeta_roja",
+        "cambio"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

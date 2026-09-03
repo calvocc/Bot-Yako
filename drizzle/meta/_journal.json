@@ -29,6 +29,13 @@
       "when": 1788401862708,
       "tag": "0003_endurece_search_path",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788458085695,
+      "tag": "0004_eventos_jugador_cascade",
+      "breakpoints": true
     }
   ]
 }

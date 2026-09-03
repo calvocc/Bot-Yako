@@ -7,6 +7,7 @@ import { RedisModule } from './core/redis/redis.module';
 import { DbModule } from './db/db.module';
 import { IdentidadModule } from './identidad/identidad.module';
 import { OrganizacionModule } from './organizacion.module';
+import { PartidosModule } from './partidos.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { OrganizacionModule } from './organizacion.module';
     ConversacionModule,
     IdentidadModule,
     OrganizacionModule,
+    PartidosModule,
     // Va último a propósito: al arrancar publica el menú de comandos, y para
     // entonces los demás módulos ya registraron los suyos.
     TelegramModule,
