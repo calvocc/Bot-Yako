@@ -14,7 +14,13 @@ export const envSchema = z
     DATABASE_URL: z.string().min(1, 'DATABASE_URL es obligatoria'),
     DATABASE_MIGRATION_URL: z.string().optional(),
 
-    REDIS_URL: z.string().min(1, 'REDIS_URL es obligatoria'),
+    /**
+     * Opcional a propósito. Redis acelera el partido en vivo pero no es fuente
+     * de verdad: sin él, el bot arranca igual y `/health` reporta `degradado`.
+     * Exigirlo impediría desplegar antes de tener el Redis listo, sin ninguna
+     * ganancia de seguridad.
+     */
+    REDIS_URL: z.string().min(1).optional(),
 
     TELEGRAM_BOT_TOKEN: z.string().min(1, 'TELEGRAM_BOT_TOKEN es obligatorio'),
     TELEGRAM_WEBHOOK_SECRET: z

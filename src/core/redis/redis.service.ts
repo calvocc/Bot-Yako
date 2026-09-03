@@ -13,11 +13,19 @@ import { TypedConfigService } from '../../config/config.service';
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
-  private readonly cliente: Redis;
+  private readonly cliente: Redis | null;
   private conectado = false;
 
   constructor(config: TypedConfigService) {
-    this.cliente = new Redis(config.get('REDIS_URL'), {
+    const url = config.get('REDIS_URL');
+
+    if (!url) {
+      this.cliente = null;
+      this.logger.warn('REDIS_URL no está definida: se opera contra Postgres únicamente');
+      return;
+    }
+
+    this.cliente = new Redis(url, {
       maxRetriesPerRequest: 2,
       enableOfflineQueue: false,
       lazyConnect: true,
@@ -38,6 +46,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit(): Promise<void> {
+    if (!this.cliente) return;
+
     try {
       await this.cliente.connect();
     } catch {
@@ -53,6 +63,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   /** Acceso directo al cliente. Usar solo tras comprobar `disponible`. */
   get raw(): Redis {
+    if (!this.cliente) {
+      throw new Error('Redis no está configurado; usa `intentar` para el camino con respaldo');
+    }
+
     return this.cliente;
   }
 
@@ -61,7 +75,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    * disponible, para que el llamador decida el respaldo sin try/catch.
    */
   async intentar<T>(operacion: (redis: Redis) => Promise<T>): Promise<T | null> {
-    if (!this.conectado) return null;
+    if (!this.cliente || !this.conectado) return null;
     try {
       return await operacion(this.cliente);
     } catch (error) {
@@ -78,6 +92,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
+    if (!this.cliente) return;
+
     try {
       // `quit` espera a que se vacien los comandos pendientes; si la conexion
       // ya estaba caida lanza, y ahi cortamos por lo sano.
