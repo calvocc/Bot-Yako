@@ -103,6 +103,11 @@ Y la prueba de verdad: escribirle `/ayuda` al bot en Telegram.
 Corren **antes** de cada despliegue, con el comando pre-deploy `pnpm db:migrate`. Si una migración
 falla, Railway no promueve la versión nueva y la anterior sigue sirviendo.
 
+> El esquema inicial se aplicó directamente sobre Supabase, así que las cuatro migraciones quedaron
+> registradas a mano en `drizzle.__drizzle_migrations`. Sin ese registro, el primer `db:migrate`
+> intentaría crear todo de nuevo y fallaría. De aquí en adelante el flujo es el normal: Drizzle
+> aplica solo lo pendiente.
+
 Al cambiar el esquema en `src/db/schema/`:
 
 ```bash
