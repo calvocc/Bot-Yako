@@ -16,6 +16,7 @@ reescribir la lógica de producto (ver [ADR-0002](docs/adr/0002-motor-conversaci
 | [Arquitectura](docs/yako-arquitectura.md) | Cómo se organiza el backend |
 | [Revisión de documentos](docs/revision-documentos.md) | Qué se corrigió del diseño original y por qué |
 | [ADRs](docs/adr/) | Las decisiones de fondo, razonadas |
+| [Despliegue](docs/despliegue.md) | Railway, Supabase, Upstash y variables de entorno |
 
 ## Stack
 
@@ -60,10 +61,12 @@ commitearlo.
 
 ## Estado
 
+Desplegado en `https://yako-bot-production.up.railway.app`.
+
 | Fase | Estado |
 |---|---|
 | 0 · Fundaciones: scaffold, esquema, migraciones, health, CI | ✅ |
-| 1 · Capa de canal y motor conversacional | pendiente |
+| 1 · Capa de canal y motor conversacional | ✅ |
 | 2 · Identidad, organización y permisos | pendiente |
 | 3 · Partidos y carga en vivo | pendiente |
 | 4 · Cierre, post partido y estadísticas | pendiente |

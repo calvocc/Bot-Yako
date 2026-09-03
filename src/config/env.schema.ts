@@ -14,7 +14,13 @@ export const envSchema = z
     DATABASE_URL: z.string().min(1, 'DATABASE_URL es obligatoria'),
     DATABASE_MIGRATION_URL: z.string().optional(),
 
-    REDIS_URL: z.string().min(1, 'REDIS_URL es obligatoria'),
+    /**
+     * Opcional a propósito. Redis acelera el partido en vivo pero no es fuente
+     * de verdad: sin él, el bot arranca igual y `/health` reporta `degradado`.
+     * Exigirlo impediría desplegar antes de tener el Redis listo, sin ninguna
+     * ganancia de seguridad.
+     */
+    REDIS_URL: z.string().min(1).optional(),
 
     TELEGRAM_BOT_TOKEN: z.string().min(1, 'TELEGRAM_BOT_TOKEN es obligatorio'),
     TELEGRAM_WEBHOOK_SECRET: z
@@ -52,9 +58,16 @@ export type Env = z.infer<typeof envSchema>;
 /**
  * Valida el entorno al arrancar. Preferimos que el proceso no levante a que
  * descubra una variable faltante en medio de un partido.
+ *
+ * Antes de validar se descartan las claves con cadena vacía: dotenv convierte
+ * una línea `CLAVE=` en `''`, y `''` no pasa `.url()` ni `.min(1)`. Sin esto,
+ * copiar `.env.example` —que trae varias así— impediría arrancar, cuando la
+ * intención evidente de esa línea es "no configurada".
  */
 export function validarEnv(config: Record<string, unknown>): Env {
-  const resultado = envSchema.safeParse(config);
+  const sinVacias = Object.fromEntries(Object.entries(config).filter(([, valor]) => valor !== ''));
+
+  const resultado = envSchema.safeParse(sinVacias);
 
   if (!resultado.success) {
     const detalle = resultado.error.issues

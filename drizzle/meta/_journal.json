@@ -15,6 +15,20 @@
       "when": 1788389553999,
       "tag": "0001_trigger_marcador_vistas_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788390473247,
+      "tag": "0002_sesiones_conversacion",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788401862708,
+      "tag": "0003_endurece_search_path",
+      "breakpoints": true
     }
   ]
 }
