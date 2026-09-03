@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { RedisService } from '../core/redis/redis.service';
+import { RESOLVEDOR_USUARIO, type ResolvedorUsuario } from '../conversacion/resolvedor-usuario';
 import { Router } from '../conversacion/router.service';
 import type { ChannelAdapter } from './channel-adapter.interface';
 import { ChannelRegistry } from './channel.registry';
@@ -23,6 +24,9 @@ export class ProcesadorMensajes {
     private readonly canales: ChannelRegistry,
     private readonly router: Router,
     private readonly redis: RedisService,
+    @Optional()
+    @Inject(RESOLVEDOR_USUARIO)
+    private readonly resolvedor?: ResolvedorUsuario,
   ) {}
 
   async procesar(mensaje: MensajeEntrante, updateId?: number): Promise<void> {
@@ -44,7 +48,11 @@ export class ProcesadorMensajes {
         await adaptador.acusarRecibo(mensaje.acuseId);
       }
 
-      const respuesta = await this.router.resolver(mensaje);
+      // Se resuelve antes de enrutar para que cualquier flujo pueda dar por
+      // hecho que hay un usuario, sin repetir el alta en cada uno.
+      const usuarioId = await this.resolvedor?.resolverUsuario(mensaje);
+
+      const respuesta = await this.router.resolver(mensaje, usuarioId);
 
       if (respuesta) {
         await adaptador.enviar({ canal: mensaje.canal, chatId: mensaje.chatId }, respuesta);

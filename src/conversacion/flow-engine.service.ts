@@ -101,10 +101,12 @@ export class FlowEngine {
     const ref = { canal: mensaje.canal, canalUserId: mensaje.canalUserId };
 
     switch (transicion.tipo) {
-      case 'repetir':
-        // Se conservan los datos y el paso: el usuario reintenta.
-        await this.sesiones.guardar(ref, { flujoId, pasoId: pasoActualId, datos });
+      case 'repetir': {
+        // Se conserva el paso y se acumulan los datos nuevos sobre los previos.
+        const acumulados = { ...datos, ...transicion.datos };
+        await this.sesiones.guardar(ref, { flujoId, pasoId: pasoActualId, datos: acumulados });
         return transicion.respuesta;
+      }
 
       case 'finalizar':
         await this.sesiones.borrar(ref);
@@ -161,7 +163,11 @@ export class FlowEngine {
       }
 
       if (transicion.tipo === 'repetir') {
-        await this.sesiones.guardar(ref, { flujoId, pasoId, datos });
+        await this.sesiones.guardar(ref, {
+          flujoId,
+          pasoId,
+          datos: { ...datos, ...transicion.datos },
+        });
         return transicion.respuesta;
       }
 

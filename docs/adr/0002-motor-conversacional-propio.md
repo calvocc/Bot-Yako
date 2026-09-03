@@ -42,3 +42,23 @@ principio.
   usa inline keyboard; WhatsApp usa *reply buttons* hasta 3 y convierte automáticamente
   a *interactive list* cuando hay más. Así el panel en vivo de 8 botones no se degrada
   en Telegram ni queda inutilizable en WhatsApp.
+
+---
+
+## Cómo quedó en la práctica (Fase 2)
+
+Tres cosas que la implementación real de los flujos obligó a definir:
+
+**Un paso puede resolverse solo.** `selector-equipo` decide sin escribir nada cuando el usuario
+pertenece a un solo equipo, y cede el turno al paso siguiente. Es lo que hace que RF-7.2 —"nunca le
+preguntes cuál equipo a quien tiene uno solo"— salga gratis en todos los flujos, en vez de repetirse
+en cada uno.
+
+**Los flujos declaran su propio vocabulario.** `/listo` solo significa algo dentro de la carga de
+plantilla. Sin eso, el router lo tomaba por un comando desconocido y respondía "no conozco ese
+comando" justo cuando el usuario estaba siguiendo una instrucción del bot. Se resolvió con una lista
+corta de palabras que pertenecen al flujo activo (`COMANDOS_DE_FLUJO`).
+
+**El permiso se revalida al escribir, no al mostrar el botón.** Entre que se dibuja un teclado y
+alguien lo toca pueden pasar minutos, y el rol pudo cambiar. Todos los pasos que escriben vuelven a
+consultarlo antes de tocar la base.

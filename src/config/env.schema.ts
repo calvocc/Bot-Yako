@@ -28,6 +28,15 @@ export const envSchema = z
       .min(16, 'TELEGRAM_WEBHOOK_SECRET debe tener al menos 16 caracteres')
       .max(256),
     TELEGRAM_WEBHOOK_URL: z.string().url().optional(),
+    /**
+     * Usuario del bot, sin @. Solo se usa para armar el enlace de invitación
+     * `t.me/<usuario>?start=inv_…`; sin él, la invitación se comparte como
+     * código y todo lo demás sigue igual.
+     */
+    TELEGRAM_BOT_USERNAME: z
+      .string()
+      .regex(/^[A-Za-z0-9_]{4,32}$/, 'TELEGRAM_BOT_USERNAME debe ser el usuario del bot, sin @')
+      .optional(),
 
     WHATSAPP_ENABLED: booleanoDesdeTexto,
     WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
