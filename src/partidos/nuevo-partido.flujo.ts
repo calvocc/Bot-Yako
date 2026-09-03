@@ -4,7 +4,14 @@ import {
   CLAVE_EQUIPO_NOMBRE,
   pasoSelectorEquipo,
 } from '../conversacion/pasos-comunes/selector-equipo';
-import type { ContextoFlujo, Entrada, Flujo, Paso, Transicion } from '../conversacion/flow.types';
+import type {
+  ContextoFlujo,
+  DatosFlujo,
+  Entrada,
+  Flujo,
+  Paso,
+  Transicion,
+} from '../conversacion/flow.types';
 import { leerNumero, leerTexto } from '../conversacion/flow.types';
 import {
   describirFormato,
@@ -34,6 +41,9 @@ const CLAVE_FECHA = 'fecha';
 const CLAVE_COMPETENCIA = 'competencia';
 const CLAVE_TIEMPOS = 'cantidadTiempos';
 const CLAVE_MINUTOS = 'minutosPorTiempo';
+/** Las opciones que de verdad se mostraron, para que `co:{i}` no dependa de
+ * volver a consultarlas — ver `pasoCompetencia`. */
+const CLAVE_OPCIONES_COMPETENCIA = 'opcionesCompetencia';
 
 const PREFIJO_FECHA = 'fe:';
 const PREFIJO_COMPETENCIA = 'co:';
@@ -144,6 +154,14 @@ export class NuevoPartidoFlujo {
     };
   }
 
+  /**
+   * `co:{i}` es un índice posicional sobre esta lista, y por eso `recibir`
+   * usa exactamente la que se guardó al mostrar los botones (`entrar`, o el
+   * `repetir` anterior) en vez de volver a consultarla: si otro padre crea
+   * un partido con una competencia nueva entre la pregunta y la respuesta,
+   * `max(fecha) desc` reordena y el índice pasaría a apuntar a otra
+   * competencia sin que nadie lo note.
+   */
   private pasoCompetencia(): Paso {
     const opciones = async (ctx: ContextoFlujo): Promise<string[]> => {
       const usadas = await this.partidos.competenciasDe(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
@@ -163,34 +181,47 @@ export class NuevoPartidoFlujo {
     return {
       id: PASOS.competencia,
 
-      entrar: async (ctx: ContextoFlujo): Promise<Entrada> => ({
-        respuesta: { texto: '¿En qué competencia?', botones: botones(await opciones(ctx)) },
-      }),
+      entrar: async (ctx: ContextoFlujo): Promise<Entrada> => {
+        const lista = await opciones(ctx);
 
-      recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
+        ctx.datos[CLAVE_OPCIONES_COMPETENCIA] = lista;
+
+        return { respuesta: { texto: '¿En qué competencia?', botones: botones(lista) } };
+      },
+
+      recibir: (ctx: ContextoFlujo): Promise<Transicion> => {
         const seleccion = ctx.mensaje.seleccionId;
 
         if (seleccion === ID_COMPETENCIA_OTRA) {
-          return { tipo: 'ir', pasoId: PASOS.competenciaLibre };
+          return Promise.resolve({ tipo: 'ir', pasoId: PASOS.competenciaLibre });
         }
 
         if (seleccion === ID_COMPETENCIA_NINGUNA) {
-          return { tipo: 'ir', pasoId: PASOS.formato, datos: { [CLAVE_COMPETENCIA]: '' } };
+          return Promise.resolve({
+            tipo: 'ir',
+            pasoId: PASOS.formato,
+            datos: { [CLAVE_COMPETENCIA]: '' },
+          });
         }
 
-        const lista = await opciones(ctx);
+        const lista = leerListaTexto(ctx.datos, CLAVE_OPCIONES_COMPETENCIA);
         const elegida = seleccion?.startsWith(PREFIJO_COMPETENCIA)
           ? lista[Number(seleccion.slice(PREFIJO_COMPETENCIA.length))]
           : ctx.mensaje.texto?.trim();
 
         if (!elegida) {
-          return {
+          return Promise.resolve({
             tipo: 'repetir',
             respuesta: { texto: 'Toca una opción o escribe el nombre:', botones: botones(lista) },
-          };
+            datos: { [CLAVE_OPCIONES_COMPETENCIA]: lista },
+          });
         }
 
-        return { tipo: 'ir', pasoId: PASOS.formato, datos: { [CLAVE_COMPETENCIA]: elegida } };
+        return Promise.resolve({
+          tipo: 'ir',
+          pasoId: PASOS.formato,
+          datos: { [CLAVE_COMPETENCIA]: elegida },
+        });
       },
     };
   }
@@ -350,4 +381,10 @@ export class NuevoPartidoFlujo {
       },
     };
   }
+}
+
+function leerListaTexto(datos: DatosFlujo, clave: string): string[] {
+  const valor = datos[clave];
+
+  return Array.isArray(valor) ? valor.filter((v): v is string => typeof v === 'string') : [];
 }

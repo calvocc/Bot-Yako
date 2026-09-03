@@ -113,7 +113,11 @@ export function parsearJugador(linea: string): JugadorParseado | null {
 
   const soloNombre = limpia.replace(/,$/, '').trim();
 
-  return soloNombre ? { nombre: soloNombre } : null;
+  // Un número solo es un dorsal sin nombre, no un nombre: "10" a secas no dice
+  // quién es nadie. Tratarlo como nombre creaba un jugador literal "10".
+  if (!soloNombre || /^\d+$/.test(soloNombre)) return null;
+
+  return { nombre: soloNombre };
 }
 
 /** Varias líneas de una vez: pegar una lista completa también funciona. */

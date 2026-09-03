@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, isNotNull, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNotNull, ne, sql } from 'drizzle-orm';
 import { DbService, type EjecutorDb } from '../db/db.service';
 import type { FormatoPartido } from '../equipos/equipos.service';
 import { partidos, usuarios } from '../db/schema';
+import { hoyLocal, sumarDias } from './fechas';
 import { mapearPartido, type Partido } from './partido.mapper';
 import { TiemposService } from './tiempos.service';
 
@@ -68,12 +69,25 @@ export class PartidosService {
     return fila ? mapearPartido(fila) : null;
   }
 
-  /** Partidos a los que todavía se les puede cargar algo. */
+  /**
+   * Partidos a los que todavía se les puede cargar algo.
+   *
+   * Se limita a ayer y hoy: sin esto, un partido de hace semanas que alguien
+   * dejó con un tiempo abierto (el bot se cayó, nadie tocó "Finalizar")
+   * seguía ofreciéndose en /cargar para siempre, y su minuto crecía sin freno
+   * hasta reventar el `smallint` de `minuto_calculado`.
+   */
   async abiertosDe(equipoId: string, limite = PARTIDOS_POR_LISTA): Promise<Partido[]> {
     const filas = await this.db.db
       .select()
       .from(partidos)
-      .where(and(eq(partidos.equipoId, equipoId), ne(partidos.estado, 'cerrado')))
+      .where(
+        and(
+          eq(partidos.equipoId, equipoId),
+          ne(partidos.estado, 'cerrado'),
+          gte(partidos.fecha, sumarDias(hoyLocal(), -1)),
+        ),
+      )
       .orderBy(desc(partidos.fecha), desc(partidos.creadoEn))
       .limit(limite);
 
@@ -85,6 +99,25 @@ export class PartidosService {
       .select()
       .from(partidos)
       .where(eq(partidos.equipoId, equipoId))
+      .orderBy(desc(partidos.fecha), desc(partidos.creadoEn))
+      .limit(limite);
+
+    return filas.map(mapearPartido);
+  }
+
+  /**
+   * Partidos cerrados del equipo, para /reabrir.
+   *
+   * El filtro va en la query y no después en memoria: filtrar los últimos N
+   * `recientesDe` por `estado === 'cerrado'` deja afuera partidos cerrados
+   * que sí existen cuando los N más recientes están todos abiertos, y dice
+   * "no tiene partidos cerrados" siendo falso.
+   */
+  async cerradosDe(equipoId: string, limite = 30): Promise<Partido[]> {
+    const filas = await this.db.db
+      .select()
+      .from(partidos)
+      .where(and(eq(partidos.equipoId, equipoId), eq(partidos.estado, 'cerrado')))
       .orderBy(desc(partidos.fecha), desc(partidos.creadoEn))
       .limit(limite);
 

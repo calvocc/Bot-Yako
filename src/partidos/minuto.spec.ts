@@ -16,7 +16,7 @@ describe('calcularMinuto', () => {
       new Date('2026-09-06T15:12:30Z'),
     );
 
-    expect(minuto).toEqual({ minuto: 12, adicion: 0 });
+    expect(minuto).toEqual({ minuto: 12, adicion: 0, baseMostrada: 12 });
   });
 
   it('usa la duración real del tiempo anterior, no la configurada', () => {
@@ -39,7 +39,7 @@ describe('calcularMinuto', () => {
       new Date('2026-09-06T15:28:00Z'),
     );
 
-    expect(minuto).toEqual({ minuto: 28, adicion: 3 });
+    expect(minuto).toEqual({ minuto: 28, adicion: 3, baseMostrada: 25 });
     expect(describirMinuto(minuto)).toBe('25+3');
   });
 
@@ -65,16 +65,33 @@ describe('calcularMinuto', () => {
       new Date('2026-09-06T18:00:00Z'),
     );
 
-    expect(minuto).toEqual({ minuto: 53, adicion: 0 });
+    expect(minuto).toEqual({ minuto: 53, adicion: 0, baseMostrada: 50 });
   });
 
   it('sin tiempos jugados el minuto es cero', () => {
-    expect(calcularMinuto([], formato, new Date())).toEqual({ minuto: 0, adicion: 0 });
+    expect(calcularMinuto([], formato, new Date())).toEqual({
+      minuto: 0,
+      adicion: 0,
+      baseMostrada: 0,
+    });
   });
 });
 
 describe('describirMinuto', () => {
   it('muestra el minuto corrido cuando no hay adición', () => {
-    expect(describirMinuto({ minuto: 23, adicion: 0 })).toBe('23');
+    expect(describirMinuto({ minuto: 23, adicion: 0, baseMostrada: 23 })).toBe('23');
+  });
+
+  it('no arrastra el exceso de un tiempo anterior al minuto que se muestra', () => {
+    // 2×25: el primer tiempo se jugó 31' (cerrado) y el segundo lleva 27'.
+    // El minuto guardado sería 58 (31+27), pero al estilo futbolístico cada
+    // tiempo resetea a lo configurado: se muestra 50+2, no 55+2 ni 58.
+    const minuto = calcularMinuto(
+      [t(1, '2026-09-06T15:00:00Z', '2026-09-06T15:31:00Z'), t(2, '2026-09-06T15:45:00Z')],
+      formato,
+      new Date('2026-09-06T16:12:00Z'),
+    );
+
+    expect(describirMinuto(minuto)).toBe('50+2');
   });
 });

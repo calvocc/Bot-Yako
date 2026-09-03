@@ -53,11 +53,8 @@ export class ReabrirFlujo {
   }
 
   private pasoPartido(): Paso {
-    const cerrados = async (ctx: ContextoFlujo): Promise<Partido[]> => {
-      const recientes = await this.partidos.recientesDe(leerTexto(ctx.datos, CLAVE_EQUIPO_ID), 30);
-
-      return recientes.filter((p) => p.estado === 'cerrado');
-    };
+    const cerrados = async (ctx: ContextoFlujo): Promise<Partido[]> =>
+      this.partidos.cerradosDe(leerTexto(ctx.datos, CLAVE_EQUIPO_ID), 30);
 
     const preguntar = (lista: Partido[], pagina: number) =>
       botonesPaginados(

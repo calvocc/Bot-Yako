@@ -88,7 +88,7 @@ describe('panelEnVivo', () => {
     const panel = panelEnVivo({
       partido: partido(),
       equipoNombre: 'Ringo Amaya',
-      minuto: { minuto: 23, adicion: 0 },
+      minuto: { minuto: 23, adicion: 0, baseMostrada: 23 },
     });
 
     expect(panel.texto).toContain('Tiempo 1 · min 23 · 1-0');
@@ -100,7 +100,7 @@ describe('panelEnVivo', () => {
     const panel = panelEnVivo({
       partido: partido({ tiempoEstado: 'finalizado' }),
       equipoNombre: 'Ringo Amaya',
-      minuto: { minuto: 26, adicion: 1 },
+      minuto: { minuto: 26, adicion: 1, baseMostrada: 25 },
     });
 
     expect(panel.texto).toContain('Tiempo 1 finalizado');
@@ -111,7 +111,7 @@ describe('panelEnVivo', () => {
     const panel = panelEnVivo({
       partido: partido({ tiempoActual: 2, tiempoEstado: 'finalizado' }),
       equipoNombre: 'Ringo Amaya',
-      minuto: { minuto: 52, adicion: 0 },
+      minuto: { minuto: 52, adicion: 0, baseMostrada: 52 },
     });
 
     expect(panel.texto).toContain('era el último');
@@ -122,7 +122,7 @@ describe('panelEnVivo', () => {
     const panel = panelEnVivo({
       partido: partido(),
       equipoNombre: 'Ringo Amaya',
-      minuto: { minuto: 0, adicion: 0 },
+      minuto: { minuto: 0, adicion: 0, baseMostrada: 0 },
     });
 
     for (const boton of panel.botones) {

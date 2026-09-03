@@ -334,6 +334,49 @@ describe('Partido en vivo (e2e)', () => {
       );
     });
 
+    it('no se cuela un gol leído antes del cierre pero escrito después (cierre vs. carga)', async () => {
+      // `registrar()` leía el partido con un SELECT sin `for update`: la
+      // guarda de `estado === 'cerrado'` podía pasar sobre un snapshot de
+      // antes del cierre y el evento se insertaba igual —el trigger de
+      // marcador solo se topa con el lock de `cerrar()` más tarde, al hacer
+      // su propio UPDATE— así que la escritura se colaba después de que el
+      // partido ya había quedado cerrado, y al usuario se le confirmaba que
+      // se guardó. Se simula el instante exacto: `cerrar()` ya tomó el lock
+      // y todavía no cerró, así que si la carga solo se demora un poco (el
+      // bug) en vez de releer el estado ya cerrado (el fix), se nota acá.
+      const { admin, jacob, partido } = await escenario('Cierre vs carga');
+      await tiempos.iniciarEnVivo(partido.id, admin);
+
+      let soltarCierre: () => void = () => {};
+      const cierreEnEspera = new Promise<void>((resolve) => {
+        soltarCierre = resolve;
+      });
+
+      const cierrePromesa = db.db.transaction(async (tx) => {
+        await tx.execute(sql`select * from partidos where id = ${partido.id} for update`);
+        await cierreEnEspera;
+        await tx.execute(sql`update partidos set estado = 'cerrado' where id = ${partido.id}`);
+      });
+
+      let resuelto = false;
+      const cargaPromesa = gol(partido.id, admin, jacob.id).then((r) => {
+        resuelto = true;
+        return r;
+      });
+
+      // Con el lock tomado y el cierre todavía sin escribir, la carga tiene
+      // que quedarse esperando, no colarse con el estado de antes.
+      await new Promise((r) => setTimeout(r, 150));
+      expect(resuelto).toBe(false);
+
+      soltarCierre();
+      await cierrePromesa;
+
+      const evento = await cargaPromesa;
+      expect(evento.tipo).toBe('partido_cerrado');
+      expect(await eventos.delPartido(partido.id)).toHaveLength(0);
+    });
+
     it('cerrar detiene el reloj del tiempo que seguía corriendo', async () => {
       const { admin, partido } = await escenario('Reloj');
       await tiempos.iniciarEnVivo(partido.id, admin);

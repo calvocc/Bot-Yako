@@ -22,6 +22,13 @@ export interface Minuto {
    * afecta cómo se muestra; el minuto guardado no cambia.
    */
   adicion: number;
+  /**
+   * Base "al estilo futbolístico" para mostrar junto a `adicion` (25+3, no
+   * 28). Cada tiempo ya cerrado cuenta por su duración *configurada*, no la
+   * real: si el tiempo anterior se pasó de la hora, ese exceso no tiene que
+   * arrastrarse al minuto que se muestra del tiempo siguiente.
+   */
+  baseMostrada: number;
 }
 
 const MS_POR_MINUTO = 60_000;
@@ -46,6 +53,10 @@ export function calcularMinuto(
 
   let acumuladoMs = 0;
   let enCursoMs = 0;
+  // Nominal: cada tiempo ya cerrado aporta lo que duraba en el papel, no lo
+  // que de verdad duró. Es la base que se muestra; `acumuladoMs` sigue
+  // siendo el real, que es el que se guarda en el evento.
+  let baseNominalMin = 0;
 
   for (const [indice, tiempo] of ordenados.entries()) {
     const siguiente = ordenados[indice + 1];
@@ -53,6 +64,7 @@ export function calcularMinuto(
 
     if (fin) {
       acumuladoMs += Math.max(0, fin.getTime() - tiempo.iniciadoEn.getTime());
+      baseNominalMin += formato.minutosPorTiempo;
       continue;
     }
 
@@ -65,6 +77,7 @@ export function calcularMinuto(
   return {
     minuto: Math.floor(acumuladoMs / MS_POR_MINUTO) + enCursoMin,
     adicion,
+    baseMostrada: baseNominalMin + Math.min(enCursoMin, formato.minutosPorTiempo),
   };
 }
 
@@ -75,6 +88,6 @@ export function calcularMinuto(
  * Solo cambia el texto. El evento guarda el minuto corrido —28 en ese
  * ejemplo—, porque una estadística que miente para verse bien no sirve.
  */
-export function describirMinuto({ minuto, adicion }: Minuto): string {
-  return adicion > 0 ? `${minuto - adicion}+${adicion}` : String(minuto);
+export function describirMinuto({ adicion, baseMostrada }: Minuto): string {
+  return adicion > 0 ? `${baseMostrada}+${adicion}` : String(baseMostrada);
 }

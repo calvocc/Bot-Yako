@@ -75,6 +75,9 @@ const CLAVE_PANEL = 'panelId';
 const CLAVE_TIPO = 'tipoEvento';
 const CLAVE_ORIGEN = 'origenEvento';
 const CLAVE_JUGADOR_PENDIENTE = 'jugadorPendiente';
+/** El "➕ ... quedó agregado a la plantilla" que un alta deja pendiente de
+ * mostrar si el evento resulta un posible duplicado. */
+const CLAVE_NOTA_PENDIENTE = 'notaPendiente';
 const CLAVE_PAGINA = 'paginaJugadores';
 /** Nota efímera que el panel muestra una vez y descarta. */
 const CLAVE_AVISO = 'aviso';
@@ -357,6 +360,9 @@ export class CargarFlujo {
   private async arrancarEvento(ctx: ContextoFlujo, crudo: string): Promise<Transicion> {
     if (!esTipoDeEvento(crudo)) return this.irAlPanel(ctx, {});
 
+    // Puede arrancar el reloj (RF-3.8), así que revalida antes de escribir.
+    if (!(await this.siguePudiendoCargar(ctx))) return this.sinPermiso();
+
     const resultado = await this.tiempos.asegurarTiempoEnCurso(
       leerTexto(ctx.datos, CLAVE_PARTIDO_ID),
       ctx.usuarioId ?? '',
@@ -560,7 +566,14 @@ export class CargarFlujo {
 
     const plantilla = await this.jugadores.listar(equipoId, true);
     const buscado = parseado.nombre.toLowerCase();
-    const existente = plantilla.find((j) => j.nombre.toLowerCase() === buscado);
+    // El nombre exacto manda, pero si no matchea y el dorsal sí es de alguien
+    // conocido, es la misma persona escrita distinto ("Jacob, 10" contra
+    // "Jacob Restrepo" #10): usarlo evita un duplicado en la plantilla.
+    const existente =
+      plantilla.find((j) => j.nombre.toLowerCase() === buscado) ??
+      (parseado.dorsal !== undefined
+        ? plantilla.find((j) => j.dorsal === parseado.dorsal)
+        : undefined);
 
     if (existente) return this.registrar(ctx, { jugadorId: existente.id });
 
@@ -590,6 +603,8 @@ export class CargarFlujo {
       nota?: string;
     },
   ): Promise<Transicion> {
+    if (!(await this.siguePudiendoCargar(ctx))) return this.sinPermiso();
+
     const tipo = leerTexto(ctx.datos, CLAVE_TIPO);
 
     if (!esTipoDeEvento(tipo)) return this.irAlPanel(ctx, {});
@@ -627,6 +642,7 @@ export class CargarFlujo {
           ...this.datosPanel(ctx),
           [CLAVE_ORIGEN]: equipoOrigen,
           [CLAVE_JUGADOR_PENDIENTE]: opciones.jugadorId ?? '',
+          [CLAVE_NOTA_PENDIENTE]: opciones.nota ?? '',
           [CLAVE_AVISO]: avisoDeDuplicado(
             resultado.reciente,
             segundosDesde(resultado.reciente.creadoEn),
@@ -668,8 +684,14 @@ export class CargarFlujo {
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
         const seleccion = ctx.mensaje.seleccionId ?? '';
 
+        // El alta pendiente (si la hubo) ya pasó, dupliquen o no: si no se
+        // avisa acá, el jugador queda en la plantilla sin que nadie se entere.
+        const nota = leerTexto(ctx.datos, CLAVE_NOTA_PENDIENTE);
+
         if (seleccion === ID_YA_ESTABA) {
-          return this.irAlPanel(ctx, { aviso: '', bitacora: ['Listo, no lo dupliqué.'] });
+          const linea = nota ? `Listo, no lo dupliqué.\n${nota}` : 'Listo, no lo dupliqué.';
+
+          return this.irAlPanel(ctx, { aviso: '', bitacora: [linea] });
         }
 
         if (seleccion !== ID_ES_OTRO) {
@@ -678,7 +700,11 @@ export class CargarFlujo {
 
         const pendiente = leerTexto(ctx.datos, CLAVE_JUGADOR_PENDIENTE);
 
-        return this.registrar(ctx, { jugadorId: pendiente || null, forzar: true });
+        return this.registrar(ctx, {
+          jugadorId: pendiente || null,
+          forzar: true,
+          nota: nota || undefined,
+        });
       },
     };
   }
@@ -726,6 +752,8 @@ export class CargarFlujo {
           return respuesta ? { tipo: 'repetir', respuesta } : this.partidoPerdido();
         }
 
+        if (!(await this.siguePudiendoCargar(ctx))) return this.sinPermiso();
+
         const partido = await this.partidoDe(ctx);
 
         if (!partido) return this.partidoPerdido();
@@ -737,12 +765,26 @@ export class CargarFlujo {
         if (partido.tiempoEstado !== 'en_curso') {
           const inicio = await this.tiempos.asegurarTiempoEnCurso(partidoId, usuarioId);
 
-          return this.irAlPanel(ctx, {
-            aviso:
-              inicio.tipo === 'en_curso' && inicio.recienIniciado
+          // `cerrado` y `no_existe` no son "no quedan tiempos": otro padre
+          // cerró el partido (o lo borró) mientras este miraba el prompt de
+          // "¿Arrancamos el Tiempo 2?", y redibujar el panel sobre eso sería
+          // un motivo falso encima de un partido que ya no admite carga.
+          if (inicio.tipo === 'no_existe') return this.partidoPerdido();
+
+          if (inicio.tipo === 'cerrado') {
+            return this.finalizarCon(
+              'El partido se cerró mientras cargabas. Pídele a un admin /reabrir.',
+            );
+          }
+
+          const aviso =
+            inicio.tipo === 'sin_tiempos'
+              ? 'No quedan tiempos por jugar.'
+              : inicio.recienIniciado
                 ? `▶️ Arrancó el Tiempo ${inicio.partido.tiempoActual}.`
-                : 'No quedan tiempos por jugar.',
-          });
+                : `El Tiempo ${inicio.partido.tiempoActual} ya lo arrancó otra persona.`;
+
+          return this.irAlPanel(ctx, { aviso });
         }
 
         const fin = await this.tiempos.finalizarTiempo(partidoId, usuarioId);
@@ -835,6 +877,8 @@ export class CargarFlujo {
           return respuesta ? { tipo: 'repetir', respuesta } : this.partidoPerdido();
         }
 
+        if (!(await this.siguePudiendoCargar(ctx))) return this.sinPermiso();
+
         const marcador = escrito ?? {
           propio: partido.marcadorPropio,
           rival: partido.marcadorRival,
@@ -872,6 +916,8 @@ export class CargarFlujo {
   // --- Deshacer ---------------------------------------------------------
 
   private async deshacer(ctx: ContextoFlujo): Promise<Novedad | { fin: Transicion }> {
+    if (!(await this.siguePudiendoCargar(ctx))) return { fin: this.sinPermiso() };
+
     const partidoId = leerTexto(ctx.datos, CLAVE_PARTIDO_ID);
     const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
     const usuarioId = ctx.usuarioId ?? '';
@@ -990,6 +1036,30 @@ export class CargarFlujo {
     return this.resumen.generar(partido, leerTexto(ctx.datos, CLAVE_EQUIPO_NOMBRE, 'Tu equipo'));
   }
 
+  /**
+   * Revalida el rol antes de escribir (RF-7.2).
+   *
+   * `pasoSelectorEquipo` valida `rolMinimo: 'editor'` una sola vez, al entrar
+   * al flujo, y la sesión dura una hora: sin esto, a un editor que un admin
+   * saca del equipo a mitad de partido el panel le sigue vivo y puede seguir
+   * cargando eventos, deshaciendo o hasta cerrando el partido durante todo ese
+   * tiempo. Los flujos hermanos (nuevo-partido, reabrir) revalidan igual antes
+   * de escribir.
+   */
+  private async siguePudiendoCargar(ctx: ContextoFlujo): Promise<boolean> {
+    if (!ctx.usuarioId) return false;
+
+    const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
+
+    return this.membresias.puede(ctx.usuarioId, equipoId, 'editor');
+  }
+
+  private sinPermiso(): Transicion {
+    return this.finalizarCon(
+      'Ya no tienes permiso de carga en ese equipo, así que no guardé nada.',
+    );
+  }
+
   private textoPartidoCerrado(): string {
     return 'Ese partido ya está cerrado. Si hay que corregir algo, un admin puede reabrirlo con /reabrir.';
   }
@@ -1005,15 +1075,22 @@ export class CargarFlujo {
   /**
    * El mensaje que hay que editar para actualizar el panel.
    *
-   * `mensajeOrigenId` trae el id del mensaje que llevaba el botón, así que
-   * mientras se navegue con botones el panel se edita solo. Se guarda igual en
-   * los datos del flujo porque un mensaje escrito no lo trae, y ahí el panel
-   * quedaría huérfano.
+   * `mensajeOrigenId` trae el id del mensaje que llevaba el botón, y mientras
+   * se navegue con los botones del panel es el mismo mensaje que ya viene
+   * guardado en `CLAVE_PANEL`: cada respuesta lo edita a sí mismo, así que su
+   * propio callback siempre apunta a él. Por eso el panel guardado manda, y
+   * `mensajeOrigenId` es solo el respaldo para la primera vez que todavía no
+   * hay nada guardado (o para un mensaje escrito, que no lo trae).
+   *
+   * Con dos partidos abiertos, la lista para elegir partido queda publicada
+   * y nunca se edita; tocar uno de sus botones viejos después de que el panel
+   * ya vive en otro mensaje traería el id de esa lista, no el del panel real.
+   * Confiar en ese `mensajeOrigenId` ahí pisaría el panel de otro partido.
    */
   private panelId(ctx: ContextoFlujo): string | undefined {
     // `undefined` y no cadena vacía: `editarMensajeId: ''` viajaría hasta el
     // adaptador como un id que no existe.
-    return ctx.mensaje.mensajeOrigenId ?? (leerTexto(ctx.datos, CLAVE_PANEL) || undefined);
+    return leerTexto(ctx.datos, CLAVE_PANEL) || ctx.mensaje.mensajeOrigenId || undefined;
   }
 
   private destino(ctx: ContextoFlujo): DestinoCarga {

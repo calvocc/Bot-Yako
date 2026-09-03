@@ -264,8 +264,20 @@ export class EventosService {
       .leftJoin(usuarios, eq(usuarios.id, eventos.reportadoPor));
   }
 
+  /**
+   * Lee el partido bajo `for update`: registrar() y deshacerUltimo() corren
+   * en la misma transacción que cerrar(), así que el lock serializa la
+   * guarda de `estado === 'cerrado'` contra un cierre concurrente. Sin esto,
+   * un padre podía cargar un gol leyendo `en_progreso` de antes de que otro
+   * cerrara el partido, e insertar el evento después del cierre.
+   */
   private async leerPartido(tx: EjecutorDb, partidoId: string): Promise<Partido | null> {
-    const [fila] = await tx.select().from(partidos).where(eq(partidos.id, partidoId)).limit(1);
+    const [fila] = await tx
+      .select()
+      .from(partidos)
+      .where(eq(partidos.id, partidoId))
+      .for('update')
+      .limit(1);
 
     return fila ? mapearPartido(fila) : null;
   }
