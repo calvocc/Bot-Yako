@@ -72,10 +72,13 @@ export class EquiposService {
         })
         .returning();
 
+      // Dentro de la transacción: si esto falla, el equipo tampoco existe.
+      // Fuera, quedaría un equipo sin admin y con el nombre ya ocupado, así
+      // que ni siquiera se podría rehacer con el mismo nombre.
+      await this.membresias.asignarRol(creadorId, fila.id, 'admin', tx);
+
       return fila;
     });
-
-    await this.membresias.asignarRol(creadorId, equipo.id, 'admin');
 
     return this.mapear(equipo);
   }

@@ -1,10 +1,10 @@
 import { randomInt } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { and, eq, sql } from 'drizzle-orm';
-import { DbService } from '../db/db.service';
+import { DbService, type EjecutorDb } from '../db/db.service';
 import { equipos, invitaciones, invitacionesCanjes } from '../db/schema';
 import { MembresiasService } from '../identidad/membresias.service';
-import type { Rol } from '../identidad/roles';
+import { cumpleRol, type Rol } from '../identidad/roles';
 
 /**
  * Alfabeto sin caracteres que se confunden al leerlos en voz alta o en una
@@ -125,22 +125,35 @@ export class InvitacionesService {
 
       await tx.insert(invitacionesCanjes).values({ invitacionId: inv.id, usuarioId });
 
-      return { estado: 'ok', equipoId: inv.equipoId, equipoNombre, rol: inv.rol };
+      // El alta va en la misma transacción que el canje. Separadas, un fallo
+      // entre ambas quemaba el código para siempre: el reintento respondía
+      // "ya eras miembro" sin que existiera fila en usuarios_equipos.
+      const rolFinal = await this.altaEnEquipo(tx, usuarioId, inv.equipoId, inv.rol);
+
+      return { estado: 'ok', equipoId: inv.equipoId, equipoNombre, rol: rolFinal };
     });
   }
 
   /**
-   * El alta en el equipo va fuera de la transacción del canje a propósito: si
-   * el usuario ya tenía un rol mayor, `asignarRol` lo bajaría. Se comprueba
-   * antes para no degradar a nadie por aceptar una invitación.
+   * Da el rol invitado sin bajar el que ya se tenía.
+   *
+   * Un Editor que toca el código de "solo consulta" que circula por el grupo no
+   * debe quedar degradado a Viewer. La comparación es por jerarquía, no un caso
+   * especial para admin.
    */
-  async aplicarCanje(usuarioId: string, equipoId: string, rol: Rol): Promise<Rol> {
-    const actual = await this.membresias.rolEn(usuarioId, equipoId);
+  private async altaEnEquipo(
+    tx: EjecutorDb,
+    usuarioId: string,
+    equipoId: string,
+    rolInvitado: Rol,
+  ): Promise<Rol> {
+    const actual = await this.membresias.rolEn(usuarioId, equipoId, tx);
 
-    if (actual && actual === 'admin') return actual;
+    if (actual && cumpleRol(actual, rolInvitado)) return actual;
 
-    await this.membresias.asignarRol(usuarioId, equipoId, rol);
-    return rol;
+    await this.membresias.asignarRol(usuarioId, equipoId, rolInvitado, tx);
+
+    return rolInvitado;
   }
 
   async revocar(codigo: string, equipoId: string): Promise<boolean> {

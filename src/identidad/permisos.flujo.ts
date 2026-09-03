@@ -1,11 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import type { ContextoFlujo, Entrada, Flujo, Paso, Transicion } from '../conversacion/flow.types';
-import { leerTexto } from '../conversacion/flow.types';
+import { leerNumero, leerTexto } from '../conversacion/flow.types';
 import {
   CLAVE_EQUIPO_ID,
   CLAVE_EQUIPO_NOMBRE,
   pasoSelectorEquipo,
 } from '../conversacion/pasos-comunes/selector-equipo';
+import {
+  botonesPaginados,
+  ID_VER_MAS,
+  paginaSiguiente,
+} from '../conversacion/pasos-comunes/paginacion';
 import { MembresiasService } from './membresias.service';
 import { ETIQUETA_ROL_CORTA, ROLES, type Rol } from './roles';
 
@@ -18,6 +23,7 @@ const CLAVE_MIEMBRO_NOMBRE = 'miembroNombre';
 
 const PREFIJO_MIEMBRO = 'pm:u:';
 const PREFIJO_ROL = 'pm:r:';
+const CLAVE_PAGINA = 'paginaMiembros';
 
 @Injectable()
 export class PermisosFlujo {
@@ -58,19 +64,32 @@ export class PermisosFlujo {
           };
         }
 
-        return {
-          respuesta: {
-            texto: '¿A quién le cambias el rol?',
-            botones: otros.slice(0, 9).map((m) => ({
-              id: `${PREFIJO_MIEMBRO}${m.usuarioId}`,
-              texto: `${m.nombre} (${ETIQUETA_ROL_CORTA[m.rol]})`.slice(0, 20),
-            })),
-          },
-        };
+        const { botones } = botonesPaginados(
+          otros.map((m) => ({
+            id: `${PREFIJO_MIEMBRO}${m.usuarioId}`,
+            texto: `${m.nombre} (${ETIQUETA_ROL_CORTA[m.rol]})`,
+          })),
+          leerNumero(ctx.datos, CLAVE_PAGINA),
+        );
+
+        return { respuesta: { texto: '¿A quién le cambias el rol?', botones } };
       },
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
         const seleccion = ctx.mensaje.seleccionId ?? '';
+
+        if (seleccion === ID_VER_MAS) {
+          const miembros = await this.membresias.miembrosDe(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
+          const otros = miembros.filter((m) => m.usuarioId !== ctx.usuarioId);
+
+          return {
+            tipo: 'ir',
+            pasoId: PASOS.miembro,
+            datos: {
+              [CLAVE_PAGINA]: paginaSiguiente(leerNumero(ctx.datos, CLAVE_PAGINA), otros.length),
+            },
+          };
+        }
 
         if (!seleccion.startsWith(PREFIJO_MIEMBRO)) {
           return { tipo: 'finalizar', respuesta: { texto: 'No cambié ningún permiso.' } };

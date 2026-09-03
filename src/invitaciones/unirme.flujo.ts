@@ -53,17 +53,7 @@ export class UnirmeFlujo {
   }
 
   private async canjearYResponder(codigo: string, usuarioId: string): Promise<RespuestaBot> {
-    const resultado = await this.invitaciones.canjear(codigo, usuarioId);
-
-    if (resultado.estado === 'ok') {
-      const rol = await this.invitaciones.aplicarCanje(
-        usuarioId,
-        resultado.equipoId,
-        resultado.rol,
-      );
-      return mensajeDeCanje({ ...resultado, rol });
-    }
-
-    return mensajeDeCanje(resultado);
+    // El canje ya deja la membresía aplicada, en su misma transacción.
+    return mensajeDeCanje(await this.invitaciones.canjear(codigo, usuarioId));
   }
 }

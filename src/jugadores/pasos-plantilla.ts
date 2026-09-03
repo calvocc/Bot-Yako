@@ -1,4 +1,5 @@
-import type { RespuestaBot } from '../channels/channel.types';
+import type { MensajeEntrante, RespuestaBot } from '../channels/channel.types';
+import { parsearComando } from '../conversacion/comandos';
 import type { ContextoFlujo, Entrada, Paso, Transicion } from '../conversacion/flow.types';
 import { leerNumero, leerTexto } from '../conversacion/flow.types';
 import { DorsalOcupadoError, describirJugador, parsearPlantilla } from './jugadores.service';
@@ -8,11 +9,28 @@ export const CLAVE_ALTAS = 'jugadoresCargados';
 
 const COMANDO_LISTO = '/listo';
 
+/**
+ * Reconoce el fin de carga con el mismo parser que usa el router, que quita el
+ * `@NombreDelBot` que Telegram agrega en los grupos.
+ */
+function esComandoDeTerminar(texto: string): boolean {
+  const comando = parsearComando({ texto } as MensajeEntrante);
+
+  return comando?.nombre === COMANDO_LISTO.slice(1);
+}
+
 export interface OpcionesPasoPlantilla {
   /** De dónde sale el equipo al que se cargan los jugadores. */
   claveEquipoId: string;
   /** Qué hacer cuando el usuario termina. */
   alTerminar: (ctx: ContextoFlujo, cargados: number) => Transicion;
+  /**
+   * Se consulta antes de cada lote. La sesión dura una hora y el teclado sigue
+   * ahí: sin esto, alguien a quien le revocaron el rol podría seguir cargando.
+   * Los flujos que acaban de crear el equipo no lo necesitan — su creador es
+   * admin por construcción.
+   */
+  puedeEscribir?: (ctx: ContextoFlujo) => Promise<boolean>;
 }
 
 /**
@@ -28,7 +46,7 @@ export function pasoCargarPlantilla(
   jugadores: JugadoresService,
   opciones: OpcionesPasoPlantilla,
 ): Paso {
-  const { claveEquipoId, alTerminar } = opciones;
+  const { claveEquipoId, alTerminar, puedeEscribir } = opciones;
 
   return {
     id,
@@ -52,8 +70,27 @@ export function pasoCargarPlantilla(
       const texto = ctx.mensaje.texto?.trim() ?? '';
       const yaCargados = leerNumero(ctx.datos, CLAVE_ALTAS);
 
-      if (texto.toLowerCase() === COMANDO_LISTO) {
+      if (esComandoDeTerminar(texto)) {
         return alTerminar(ctx, yaCargados);
+      }
+
+      // Cualquier otra cosa con barra es un comando, no el nombre de nadie.
+      // Sin esto, "/listo@YakoBot" en un grupo se guardaba como jugador y no
+      // había forma de salir del paso.
+      if (texto.startsWith('/')) {
+        return {
+          tipo: 'repetir',
+          respuesta: {
+            texto: `Para terminar escribe ${COMANDO_LISTO}. Para agregar a alguien, "Jacob, 10".`,
+          },
+        };
+      }
+
+      if (puedeEscribir && !(await puedeEscribir(ctx))) {
+        return {
+          tipo: 'finalizar',
+          respuesta: { texto: 'Ya no tienes permiso para editar esta plantilla.' },
+        };
       }
 
       const equipoId = leerTexto(ctx.datos, claveEquipoId);

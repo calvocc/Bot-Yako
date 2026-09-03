@@ -6,6 +6,14 @@ import * as schema from './schema';
 
 export type YakoDatabase = PostgresJsDatabase<typeof schema>;
 
+/**
+ * La base o una transacción en curso.
+ *
+ * Permite que un servicio participe de una transacción abierta por otro, en vez
+ * de abrir la suya y perder la atomicidad entre ambos.
+ */
+export type EjecutorDb = YakoDatabase | Parameters<Parameters<YakoDatabase['transaction']>[0]>[0];
+
 @Injectable()
 export class DbService implements OnModuleDestroy {
   private readonly logger = new Logger(DbService.name);

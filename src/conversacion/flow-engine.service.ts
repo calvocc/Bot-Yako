@@ -2,6 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { MensajeEntrante, RespuestaBot } from '../channels/channel.types';
 import { FlowRegistry } from './flow-registry.service';
 import type { ContextoFlujo, DatosFlujo, Entrada, Transicion } from './flow.types';
+
+/** Qué hizo el motor con un mensaje: lo atendió (con o sin respuesta) o no había flujo. */
+export type ResultadoFlujo =
+  { manejado: true; respuesta: RespuestaBot | null } | { manejado: false };
 import { SesionStore } from './sesion.store';
 
 /**
@@ -41,14 +45,16 @@ export class FlowEngine {
   /**
    * Entrega un mensaje al flujo en curso.
    *
-   * Devuelve `null` si el usuario no tenía ninguno abierto, para que el router
-   * decida qué hacer con el mensaje.
+   * Distingue "no había flujo" de "el flujo lo atendió y no hay nada que
+   * decir". Confundirlos hacía que terminar un flujo en silencio se
+   * respondiera con "ese botón ya no está disponible": es la misma clase de
+   * ambigüedad que el `null` de Redis, un valor con dos significados.
    */
-  async continuar(mensaje: MensajeEntrante, usuarioId?: string): Promise<RespuestaBot | null> {
+  async continuar(mensaje: MensajeEntrante, usuarioId?: string): Promise<ResultadoFlujo> {
     const ref = { canal: mensaje.canal, canalUserId: mensaje.canalUserId };
     const sesion = await this.sesiones.leer(ref);
 
-    if (!sesion) return null;
+    if (!sesion) return { manejado: false };
 
     const paso = this.registro.obtenerPaso(sesion.flujoId, sesion.pasoId);
 
@@ -60,7 +66,7 @@ export class FlowEngine {
         `Sesión apuntaba a ${sesion.flujoId}/${sesion.pasoId}, que ya no existe. Se descarta.`,
       );
       await this.sesiones.borrar(ref);
-      return null;
+      return { manejado: false };
     }
 
     const ctx: ContextoFlujo = { mensaje, datos: sesion.datos, usuarioId };
@@ -68,12 +74,20 @@ export class FlowEngine {
     if (!paso.recibir) {
       // Paso informativo: no espera respuesta, el flujo termina acá.
       await this.sesiones.borrar(ref);
-      return null;
+      return { manejado: true, respuesta: null };
     }
 
     const transicion = await paso.recibir(ctx);
+    const respuesta = await this.aplicar(
+      mensaje,
+      sesion.flujoId,
+      sesion.pasoId,
+      ctx.datos,
+      transicion,
+      usuarioId,
+    );
 
-    return this.aplicar(mensaje, sesion.flujoId, sesion.pasoId, ctx.datos, transicion, usuarioId);
+    return { manejado: true, respuesta };
   }
 
   /** ¿El usuario tiene una conversación abierta? */

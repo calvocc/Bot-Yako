@@ -38,6 +38,7 @@ const CLAVE_ACADEMIA_NOMBRE = 'academiaNombre';
 const CLAVE_EQUIPO_ID = 'equipoId';
 const CLAVE_EQUIPO_NOMBRE = 'equipoNombre';
 const CLAVE_NOMBRE_REPETIDO = 'nombreEquipoRepetido';
+const CLAVE_ERROR_CANJE = 'errorCanje';
 
 const OPCION_CREAR = 'onb:crear';
 const OPCION_CODIGO = 'onb:codigo';
@@ -99,7 +100,7 @@ export class OnboardingFlujo {
         const codigoDelEnlace = ctx.datos.codigoInvitacion;
 
         if (typeof codigoDelEnlace === 'string' && codigoDelEnlace) {
-          return { transicion: await this.canjear(codigoDelEnlace, usuarioId) };
+          return { transicion: await this.canjear(codigoDelEnlace, usuarioId, true) };
         }
 
         const suyos = await this.membresias.equiposDe(usuarioId);
@@ -161,10 +162,19 @@ export class OnboardingFlujo {
     return {
       id: PASOS.codigo,
 
-      entrar: () =>
-        Promise.resolve({
-          respuesta: { texto: 'Pega el código de invitación que te compartieron.' },
-        }),
+      entrar: (ctx: ContextoFlujo) => {
+        // Si venimos rebotados de un enlace con código inválido, se explica el
+        // motivo antes de volver a pedirlo.
+        const error = leerTexto(ctx.datos, CLAVE_ERROR_CANJE);
+
+        return Promise.resolve({
+          respuesta: {
+            texto: error
+              ? `${error}\n\nPega el código aquí:`
+              : 'Pega el código de invitación que te compartieron.',
+          },
+        });
+      },
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
         const codigo = ctx.mensaje.texto?.trim();
@@ -342,27 +352,30 @@ export class OnboardingFlujo {
     }
   }
 
-  private async canjear(codigo: string, usuarioId: string): Promise<Transicion> {
+  /**
+   * Canjea y decide la transición según de dónde vino el código.
+   *
+   * `desdeEnlace` importa: si llegó en el deep link, el usuario está parado en
+   * `bienvenida`, cuyo `recibir` solo entiende los dos botones del menú.
+   * Repetir ahí lo dejaría atrapado — le diríamos "vuelve a intentar" y luego
+   * rechazaríamos el código pegado con "elige una de las dos opciones".
+   */
+  private async canjear(
+    codigo: string,
+    usuarioId: string,
+    desdeEnlace = false,
+  ): Promise<Transicion> {
     const resultado = await this.invitaciones.canjear(codigo, usuarioId);
+    const respuesta = mensajeDeCanje(resultado);
 
-    if (resultado.estado === 'ok') {
-      const rol = await this.invitaciones.aplicarCanje(
-        usuarioId,
-        resultado.equipoId,
-        resultado.rol,
-      );
-
-      return {
-        tipo: 'finalizar',
-        respuesta: mensajeDeCanje({ ...resultado, rol }),
-      };
+    if (resultado.estado === 'ok' || resultado.estado === 'ya_eras_miembro') {
+      return { tipo: 'finalizar', respuesta };
     }
 
-    if (resultado.estado === 'ya_eras_miembro') {
-      return { tipo: 'finalizar', respuesta: mensajeDeCanje(resultado) };
-    }
-
-    // Un código malo no debe cortar el onboarding: se vuelve a pedir.
-    return { tipo: 'repetir', respuesta: mensajeDeCanje(resultado) };
+    // Un código malo no corta el onboarding: se vuelve a pedir, pero en el
+    // paso que sí sabe recibirlo.
+    return desdeEnlace
+      ? { tipo: 'ir', pasoId: PASOS.codigo, datos: { [CLAVE_ERROR_CANJE]: respuesta.texto } }
+      : { tipo: 'repetir', respuesta };
   }
 }

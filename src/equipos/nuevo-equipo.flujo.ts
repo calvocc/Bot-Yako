@@ -242,14 +242,23 @@ export class NuevoEquipoFlujo {
     formato: { cantidadTiempos: number; minutosPorTiempo: number },
   ): Promise<Transicion> {
     const nombre = leerTexto(ctx.datos, CLAVE_NOMBRE);
+    const academiaId = leerTexto(ctx.datos, CLAVE_ACADEMIA_ID);
+
+    // El rol se comprobó al elegir la academia, pero desde entonces pudo
+    // revocarse: entre elegir el formato y tocar el botón pueden pasar minutos.
+    const sigueSiendoAdmin = ctx.usuarioId
+      ? await this.membresias.esAdminDeAcademia(ctx.usuarioId, academiaId)
+      : false;
+
+    if (!sigueSiendoAdmin) {
+      return {
+        tipo: 'finalizar',
+        respuesta: { texto: 'Ya no eres admin de esta academia, así que no creé el equipo.' },
+      };
+    }
 
     try {
-      const equipo = await this.equipos.crear(
-        leerTexto(ctx.datos, CLAVE_ACADEMIA_ID),
-        nombre,
-        formato,
-        ctx.usuarioId ?? '',
-      );
+      const equipo = await this.equipos.crear(academiaId, nombre, formato, ctx.usuarioId ?? '');
 
       return {
         tipo: 'ir',

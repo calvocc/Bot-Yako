@@ -1,11 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import type { ContextoFlujo, Entrada, Flujo, Paso, Transicion } from '../conversacion/flow.types';
-import { leerTexto } from '../conversacion/flow.types';
+import { leerNumero, leerTexto } from '../conversacion/flow.types';
 import {
   CLAVE_EQUIPO_ID,
   CLAVE_EQUIPO_NOMBRE,
   pasoSelectorEquipo,
 } from '../conversacion/pasos-comunes/selector-equipo';
+import {
+  botonesPaginados,
+  ID_VER_MAS,
+  paginaSiguiente,
+} from '../conversacion/pasos-comunes/paginacion';
 import { MembresiasService } from '../identidad/membresias.service';
 import { CLAVE_ALTAS, pasoCargarPlantilla } from './pasos-plantilla';
 import { describirJugador, JugadoresService } from './jugadores.service';
@@ -23,6 +28,7 @@ const OPCION_AGREGAR = 'pl:agregar';
 const OPCION_BAJA = 'pl:baja';
 const OPCION_CERRAR = 'pl:cerrar';
 const PREFIJO_BAJA = 'pl:b:';
+const CLAVE_PAGINA = 'paginaBaja';
 
 @Injectable()
 export class PlantillaFlujo {
@@ -43,6 +49,16 @@ export class PlantillaFlujo {
         this.pasoVer(),
         pasoCargarPlantilla(PASOS.agregar, this.jugadores, {
           claveEquipoId: CLAVE_EQUIPO_ID,
+          // A diferencia del onboarding, acá el equipo ya existía: el rol pudo
+          // cambiar entre que se abrió el flujo y se escribe.
+          puedeEscribir: (ctx) =>
+            ctx.usuarioId
+              ? this.membresias.puede(
+                  ctx.usuarioId,
+                  leerTexto(ctx.datos, CLAVE_EQUIPO_ID),
+                  'editor',
+                )
+              : Promise.resolve(false),
           alTerminar: (_ctx, cargados) => ({
             tipo: 'finalizar',
             respuesta: {
@@ -101,10 +117,19 @@ export class PlantillaFlujo {
         }
 
         if (seleccion === OPCION_BAJA) {
-          return Promise.resolve({ tipo: 'ir', pasoId: PASOS.bajaElegir });
+          return Promise.resolve({
+            tipo: 'ir',
+            pasoId: PASOS.bajaElegir,
+            datos: { [CLAVE_PAGINA]: 0 },
+          });
         }
 
-        return Promise.resolve({ tipo: 'finalizar' });
+        // Con respuesta explícita: un `finalizar` mudo dejaba al usuario con
+        // un "ese botón ya no está disponible" al tocar "Listo".
+        return Promise.resolve({
+          tipo: 'finalizar',
+          respuesta: { texto: 'Listo 👍' },
+        });
       },
     };
   }
@@ -115,20 +140,34 @@ export class PlantillaFlujo {
 
       entrar: async (ctx: ContextoFlujo): Promise<Entrada> => {
         const lista = await this.jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
+        const pagina = leerNumero(ctx.datos, CLAVE_PAGINA);
+        const { botones } = botonesPaginados(
+          lista.map((j) => ({ id: `${PREFIJO_BAJA}${j.id}`, texto: describirJugador(j) })),
+          pagina,
+        );
 
         return {
           respuesta: {
             texto: '¿A quién das de baja? Sus estadísticas de partidos ya jugados se conservan.',
-            botones: lista.slice(0, 9).map((j) => ({
-              id: `${PREFIJO_BAJA}${j.id}`,
-              texto: describirJugador(j).slice(0, 20),
-            })),
+            botones,
           },
         };
       },
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
         const seleccion = ctx.mensaje.seleccionId ?? '';
+
+        if (seleccion === ID_VER_MAS) {
+          const lista = await this.jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
+
+          return {
+            tipo: 'ir',
+            pasoId: PASOS.bajaElegir,
+            datos: {
+              [CLAVE_PAGINA]: paginaSiguiente(leerNumero(ctx.datos, CLAVE_PAGINA), lista.length),
+            },
+          };
+        }
 
         if (!seleccion.startsWith(PREFIJO_BAJA)) {
           return { tipo: 'finalizar', respuesta: { texto: 'No di de baja a nadie.' } };

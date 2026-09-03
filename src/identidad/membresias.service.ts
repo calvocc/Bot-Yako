@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { and, asc, eq } from 'drizzle-orm';
-import { DbService } from '../db/db.service';
+import { DbService, type EjecutorDb } from '../db/db.service';
 import { academias, equipos, usuarios, usuariosEquipos } from '../db/schema';
 import { cumpleRol, type Rol } from './roles';
 
@@ -48,8 +48,8 @@ export class MembresiasService {
     return rolMinimo ? filas.filter((f) => cumpleRol(f.rol, rolMinimo)) : filas;
   }
 
-  async rolEn(usuarioId: string, equipoId: string): Promise<Rol | null> {
-    const [fila] = await this.db.db
+  async rolEn(usuarioId: string, equipoId: string, tx?: EjecutorDb): Promise<Rol | null> {
+    const [fila] = await (tx ?? this.db.db)
       .select({ rol: usuariosEquipos.rol })
       .from(usuariosEquipos)
       .where(and(eq(usuariosEquipos.usuarioId, usuarioId), eq(usuariosEquipos.equipoId, equipoId)))
@@ -101,9 +101,15 @@ export class MembresiasService {
       .orderBy(asc(usuarios.nombre));
   }
 
-  /** Alta o cambio de rol. Es idempotente: volver a asignar el mismo rol no falla. */
-  async asignarRol(usuarioId: string, equipoId: string, rol: Rol): Promise<void> {
-    await this.db.db
+  /**
+   * Alta o cambio de rol. Es idempotente: volver a asignar el mismo rol no falla.
+   *
+   * Acepta un ejecutor de transacción para poder participar de una operación
+   * mayor. Crear un equipo y volver admin a su creador tienen que ser atómicos:
+   * un equipo sin admin no se puede administrar, y su nombre ya quedó ocupado.
+   */
+  async asignarRol(usuarioId: string, equipoId: string, rol: Rol, tx?: EjecutorDb): Promise<void> {
+    await (tx ?? this.db.db)
       .insert(usuariosEquipos)
       .values({ usuarioId, equipoId, rol })
       .onConflictDoUpdate({

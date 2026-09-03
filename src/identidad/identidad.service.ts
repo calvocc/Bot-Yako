@@ -12,6 +12,13 @@ import { identidadesUsuario, usuarios } from '../db/schema';
  * por hecho que hay un `usuarioId`, y el onboarding solo decide a qué equipos
  * pertenece, no si existe.
  */
+/** La identidad ya la creó otro mensaje concurrente del mismo usuario. */
+class CarreraDeIdentidad extends Error {
+  constructor() {
+    super('La identidad fue creada por otra petición simultánea');
+  }
+}
+
 @Injectable()
 export class IdentidadService {
   private readonly logger = new Logger(IdentidadService.name);
@@ -27,7 +34,19 @@ export class IdentidadService {
       return existente;
     }
 
-    return this.crear(mensaje);
+    try {
+      return await this.crear(mensaje);
+    } catch (error) {
+      if (!(error instanceof CarreraDeIdentidad)) throw error;
+
+      // Otro mensaje del mismo usuario nuevo ganó la carrera; su cuenta es la
+      // buena. La nuestra ya fue revertida con la transacción.
+      const ganador = await this.buscarPorIdentidad(mensaje.canal, mensaje.canalUserId);
+
+      if (!ganador) throw error;
+
+      return ganador;
+    }
   }
 
   private async buscarPorIdentidad(
@@ -52,7 +71,7 @@ export class IdentidadService {
         .values({ nombre: mensaje.nombre || 'Sin nombre' })
         .returning({ id: usuarios.id });
 
-      await tx
+      const [identidad] = await tx
         .insert(identidadesUsuario)
         .values({
           usuarioId: usuario.id,
@@ -60,10 +79,15 @@ export class IdentidadService {
           canalUserId: mensaje.canalUserId,
           chatId: mensaje.chatId,
         })
-        // Dos mensajes casi simultáneos del mismo usuario nuevo podrían
-        // intentar crear la identidad dos veces; la clave primaria lo impide
-        // y acá se resuelve sin romper la conversación.
-        .onConflictDoNothing();
+        .onConflictDoNothing()
+        .returning({ usuarioId: identidadesUsuario.usuarioId });
+
+      // Sin fila devuelta, la identidad ya existía: dos mensajes casi
+      // simultáneos de alguien nuevo. Devolver `usuario.id` acá crearía una
+      // cuenta que ninguna identidad apunta, y todo lo que el onboarding
+      // colgara de ella sería inalcanzable para siempre. Se lanza para que la
+      // transacción revierta y el llamador relea al ganador.
+      if (!identidad) throw new CarreraDeIdentidad();
 
       this.logger.log(`Usuario nuevo desde ${mensaje.canal}`);
       return usuario.id;

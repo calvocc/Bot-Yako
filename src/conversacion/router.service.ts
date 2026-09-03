@@ -79,7 +79,7 @@ export class Router {
       if (esComandoDeFlujo(comando.nombre) && (await this.motor.tieneFlujoActivo(mensaje))) {
         const enFlujo = await this.motor.continuar(mensaje, usuarioId);
 
-        if (enFlujo !== null) return enFlujo;
+        if (enFlujo.manejado) return enFlujo.respuesta;
       }
 
       const manejador = this.manejadores.get(comando.nombre);
@@ -114,7 +114,9 @@ export class Router {
 
     const enFlujo = await this.motor.continuar(mensaje, usuarioId);
 
-    if (enFlujo !== null) return enFlujo;
+    // Solo si de verdad no había flujo se orienta al usuario; un flujo que
+    // terminó sin nada que decir no es un botón caducado.
+    if (enFlujo.manejado) return enFlujo.respuesta;
 
     return this.sinContexto(mensaje);
   }
