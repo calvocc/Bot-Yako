@@ -20,6 +20,19 @@ describe('mapearUpdate', () => {
     });
   });
 
+  it('no le pone mensaje de origen a un texto', () => {
+    // `mensajeOrigenId` es el mensaje que traía el botón. Poniendo acá el id
+    // del propio mensaje del usuario, el panel del partido intentaría editarlo
+    // —Telegram no deja— y publicaría un panel duplicado cada vez que alguien
+    // escribe en vez de tocar.
+    const update = {
+      update_id: 1,
+      message: { message_id: 7, date: 1_770_000_000, chat, from: remitente, text: 'Jacob, 10' },
+    } as Update;
+
+    expect(mapearUpdate(update)?.mensajeOrigenId).toBeUndefined();
+  });
+
   it('mapea el toque de un botón, con el id para acusar recibo', () => {
     const update = {
       update_id: 2,

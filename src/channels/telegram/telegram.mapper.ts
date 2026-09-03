@@ -38,7 +38,11 @@ export function mapearUpdate(update: Update): MensajeEntrante | null {
       chatId: String(mensaje.chat.id),
       nombre: nombreDe(mensaje.from),
       texto: mensaje.text,
-      mensajeOrigenId: String(mensaje.message_id),
+      // Sin `mensajeOrigenId` a proposito: el campo significa "el mensaje que
+      // traia el boton", y un mensaje escrito por el usuario no trae ninguno.
+      // Poniendo su propio id, quien quisiera editar el panel intentaria editar
+      // el mensaje del usuario —que Telegram rechaza— y terminaria publicando
+      // un panel duplicado.
       recibidoEn: new Date(mensaje.date * 1000),
     };
   }

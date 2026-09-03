@@ -83,16 +83,28 @@ export function mensajeDePrueba(parcial: Partial<MensajeEntrante> = {}): Mensaje
     canalUserId: '1001',
     chatId: '1001',
     nombre: 'Carlos',
-    mensajeOrigenId: String(++secuenciaMensajes),
     recibidoEn: new Date(),
     ...parcial,
   };
 }
 
+/**
+ * Un mensaje escrito.
+ *
+ * No lleva `mensajeOrigenId`, igual que en Telegram: ese campo es el id del
+ * mensaje que traia el boton, y un texto no viene de ningun boton. Ponerlo aca
+ * ocultaria los errores de quien lo use para editar un mensaje.
+ */
 export function textoDePrueba(texto: string, parcial: Partial<MensajeEntrante> = {}) {
   return mensajeDePrueba({ texto, ...parcial });
 }
 
+/** Un boton pulsado, con el mensaje que lo llevaba. */
 export function seleccionDePrueba(seleccionId: string, parcial: Partial<MensajeEntrante> = {}) {
-  return mensajeDePrueba({ seleccionId, acuseId: `cb-${seleccionId}`, ...parcial });
+  return mensajeDePrueba({
+    seleccionId,
+    acuseId: `cb-${seleccionId}`,
+    mensajeOrigenId: String(++secuenciaMensajes),
+    ...parcial,
+  });
 }

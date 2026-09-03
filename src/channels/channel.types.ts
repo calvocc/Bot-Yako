@@ -63,7 +63,21 @@ export interface RespuestaBot {
    * sepa editar (WhatsApp) simplemente envia uno nuevo.
    */
   editarMensajeId?: string;
+  /**
+   * Mensajes que acompanan a este y siempre se envian como mensajes nuevos.
+   *
+   * Existe por la bitacora del partido: cargar un gol actualiza el panel en el
+   * sitio *y* deja su linea en el chat, para que la conversacion sirva como
+   * cronica reenviable. Sin esto habria que elegir entre las dos cosas.
+   */
+  adicionales?: MensajeAdicional[];
 }
+
+/**
+ * Un mensaje suelto que acompana a una respuesta. No admite `adicionales` a su
+ * vez: un solo nivel alcanza y evita cadenas imposibles de seguir.
+ */
+export type MensajeAdicional = Omit<RespuestaBot, 'adicionales'>;
 
 export interface DestinoMensaje {
   canal: Canal;

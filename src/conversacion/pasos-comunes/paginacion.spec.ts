@@ -31,6 +31,24 @@ describe('botonesPaginados', () => {
     expect(paginaSiguiente(1, 12)).toBe(0);
   });
 
+  it('deja sitio para los botones que agrega el paso', () => {
+    // La carga de eventos suma "Otro jugador" y "Sin identificar" después de
+    // paginar. Sin reservar, una página llena más esos dos da 12 botones y la
+    // lista de WhatsApp corta en 10.
+    const { botones, hayMas } = botonesPaginados(opciones(12), 0, 2);
+
+    expect(botones).toHaveLength(OPCIONES_POR_PAGINA - 2 + 1); // +1 por "Ver más"
+    expect(hayMas).toBe(true);
+    expect(botones.length + 2).toBeLessThanOrEqual(OPCIONES_POR_PAGINA + 1);
+  });
+
+  it('la reserva también corre el paginado', () => {
+    expect(paginaSiguiente(0, 12, 2)).toBe(1);
+    // Con 7 por página, 12 opciones son dos páginas.
+    expect(paginaSiguiente(1, 12, 2)).toBe(0);
+    expect(botonesPaginados(opciones(12), 1, 2).botones.map((b) => b.id)).toContain('o11');
+  });
+
   it('recorta los rótulos al límite de WhatsApp', () => {
     const { botones } = botonesPaginados(
       [{ id: 'x', texto: 'Un nombre larguísimo que no entra en un botón' }],

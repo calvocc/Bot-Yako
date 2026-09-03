@@ -14,7 +14,15 @@ export const eventos = pgTable(
       .references(() => partidos.id, { onDelete: 'cascade' }),
     tipo: tipoEventoEnum('tipo').notNull(),
     equipoOrigen: equipoOrigenEventoEnum('equipo_origen').notNull(),
-    jugadorId: uuid('jugador_id').references(() => jugadores.id),
+    /**
+     * En cascada como `partido_id`. El jugador nunca se borra en el uso normal
+     * —la baja es logica, `activo = false`— asi que esto solo corre al eliminar
+     * una academia entera. Sin regla de borrado, esa eliminacion fallaba o no
+     * segun el orden en que Postgres resolviera las cascadas de equipos y
+     * partidos. `set null` no sirve: dejaria una tarjeta sin jugador, que el
+     * check de mas abajo rechaza.
+     */
+    jugadorId: uuid('jugador_id').references(() => jugadores.id, { onDelete: 'cascade' }),
 
     /**
      * B4: nulos en modo post partido, que no captura ni tiempo ni minuto.

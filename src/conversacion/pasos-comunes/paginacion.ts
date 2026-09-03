@@ -25,10 +25,12 @@ export interface OpcionPaginable {
 export function botonesPaginados(
   opciones: readonly OpcionPaginable[],
   pagina: number,
+  reservar = 0,
 ): { botones: Boton[]; hayMas: boolean } {
-  const desde = pagina * OPCIONES_POR_PAGINA;
-  const trozo = opciones.slice(desde, desde + OPCIONES_POR_PAGINA);
-  const hayMas = desde + OPCIONES_POR_PAGINA < opciones.length;
+  const porPagina = tamanoDePagina(reservar);
+  const desde = pagina * porPagina;
+  const trozo = opciones.slice(desde, desde + porPagina);
+  const hayMas = desde + porPagina < opciones.length;
 
   const botones: Boton[] = trozo.map((o) => ({ id: o.id, texto: recortar(o.texto, 20) }));
 
@@ -39,14 +41,25 @@ export function botonesPaginados(
   return { botones, hayMas };
 }
 
+/**
+ * Cuántas opciones entran, descontando los botones que el paso agrega aparte.
+ *
+ * Sin este descuento, un paso que suma "Otro jugador" y "Sin identificar" a una
+ * página llena manda 12 botones, y la lista de WhatsApp corta en 10: los dos
+ * últimos jugadores desaparecen sin que nadie se entere.
+ */
+function tamanoDePagina(reservar: number): number {
+  return Math.max(1, OPCIONES_POR_PAGINA - reservar);
+}
+
 /** Cuántas páginas hacen falta; siempre al menos una. */
-export function totalPaginas(cantidad: number): number {
-  return Math.max(1, Math.ceil(cantidad / OPCIONES_POR_PAGINA));
+export function totalPaginas(cantidad: number, reservar = 0): number {
+  return Math.max(1, Math.ceil(cantidad / tamanoDePagina(reservar)));
 }
 
 /** Avanza a la página siguiente, volviendo a la primera al pasarse. */
-export function paginaSiguiente(pagina: number, cantidad: number): number {
-  return (pagina + 1) % totalPaginas(cantidad);
+export function paginaSiguiente(pagina: number, cantidad: number, reservar = 0): number {
+  return (pagina + 1) % totalPaginas(cantidad, reservar);
 }
 
 function recortar(texto: string, maximo: number): string {

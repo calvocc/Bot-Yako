@@ -55,7 +55,16 @@ export class ProcesadorMensajes {
       const respuesta = await this.router.resolver(mensaje, usuarioId);
 
       if (respuesta) {
-        await adaptador.enviar({ canal: mensaje.canal, chatId: mensaje.chatId }, respuesta);
+        const destino = { canal: mensaje.canal, chatId: mensaje.chatId };
+        const { adicionales, ...principal } = respuesta;
+
+        await adaptador.enviar(destino, principal);
+
+        // Van despues y siempre como mensajes nuevos: la bitacora del partido
+        // vive en el chat, mientras que el panel se edita en el sitio.
+        for (const extra of adicionales ?? []) {
+          await adaptador.enviar(destino, { ...extra, editarMensajeId: undefined });
+        }
       }
     } catch (error) {
       // El webhook ya respondió 200, así que este es el último lugar donde el
