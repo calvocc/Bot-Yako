@@ -1,4 +1,5 @@
 import { Module, type OnModuleInit } from '@nestjs/common';
+import { CompetenciasService } from './competencias/competencias.service';
 import { ConversacionModule } from './conversacion/conversacion.module';
 import { FlowRegistry } from './conversacion/flow-registry.service';
 import { Router } from './conversacion/router.service';
@@ -23,6 +24,7 @@ import { ResumenService } from './resumen/resumen.service';
 @Module({
   imports: [ConversacionModule, OrganizacionModule],
   providers: [
+    CompetenciasService,
     PartidosService,
     TiemposService,
     EventosService,
@@ -32,7 +34,7 @@ import { ResumenService } from './resumen/resumen.service';
     ReabrirFlujo,
     CargarFlujo,
   ],
-  exports: [PartidosService, TiemposService, EventosService, ResumenService],
+  exports: [CompetenciasService, PartidosService, TiemposService, EventosService, ResumenService],
 })
 export class PartidosModule implements OnModuleInit {
   constructor(

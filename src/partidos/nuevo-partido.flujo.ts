@@ -1,18 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import {
+  botonesPaginados,
+  ID_VER_MAS,
+  paginaSiguiente,
+} from '../conversacion/pasos-comunes/paginacion';
+import {
   CLAVE_EQUIPO_ID,
   CLAVE_EQUIPO_NOMBRE,
   pasoSelectorEquipo,
 } from '../conversacion/pasos-comunes/selector-equipo';
-import type {
-  ContextoFlujo,
-  DatosFlujo,
-  Entrada,
-  Flujo,
-  Paso,
-  Transicion,
-} from '../conversacion/flow.types';
+import type { ContextoFlujo, Entrada, Flujo, Paso, Transicion } from '../conversacion/flow.types';
 import { leerNumero, leerTexto } from '../conversacion/flow.types';
+import { type Competencia, CompetenciasService } from '../competencias/competencias.service';
 import {
   describirFormato,
   EquiposService,
@@ -38,12 +37,11 @@ const PASOS = {
 
 const CLAVE_RIVAL = 'rival';
 const CLAVE_FECHA = 'fecha';
-const CLAVE_COMPETENCIA = 'competencia';
+const CLAVE_COMPETENCIA_ID = 'competenciaId';
+const CLAVE_COMPETENCIA_NOMBRE = 'competenciaNombre';
+const CLAVE_PAGINA_COMPETENCIA = 'paginaCompetencia';
 const CLAVE_TIEMPOS = 'cantidadTiempos';
 const CLAVE_MINUTOS = 'minutosPorTiempo';
-/** Las opciones que de verdad se mostraron, para que `co:{i}` no dependa de
- * volver a consultarlas — ver `pasoCompetencia`. */
-const CLAVE_OPCIONES_COMPETENCIA = 'opcionesCompetencia';
 
 const PREFIJO_FECHA = 'fe:';
 const PREFIJO_COMPETENCIA = 'co:';
@@ -52,14 +50,15 @@ const ID_COMPETENCIA_NINGUNA = 'co:ninguna';
 const ID_FORMATO_HABITUAL = 'fmt:habitual';
 const ID_FORMATO_OTRO = 'fmt:otro';
 
-/** Competencias que se ofrecen cuando el equipo todavía no jugó nada. */
-const COMPETENCIAS_INICIALES = ['Liga', 'Torneo', 'Amistoso'];
+/** "Nueva competencia" y "Sin competencia": botones fijos que se suman a la lista paginada. */
+const RESERVA_BOTONES_COMPETENCIA = 2;
 
 @Injectable()
 export class NuevoPartidoFlujo {
   constructor(
     private readonly partidos: PartidosService,
     private readonly equipos: EquiposService,
+    private readonly competencias: CompetenciasService,
     private readonly membresias: MembresiasService,
   ) {}
 
@@ -155,73 +154,104 @@ export class NuevoPartidoFlujo {
   }
 
   /**
-   * `co:{i}` es un índice posicional sobre esta lista, y por eso `recibir`
-   * usa exactamente la que se guardó al mostrar los botones (`entrar`, o el
-   * `repetir` anterior) en vez de volver a consultarla: si otro padre crea
-   * un partido con una competencia nueva entre la pregunta y la respuesta,
-   * `max(fecha) desc` reordena y el índice pasaría a apuntar a otra
-   * competencia sin que nadie lo note.
+   * Ya no hay un listado por defecto (Liga/Torneo/Amistoso): mostrarlo llevaba
+   * a que cada papá escribiera su propia variante de un torneo que el equipo
+   * ya había cargado antes, y las estadísticas terminaban repartidas entre
+   * "DBS" y "Torneo DBS". Se ofrece solo lo que la academia ya jugó —una
+   * competencia es de la academia, no del equipo, porque dos categorías
+   * pueden compartir el mismo torneo— más la opción de crear una nueva.
+   *
+   * Los botones llevan el id real de la competencia, no un índice posicional:
+   * a diferencia del esquema anterior, no hay ventana de carrera que corra la
+   * lista entre la pregunta y la respuesta.
    */
   private pasoCompetencia(): Paso {
-    const opciones = async (ctx: ContextoFlujo): Promise<string[]> => {
-      const usadas = await this.partidos.competenciasDe(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
+    const listar = async (ctx: ContextoFlujo): Promise<Competencia[]> => {
+      const equipo = await this.equipos.obtener(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
 
-      return usadas.length > 0 ? usadas : COMPETENCIAS_INICIALES;
+      return equipo ? this.competencias.deLaAcademia(equipo.academiaId) : [];
     };
 
-    const botones = (lista: string[]) => [
-      ...lista.map((nombre, i) => ({
-        id: `${PREFIJO_COMPETENCIA}${i}`,
-        texto: nombre.slice(0, 20),
-      })),
-      { id: ID_COMPETENCIA_OTRA, texto: 'Otra' },
-      { id: ID_COMPETENCIA_NINGUNA, texto: 'Sin competencia' },
-    ];
+    const botones = (lista: Competencia[], pagina: number) => {
+      const { botones: paginados } = botonesPaginados(
+        lista.map((c) => ({ id: `${PREFIJO_COMPETENCIA}${c.id}`, texto: c.nombre })),
+        pagina,
+        RESERVA_BOTONES_COMPETENCIA,
+      );
+
+      return [
+        ...paginados,
+        { id: ID_COMPETENCIA_OTRA, texto: 'Nueva competencia' },
+        { id: ID_COMPETENCIA_NINGUNA, texto: 'Sin competencia' },
+      ];
+    };
 
     return {
       id: PASOS.competencia,
 
       entrar: async (ctx: ContextoFlujo): Promise<Entrada> => {
-        const lista = await opciones(ctx);
+        const lista = await listar(ctx);
 
-        ctx.datos[CLAVE_OPCIONES_COMPETENCIA] = lista;
-
-        return { respuesta: { texto: '¿En qué competencia?', botones: botones(lista) } };
+        return { respuesta: { texto: '¿En qué competencia?', botones: botones(lista, 0) } };
       },
 
-      recibir: (ctx: ContextoFlujo): Promise<Transicion> => {
+      recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
         const seleccion = ctx.mensaje.seleccionId;
 
         if (seleccion === ID_COMPETENCIA_OTRA) {
-          return Promise.resolve({ tipo: 'ir', pasoId: PASOS.competenciaLibre });
+          return { tipo: 'ir', pasoId: PASOS.competenciaLibre };
         }
 
         if (seleccion === ID_COMPETENCIA_NINGUNA) {
-          return Promise.resolve({
+          return {
             tipo: 'ir',
             pasoId: PASOS.formato,
-            datos: { [CLAVE_COMPETENCIA]: '' },
-          });
+            datos: { [CLAVE_COMPETENCIA_ID]: null, [CLAVE_COMPETENCIA_NOMBRE]: '' },
+          };
         }
 
-        const lista = leerListaTexto(ctx.datos, CLAVE_OPCIONES_COMPETENCIA);
-        const elegida = seleccion?.startsWith(PREFIJO_COMPETENCIA)
-          ? lista[Number(seleccion.slice(PREFIJO_COMPETENCIA.length))]
-          : ctx.mensaje.texto?.trim();
+        const lista = await listar(ctx);
+        const pagina = leerNumero(ctx.datos, CLAVE_PAGINA_COMPETENCIA, 0);
 
-        if (!elegida) {
-          return Promise.resolve({
+        if (seleccion === ID_VER_MAS) {
+          const siguiente = paginaSiguiente(pagina, lista.length, RESERVA_BOTONES_COMPETENCIA);
+
+          return {
             tipo: 'repetir',
-            respuesta: { texto: 'Toca una opción o escribe el nombre:', botones: botones(lista) },
-            datos: { [CLAVE_OPCIONES_COMPETENCIA]: lista },
-          });
+            respuesta: { texto: '¿En qué competencia?', botones: botones(lista, siguiente) },
+            datos: { [CLAVE_PAGINA_COMPETENCIA]: siguiente },
+          };
         }
 
-        return Promise.resolve({
-          tipo: 'ir',
-          pasoId: PASOS.formato,
-          datos: { [CLAVE_COMPETENCIA]: elegida },
-        });
+        if (seleccion?.startsWith(PREFIJO_COMPETENCIA)) {
+          const elegida = lista.find((c) => c.id === seleccion.slice(PREFIJO_COMPETENCIA.length));
+
+          if (elegida) {
+            return {
+              tipo: 'ir',
+              pasoId: PASOS.formato,
+              datos: {
+                [CLAVE_COMPETENCIA_ID]: elegida.id,
+                [CLAVE_COMPETENCIA_NOMBRE]: elegida.nombre,
+              },
+            };
+          }
+        } else {
+          // Escribir el nombre también sirve, igual que en el resto del bot:
+          // si coincide con una que ya existe la reusa, si no la crea.
+          const escrito = ctx.mensaje.texto?.trim();
+
+          if (escrito) return this.elegirCompetencia(ctx, escrito);
+        }
+
+        return {
+          tipo: 'repetir',
+          respuesta: {
+            texto: 'Toca una opción o escribe el nombre:',
+            botones: botones(lista, pagina),
+          },
+          datos: { [CLAVE_PAGINA_COMPETENCIA]: pagina },
+        };
       },
     };
   }
@@ -242,11 +272,34 @@ export class NuevoPartidoFlujo {
           });
         }
 
-        return Promise.resolve({
-          tipo: 'ir',
-          pasoId: PASOS.formato,
-          datos: { [CLAVE_COMPETENCIA]: nombre },
-        });
+        return this.elegirCompetencia(ctx, nombre);
+      },
+    };
+  }
+
+  /** Busca o crea la competencia por nombre, y avanza con ella elegida. */
+  private async elegirCompetencia(ctx: ContextoFlujo, nombre: string): Promise<Transicion> {
+    const equipo = await this.equipos.obtener(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
+
+    if (!equipo) {
+      return {
+        tipo: 'finalizar',
+        respuesta: { texto: 'No encontré el equipo. Vuelve a empezar.' },
+      };
+    }
+
+    const competencia = await this.competencias.obtenerOCrear(
+      equipo.academiaId,
+      nombre,
+      ctx.usuarioId ?? '',
+    );
+
+    return {
+      tipo: 'ir',
+      pasoId: PASOS.formato,
+      datos: {
+        [CLAVE_COMPETENCIA_ID]: competencia.id,
+        [CLAVE_COMPETENCIA_NOMBRE]: competencia.nombre,
       },
     };
   }
@@ -347,7 +400,11 @@ export class NuevoPartidoFlujo {
       };
     }
 
-    const competencia = leerTexto(ctx.datos, CLAVE_COMPETENCIA);
+    // `null` significa "Sin competencia", elegida a propósito; sin tocar el
+    // paso aún no debería poder llegar acá, pero por si acaso se lee con cuidado.
+    const competenciaIdRaw = ctx.datos[CLAVE_COMPETENCIA_ID];
+    const competenciaId = typeof competenciaIdRaw === 'string' ? competenciaIdRaw : null;
+    const competenciaNombre = leerTexto(ctx.datos, CLAVE_COMPETENCIA_NOMBRE);
     const fecha = leerTexto(ctx.datos, CLAVE_FECHA, hoyLocal());
     const equipoNombre = leerTexto(ctx.datos, CLAVE_EQUIPO_NOMBRE, 'Tu equipo');
 
@@ -355,14 +412,14 @@ export class NuevoPartidoFlujo {
       equipoId,
       rival: leerTexto(ctx.datos, CLAVE_RIVAL),
       fecha,
-      competencia: competencia || null,
+      competenciaId,
       formato,
       creadoPor: ctx.usuarioId ?? '',
     });
 
     const detalle = [
       `${equipoNombre} vs ${partido.rival}`,
-      competencia || null,
+      competenciaNombre || null,
       describirFecha(fecha),
     ]
       .filter(Boolean)
@@ -381,10 +438,4 @@ export class NuevoPartidoFlujo {
       },
     };
   }
-}
-
-function leerListaTexto(datos: DatosFlujo, clave: string): string[] {
-  const valor = datos[clave];
-
-  return Array.isArray(valor) ? valor.filter((v): v is string => typeof v === 'string') : [];
 }

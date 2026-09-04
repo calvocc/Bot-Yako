@@ -127,7 +127,6 @@ describe('Estadísticas (e2e)', () => {
       equipoId,
       rival: 'Rival',
       fecha,
-      competencia: 'Liga',
       formato: { cantidadTiempos: 2, minutosPorTiempo: 25 },
       creadoPor: admin,
     });
