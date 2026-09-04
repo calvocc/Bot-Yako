@@ -33,6 +33,8 @@ describe('pasoSeleccionMultiple', () => {
     expect(entrada.respuesta.botones?.map((b) => b.texto)).toEqual([
       'Jacob #10',
       'Andrés #7',
+      '✅ Todos',
+      'Ninguno',
       'Listo (0)',
     ]);
   });
@@ -95,5 +97,68 @@ describe('pasoSeleccionMultiple', () => {
     expect(entrada).toMatchObject({
       transicion: { tipo: 'finalizar', respuesta: { texto: 'No hay nadie en la plantilla.' } },
     });
+  });
+
+  it('cada toque edita el mensaje que traía el botón, no manda uno nuevo', async () => {
+    const paso = construir();
+
+    if (!paso.recibir) throw new Error('el paso no recibe mensajes');
+
+    const mensaje = seleccionDePrueba('jg:jacob', { mensajeOrigenId: '42' });
+    const resultado = await paso.recibir(contexto({ mensaje }));
+
+    if (resultado.tipo !== 'repetir') throw new Error('esperaba repetir');
+    expect(resultado.respuesta.editarMensajeId).toBe('42');
+  });
+
+  it('"Todos" marca la lista completa, "Ninguno" la vacía', async () => {
+    const paso = construir();
+
+    if (!paso.recibir) throw new Error('el paso no recibe mensajes');
+
+    const todos = await paso.recibir(contexto({ mensaje: seleccionDePrueba('sm:todos') }));
+
+    if (todos.tipo !== 'repetir') throw new Error('esperaba repetir');
+    expect(todos.datos).toEqual({ seleccionMultiple: ['jg:jacob', 'jg:andres'] });
+    expect(todos.respuesta.botones?.find((b) => b.id === 'sm:listo')?.texto).toBe('Listo (2)');
+
+    const datos = { seleccionMultiple: ['jg:jacob', 'jg:andres'] };
+    const ninguno = await paso.recibir(
+      contexto({ mensaje: seleccionDePrueba('sm:ninguno') }, datos),
+    );
+
+    if (ninguno.tipo !== 'repetir') throw new Error('esperaba repetir');
+    expect(ninguno.datos).toEqual({ seleccionMultiple: [] });
+    expect(ninguno.respuesta.botones?.find((b) => b.id === 'sm:listo')?.texto).toBe('Listo (0)');
+  });
+
+  it('el atajo por texto reemplaza la selección con lo que reconoce', async () => {
+    const paso = construir({
+      interpretarTexto: (texto, lista) =>
+        lista
+          .filter((o) => texto.toLowerCase().includes(o.texto.split(' #')[0].toLowerCase()))
+          .map((o) => o.id),
+    });
+
+    if (!paso.recibir) throw new Error('el paso no recibe mensajes');
+
+    const resultado = await paso.recibir(contexto({ mensaje: textoDePrueba('jacob') }));
+
+    if (resultado.tipo !== 'repetir') throw new Error('esperaba repetir');
+    expect(resultado.datos).toEqual({ seleccionMultiple: ['jg:jacob'] });
+  });
+
+  it('el atajo por texto que no reconoce nada repite con el aviso', async () => {
+    const paso = construir({
+      interpretarTexto: () => null,
+      avisoTextoNoReconocido: 'No entendí esos nombres.',
+    });
+
+    if (!paso.recibir) throw new Error('el paso no recibe mensajes');
+
+    const resultado = await paso.recibir(contexto({ mensaje: textoDePrueba('quién sabe') }));
+
+    if (resultado.tipo !== 'repetir') throw new Error('esperaba repetir');
+    expect(resultado.respuesta.texto).toContain('No entendí esos nombres.');
   });
 });

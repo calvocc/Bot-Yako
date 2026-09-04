@@ -3,6 +3,7 @@ import type { RespuestaBot } from '../channels/channel.types';
 import {
   botonesPaginados,
   ID_VER_MAS,
+  type OpcionPaginable,
   paginaSiguiente,
 } from '../conversacion/pasos-comunes/paginacion';
 import { pasoSeleccionMultiple } from '../conversacion/pasos-comunes/seleccion-multiple';
@@ -372,7 +373,8 @@ export class CargarFlujo {
   /** Elige la titular y, con eso, arranca el partido en vivo. */
   private pasoTitulares(): Paso {
     return pasoSeleccionMultiple(PASOS.titulares, {
-      pregunta: 'Elige la titular. Toca a cada jugador y "Listo" cuando termines.',
+      pregunta:
+        'Elige la titular. Toca a cada jugador, "Todos" si juega el plantel completo, o escribe los dorsales separados por coma (10, 7, 4). "Listo" cuando termines.',
       minimo: 1,
       sinOpciones: 'Este equipo no tiene jugadores cargados. Agrégalos con /plantilla primero.',
       obtenerOpciones: async (ctx) => {
@@ -383,6 +385,12 @@ export class CargarFlujo {
           texto: describirJugador(j),
         }));
       },
+      // Escribir "10, 7, 4" en vez de tocar quince botones — mismo criterio
+      // que `resolverPorNombre` usa en el resto del bot: dorsal primero,
+      // nombre exacto (sin mayúsculas) como respaldo.
+      interpretarTexto: (texto, lista) => idsPorDorsalONombre(texto, lista),
+      avisoTextoNoReconocido:
+        'No reconocí a nadie ahí. Escribe los dorsales separados por coma (10, 7, 4) o toca los botones.',
       alConfirmar: async (ctx, elegidos) => {
         const titularesIds = elegidos.map((id) => id.slice(PREFIJO_JUGADOR.length));
 
@@ -1438,4 +1446,42 @@ function leerLista(datos: DatosFlujo, clave: string): string[] {
   const valor = datos[clave];
 
   return Array.isArray(valor) ? valor.filter((v): v is string => typeof v === 'string') : [];
+}
+
+/**
+ * Resuelve una lista escrita ("10, 7, 4" o "Jacob, Andrés") contra las
+ * opciones de un `pasoSeleccionMultiple`, por dorsal primero y por nombre
+ * exacto como respaldo — mismo criterio que `resolverPorNombre` usa en el
+ * resto del bot. Cada opción llega como `"Nombre #10"` o `"Nombre"`
+ * (`describirJugador`), así que el dorsal se separa del nombre por el " #"
+ * final en vez de parsearlo con una expresión regular.
+ */
+export function idsPorDorsalONombre(
+  texto: string,
+  lista: readonly OpcionPaginable[],
+): string[] | null {
+  const tokens = texto
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  if (tokens.length === 0) return null;
+
+  const ids: string[] = [];
+
+  for (const token of tokens) {
+    const buscado = token.toLowerCase();
+
+    const encontrado = lista.find((o) => {
+      const separador = o.texto.lastIndexOf(' #');
+      const nombre = (separador >= 0 ? o.texto.slice(0, separador) : o.texto).toLowerCase();
+      const dorsal = separador >= 0 ? o.texto.slice(separador + 2) : null;
+
+      return token === dorsal || buscado === nombre;
+    });
+
+    if (encontrado && !ids.includes(encontrado.id)) ids.push(encontrado.id);
+  }
+
+  return ids.length > 0 ? ids : null;
 }
