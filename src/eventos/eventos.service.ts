@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { DbService, type EjecutorDb } from '../db/db.service';
 import { eventos, jugadores, partidos, usuarios } from '../db/schema';
 import { mapearPartido, type Partido } from '../partidos/partido.mapper';
 import { TiemposService } from '../partidos/tiempos.service';
-import { puedeSerDuplicado, VENTANA_DEDUP_MS } from './dedup';
+import { puedeSerDuplicado, VENTANA_DEDUP_MS, type EventoComparable } from './dedup';
 import type { EquipoOrigen, TipoEvento } from './evento.tipos';
 
 export interface SolicitudEvento {
@@ -12,6 +13,8 @@ export interface SolicitudEvento {
   tipo: TipoEvento;
   equipoOrigen: EquipoOrigen;
   jugadorId?: string | null;
+  /** Solo para `tipo: 'cambio'`: el jugador que entra. */
+  jugadorEntraId?: string | null;
   reportadoPor: string;
   /** Salta el chequeo de duplicados: el usuario ya dijo que es otro evento. */
   forzar?: boolean;
@@ -30,12 +33,20 @@ export interface EventoCargado {
   jugadorId: string | null;
   jugadorNombre: string | null;
   jugadorDorsal: number | null;
+  /** Solo para `tipo: 'cambio'`: el jugador que entra. */
+  jugadorEntraId: string | null;
+  jugadorEntraNombre: string | null;
+  jugadorEntraDorsal: number | null;
   tiempo: number | null;
   minutoCalculado: number | null;
   reportadoPor: string;
   reportanteNombre: string | null;
   creadoEn: Date;
 }
+
+/** El mismo campo `jugadorId` se usa dos veces por fila (sale/entra): hace
+ * falta un alias para poder unir la tabla de jugadores dos veces. */
+const jugadoresEntra = alias(jugadores, 'jugadores_entra');
 
 export interface Marcador {
   propio: number;
@@ -97,7 +108,7 @@ export class EventosService {
       if (!esPostPartido && !solicitud.forzar) {
         const reciente = await this.eventoReciente(tx, solicitud);
 
-        if (reciente && puedeSerDuplicado(reciente, { jugadorId: solicitud.jugadorId ?? null })) {
+        if (reciente && puedeSerDuplicado(comparableDe(reciente), comparableDe(solicitud))) {
           return { tipo: 'posible_duplicado' as const, reciente };
         }
       }
@@ -113,6 +124,7 @@ export class EventosService {
           tipo: solicitud.tipo,
           equipoOrigen: solicitud.equipoOrigen,
           jugadorId: solicitud.jugadorId ?? null,
+          jugadorEntraId: solicitud.jugadorEntraId ?? null,
           tiempo: contexto?.tiempo ?? null,
           minutoCalculado: contexto?.minuto.minuto ?? null,
           origen: solicitud.origen ?? 'en_vivo',
@@ -298,6 +310,9 @@ export class EventosService {
         jugadorId: eventos.jugadorId,
         jugadorNombre: jugadores.nombre,
         jugadorDorsal: jugadores.dorsal,
+        jugadorEntraId: eventos.jugadorEntraId,
+        jugadorEntraNombre: jugadoresEntra.nombre,
+        jugadorEntraDorsal: jugadoresEntra.dorsal,
         tiempo: eventos.tiempo,
         minutoCalculado: eventos.minutoCalculado,
         reportadoPor: eventos.reportadoPor,
@@ -306,6 +321,7 @@ export class EventosService {
       })
       .from(eventos)
       .leftJoin(jugadores, eq(jugadores.id, eventos.jugadorId))
+      .leftJoin(jugadoresEntra, eq(jugadoresEntra.id, eventos.jugadorEntraId))
       .leftJoin(usuarios, eq(usuarios.id, eventos.reportadoPor));
   }
 
@@ -326,4 +342,24 @@ export class EventosService {
 
     return fila ? mapearPartido(fila) : null;
   }
+}
+
+/**
+ * Reduce una solicitud o un evento ya cargado a lo que hace falta para
+ * comparar duplicados: el par sale/entra si es un cambio, el jugador si no.
+ *
+ * `reciente` y `nuevo` en el chequeo de dedup siempre comparten `tipo` —el
+ * lock ya separa por `(partido, tipo, equipo)`—, así que basta con mirar
+ * `tipo` para elegir el modo correcto en los dos lados.
+ */
+function comparableDe(evento: {
+  tipo: TipoEvento;
+  jugadorId?: string | null;
+  jugadorEntraId?: string | null;
+}): EventoComparable {
+  if (evento.tipo === 'cambio') {
+    return { modo: 'cambio', sale: evento.jugadorId ?? null, entra: evento.jugadorEntraId ?? null };
+  }
+
+  return { modo: 'jugador', jugadorId: evento.jugadorId ?? null };
 }

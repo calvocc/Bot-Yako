@@ -1,0 +1,99 @@
+import { seleccionDePrueba, textoDePrueba } from '../../channels/testing/fake.adapter';
+import type { ContextoFlujo, DatosFlujo, Paso } from '../flow.types';
+import { pasoSeleccionMultiple } from './seleccion-multiple';
+
+const OPCIONES = [
+  { id: 'jg:jacob', texto: 'Jacob #10' },
+  { id: 'jg:andres', texto: 'Andrés #7' },
+];
+
+const construir = (opciones: Partial<Parameters<typeof pasoSeleccionMultiple>[1]> = {}): Paso =>
+  pasoSeleccionMultiple('titulares', {
+    pregunta: '¿Quiénes arrancan?',
+    obtenerOpciones: () => Promise.resolve(OPCIONES),
+    alConfirmar: (_ctx, elegidos) =>
+      Promise.resolve({ tipo: 'finalizar', respuesta: { texto: `Listo: ${elegidos.join(',')}` } }),
+    ...opciones,
+  });
+
+const contexto = (parcial: Partial<ContextoFlujo> = {}, datos: DatosFlujo = {}): ContextoFlujo => ({
+  mensaje: textoDePrueba(''),
+  datos,
+  usuarioId: 'u1',
+  ...parcial,
+});
+
+describe('pasoSeleccionMultiple', () => {
+  it('muestra las opciones sin nada marcado y el conteo en cero', async () => {
+    const paso = construir();
+    const entrada = await paso.entrar(contexto());
+
+    if (!('respuesta' in entrada)) throw new Error('esperaba una respuesta');
+
+    expect(entrada.respuesta.botones?.map((b) => b.texto)).toEqual([
+      'Jacob #10',
+      'Andrés #7',
+      'Listo (0)',
+    ]);
+  });
+
+  it('tocar una opción la marca, y tocarla de nuevo la desmarca', async () => {
+    const paso = construir();
+
+    if (!paso.recibir) throw new Error('el paso no recibe mensajes');
+
+    const uno = await paso.recibir(contexto({ mensaje: seleccionDePrueba('jg:jacob') }));
+
+    if (uno.tipo !== 'repetir') throw new Error('esperaba repetir');
+    expect(uno.respuesta.botones?.find((b) => b.id === 'jg:jacob')?.texto).toBe('✅ Jacob #10');
+    expect(uno.respuesta.botones?.find((b) => b.id === 'sm:listo')?.texto).toBe('Listo (1)');
+
+    const datos = { seleccionMultiple: ['jg:jacob'] };
+    const dos = await paso.recibir(contexto({ mensaje: seleccionDePrueba('jg:jacob') }, datos));
+
+    if (dos.tipo !== 'repetir') throw new Error('esperaba repetir');
+    expect(dos.respuesta.botones?.find((b) => b.id === 'jg:jacob')?.texto).toBe('Jacob #10');
+  });
+
+  it('confirmar sin elegir nada no avanza, con el mínimo por defecto', async () => {
+    const paso = construir();
+
+    if (!paso.recibir) throw new Error('el paso no recibe mensajes');
+
+    const resultado = await paso.recibir(contexto({ mensaje: seleccionDePrueba('sm:listo') }));
+
+    expect(resultado.tipo).toBe('repetir');
+    if (resultado.tipo === 'repetir') {
+      expect(resultado.respuesta.texto).toContain('Elige al menos uno');
+    }
+  });
+
+  it('confirmar con lo mínimo llama a alConfirmar con los ids elegidos', async () => {
+    const paso = construir();
+
+    if (!paso.recibir) throw new Error('el paso no recibe mensajes');
+
+    const datos = { seleccionMultiple: ['jg:jacob', 'jg:andres'] };
+    const resultado = await paso.recibir(
+      contexto({ mensaje: seleccionDePrueba('sm:listo') }, datos),
+    );
+
+    expect(resultado).toMatchObject({
+      tipo: 'finalizar',
+      respuesta: { texto: 'Listo: jg:jacob,jg:andres' },
+    });
+  });
+
+  it('sin opciones, termina de una con el aviso configurado', async () => {
+    const paso = construir({
+      obtenerOpciones: () => Promise.resolve([]),
+      sinOpciones: 'No hay nadie en la plantilla.',
+    });
+
+    const entrada = await paso.entrar(contexto());
+
+    expect(entrada).toMatchObject({
+      transicion: { tipo: 'finalizar', respuesta: { texto: 'No hay nadie en la plantilla.' } },
+    });
+  });
+});

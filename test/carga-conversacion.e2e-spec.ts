@@ -122,6 +122,28 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     return { canal, usuarioId, academia, equipo, decir, tocar };
   };
 
+  /**
+   * Elige la titular tocando el botón de cada nombre pedido y confirma.
+   *
+   * La titular es obligatoria para arrancar en vivo (es la única forma de
+   * medir minutos jugados), así que todo test que llega a `md:vivo` pasa por
+   * acá antes de que el partido arranque de verdad.
+   */
+  const elegirTitulares = async (
+    tocar: (id: string) => Promise<void>,
+    nombres: string[],
+  ): Promise<void> => {
+    for (const nombre of nombres) {
+      const boton = adaptador.ultimosBotones.find((b) => b.texto.startsWith(nombre));
+
+      if (!boton) throw new Error(`No encontré el botón de ${nombre} para la titular`);
+
+      await tocar(boton.id);
+    }
+
+    await tocar('sm:listo');
+  };
+
   it('crea un partido con /nuevopartido', async () => {
     const { equipo, decir, tocar } = await escenario('Nuevo partido');
 
@@ -156,16 +178,16 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     expect(adaptador.ultimoTexto).toContain('¿Vas a cargar en vivo');
 
     await tocar('md:vivo');
+    expect(adaptador.ultimoTexto).toContain('Elige la titular');
+
+    await elegirTitulares(tocar, ['Jacob', 'Andrés']);
     expect(adaptador.ultimoTexto).toContain('Arrancó el Tiempo 1');
     expect(adaptador.ultimoTexto).toContain('vs Deportivo Norte');
 
-    const panelId = adaptador.ultimo.mensajeId;
-
     await tocar('ev:gol');
     expect(adaptador.ultimoTexto).toContain('¿De qué equipo?');
-    // El sub-paso reemplaza el panel en vez de mandar otro mensaje.
-    expect(adaptador.ultimo.fueEdicion).toBe(true);
-    expect(adaptador.ultimo.mensajeId).toBe(panelId);
+    // Cada interacción manda un mensaje nuevo: ya no queda panel que editar.
+    expect(adaptador.ultimo.fueEdicion).toBe(false);
 
     await tocar('or:propio');
     expect(adaptador.ultimoTexto).toContain('¿Quién?');
@@ -176,12 +198,11 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     adaptador.limpiar();
     await tocar(jacob!.id);
 
-    // Dos envíos: el panel actualizado (edición) y la bitácora (mensaje nuevo).
-    expect(adaptador.enviados).toHaveLength(2);
-    expect(adaptador.enviados[0].fueEdicion).toBe(true);
+    // Un solo mensaje nuevo: la bitácora del gol y el panel viajan juntos.
+    expect(adaptador.enviados).toHaveLength(1);
+    expect(adaptador.enviados[0].fueEdicion).toBe(false);
+    expect(adaptador.enviados[0].respuesta.texto).toMatch(/⚽ Gol de Jacob #10, min \d+ — 1-0/);
     expect(adaptador.enviados[0].respuesta.texto).toContain('1-0');
-    expect(adaptador.enviados[1].fueEdicion).toBe(false);
-    expect(adaptador.enviados[1].respuesta.texto).toMatch(/⚽ Gol de Jacob #10, min \d+ — 1-0/);
   });
 
   it('entra directo al panel si el partido ya está en vivo (4b)', async () => {
@@ -190,6 +211,7 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
 
     await decir('/cargar');
     await tocar('md:vivo');
+    await elegirTitulares(tocar, ['Jacob']);
     await decir('/cancelar');
 
     adaptador.limpiar();
@@ -215,6 +237,7 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
 
     await decir('/cargar');
     await tocar('md:vivo');
+    await elegirTitulares(tocar, ['Jacob', 'Andrés']);
     await tocar('ev:gol');
     await tocar('or:propio');
     await tocar(adaptador.ultimosBotones.find((b) => b.texto.startsWith('Jacob'))!.id);
@@ -237,6 +260,7 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
 
     await decir('/cargar');
     await tocar('md:vivo');
+    await elegirTitulares(tocar, ['Jacob', 'Andrés']);
     await tocar('ev:gol');
     await tocar('or:propio');
     await tocar(adaptador.ultimosBotones.find((b) => b.texto.startsWith('Jacob'))!.id);
@@ -266,6 +290,7 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
 
     await decir('/cargar');
     await tocar('md:vivo');
+    await elegirTitulares(tocar, ['Jacob', 'Andrés']);
     await tocar('ev:gol');
     await tocar('or:propio');
     await tocar('jg:otro');
@@ -277,14 +302,69 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     expect(textos).toContain('Gol de Samuel #4');
     expect(textos).toContain('quedó agregado a la plantilla');
 
-    // El nombre se escribió, así que el mensaje entrante no traía botón. El
-    // panel se edita igual, con el id que el flujo guardó al tocar "Otro
-    // jugador": si dependiera del mensaje del usuario, Telegram rechazaría la
-    // edición y quedaría un panel duplicado.
-    expect(adaptador.enviados[0].fueEdicion).toBe(true);
+    // Un solo mensaje nuevo: la bitácora (con la nota del alta) y el panel
+    // viajan juntos, sin depender de ningún mensaje anterior que editar.
+    expect(adaptador.enviados).toHaveLength(1);
+    expect(adaptador.enviados[0].fueEdicion).toBe(false);
 
     const plantilla = await jugadores.listar(equipo.id);
     expect(plantilla.map((j) => j.nombre)).toContain('Samuel');
+  });
+
+  it('no deja arrancar en vivo sin elegir al menos un titular', async () => {
+    const { equipo, decir, tocar } = await escenario('Sin titular');
+    await crearPartido(equipo.id);
+
+    await decir('/cargar');
+    await tocar('md:vivo');
+    expect(adaptador.ultimoTexto).toContain('Elige la titular');
+
+    await tocar('sm:listo');
+    expect(adaptador.ultimoTexto).toContain('Elige al menos uno.');
+
+    const partido = (await partidos.abiertosDe(equipo.id))[0];
+    expect(partido.modoCarga).toBeNull();
+  });
+
+  it('cambio: sale de la cancha, entra del resto, y el siguiente evento ya no ofrece a quien salió', async () => {
+    const { equipo, decir, tocar } = await escenario('Cambio');
+    await crearPartido(equipo.id);
+
+    await decir('/cargar');
+    await tocar('md:vivo');
+    // Solo Jacob titular: Andrés queda en la banca, así se puede distinguir
+    // "en cancha" de "el resto de la plantilla".
+    await elegirTitulares(tocar, ['Jacob']);
+
+    await tocar('ev:cambio');
+    expect(adaptador.ultimoTexto).toContain('¿Quién sale?');
+
+    const botonesSale = adaptador.ultimosBotones.map((b) => b.texto);
+    expect(botonesSale.some((t) => t.startsWith('Jacob'))).toBe(true);
+    expect(botonesSale.some((t) => t.startsWith('Andrés'))).toBe(false);
+
+    await tocar(adaptador.ultimosBotones.find((b) => b.texto.startsWith('Jacob'))!.id);
+    expect(adaptador.ultimoTexto).toContain('¿Quién entra?');
+
+    const botonesEntra = adaptador.ultimosBotones.map((b) => b.texto);
+    expect(botonesEntra.some((t) => t.startsWith('Andrés'))).toBe(true);
+    expect(botonesEntra.some((t) => t.startsWith('Jacob'))).toBe(false);
+
+    const idAndres = adaptador.ultimosBotones.find((b) => b.texto.startsWith('Andrés'))!.id;
+
+    adaptador.limpiar();
+    await tocar(idAndres);
+
+    const textoCambio = adaptador.enviados.map((e) => e.respuesta.texto).join('\n');
+    expect(textoCambio).toContain('🔄 Cambio: sale Jacob #10, entra Andrés #7');
+
+    // Con Jacob afuera de la cancha, el próximo "¿Quién?" ya no lo ofrece.
+    await tocar('ev:gol');
+    await tocar('or:propio');
+
+    const botonesQuien = adaptador.ultimosBotones.map((b) => b.texto);
+    expect(botonesQuien.some((t) => t.startsWith('Andrés'))).toBe(true);
+    expect(botonesQuien.some((t) => t.startsWith('Jacob'))).toBe(false);
   });
 
   describe('post partido (RF-4)', () => {

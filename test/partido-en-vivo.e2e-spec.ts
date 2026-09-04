@@ -119,7 +119,7 @@ describe('Partido en vivo (e2e)', () => {
       const editor = await usuario();
       await membresias.asignarRol(editor, equipo.id, 'editor');
 
-      await tiempos.iniciarEnVivo(partido.id, admin);
+      await tiempos.iniciarEnVivo(partido.id, admin, [jacob.id]);
 
       // Sin lock, ambas leerían la ventana vacía y ambas escribirían: es
       // exactamente la carrera que describe B3.
@@ -140,7 +140,7 @@ describe('Partido en vivo (e2e)', () => {
 
     it('deja pasar el segundo reporte si el usuario dice que es otro gol', async () => {
       const { admin, jacob, partido } = await escenario('Es otro');
-      await tiempos.iniciarEnVivo(partido.id, admin);
+      await tiempos.iniciarEnVivo(partido.id, admin, [jacob.id]);
 
       await gol(partido.id, admin, jacob.id);
       const segundo = await eventos.registrar({
@@ -158,7 +158,7 @@ describe('Partido en vivo (e2e)', () => {
 
     it('no pregunta cuando los goleadores son distintos (M1)', async () => {
       const { admin, jacob, andres, partido } = await escenario('M1');
-      await tiempos.iniciarEnVivo(partido.id, admin);
+      await tiempos.iniciarEnVivo(partido.id, admin, [jacob.id]);
 
       await gol(partido.id, admin, jacob.id);
       const segundo = await gol(partido.id, admin, andres.id);
@@ -172,7 +172,7 @@ describe('Partido en vivo (e2e)', () => {
     it('arranca el siguiente tiempo solo al cargar con el anterior cerrado (RF-3.8)', async () => {
       const { admin, jacob, partido } = await escenario('Auto tiempo');
 
-      await tiempos.iniciarEnVivo(partido.id, admin);
+      await tiempos.iniciarEnVivo(partido.id, admin, [jacob.id]);
       await tiempos.finalizarTiempo(partido.id, admin);
 
       const resultado = await tiempos.asegurarTiempoEnCurso(partido.id, admin);
@@ -185,9 +185,9 @@ describe('Partido en vivo (e2e)', () => {
     });
 
     it('no inventa un tiempo que el formato no tiene', async () => {
-      const { admin, partido } = await escenario('Sin tiempos');
+      const { admin, jacob, partido } = await escenario('Sin tiempos');
 
-      await tiempos.iniciarEnVivo(partido.id, admin);
+      await tiempos.iniciarEnVivo(partido.id, admin, [jacob.id]);
       await tiempos.finalizarTiempo(partido.id, admin);
       await tiempos.asegurarTiempoEnCurso(partido.id, admin);
       await tiempos.finalizarTiempo(partido.id, admin);
@@ -198,11 +198,11 @@ describe('Partido en vivo (e2e)', () => {
     });
 
     it('con dos finalizaciones simultáneas solo gana una', async () => {
-      const { admin, equipo, partido } = await escenario('Carrera fin');
+      const { admin, equipo, jacob, partido } = await escenario('Carrera fin');
       const editor = await usuario();
       await membresias.asignarRol(editor, equipo.id, 'editor');
 
-      await tiempos.iniciarEnVivo(partido.id, admin);
+      await tiempos.iniciarEnVivo(partido.id, admin, [jacob.id]);
 
       const [uno, dos] = await Promise.all([
         tiempos.finalizarTiempo(partido.id, admin),
@@ -222,7 +222,7 @@ describe('Partido en vivo (e2e)', () => {
     it('el minuto sale de la duración real del primer tiempo (C4)', async () => {
       const { admin, jacob, partido } = await escenario('Minuto real');
 
-      await tiempos.iniciarEnVivo(partido.id, admin);
+      await tiempos.iniciarEnVivo(partido.id, admin, [jacob.id]);
 
       // Un primer tiempo de 31 minutos —25 más 6 de adición— cerrado hace 5.
       await db.db.execute(
@@ -248,7 +248,7 @@ describe('Partido en vivo (e2e)', () => {
   describe('marcador y deshacer', () => {
     it('el trigger sigue la secuencia gol → autogol → deshacer', async () => {
       const { admin, jacob, partido } = await escenario('Marcador');
-      await tiempos.iniciarEnVivo(partido.id, admin);
+      await tiempos.iniciarEnVivo(partido.id, admin, [jacob.id]);
 
       await gol(partido.id, admin, jacob.id);
       expect((await partidos.obtener(partido.id))?.marcadorPropio).toBe(1);
@@ -276,7 +276,7 @@ describe('Partido en vivo (e2e)', () => {
       const editor = await usuario();
       await membresias.asignarRol(editor, equipo.id, 'editor');
 
-      await tiempos.iniciarEnVivo(partido.id, admin);
+      await tiempos.iniciarEnVivo(partido.id, admin, [jacob.id]);
       await gol(partido.id, admin, jacob.id);
 
       expect(await eventos.deshacerUltimo(partido.id, editor, false)).toMatchObject({
@@ -294,7 +294,7 @@ describe('Partido en vivo (e2e)', () => {
   describe('cierre y reapertura', () => {
     it('guarda el marcador confirmado aunque difiera del derivado (C5)', async () => {
       const { admin, jacob, partido } = await escenario('Cierre');
-      await tiempos.iniciarEnVivo(partido.id, admin);
+      await tiempos.iniciarEnVivo(partido.id, admin, [jacob.id]);
       await gol(partido.id, admin, jacob.id);
 
       const cierre = await partidos.cerrar(partido.id, admin, { propio: 3, rival: 1 });
@@ -306,11 +306,11 @@ describe('Partido en vivo (e2e)', () => {
     });
 
     it('con dos cierres simultáneos solo uno escribe su marcador', async () => {
-      const { admin, equipo, partido } = await escenario('Carrera cierre');
+      const { admin, equipo, jacob, partido } = await escenario('Carrera cierre');
       const editor = await usuario();
       await membresias.asignarRol(editor, equipo.id, 'editor');
 
-      await tiempos.iniciarEnVivo(partido.id, admin);
+      await tiempos.iniciarEnVivo(partido.id, admin, [jacob.id]);
 
       const [uno, dos] = await Promise.all([
         partidos.cerrar(partido.id, admin, { propio: 2, rival: 0 }),
@@ -338,7 +338,7 @@ describe('Partido en vivo (e2e)', () => {
       // y todavía no cerró, así que si la carga solo se demora un poco (el
       // bug) en vez de releer el estado ya cerrado (el fix), se nota acá.
       const { admin, jacob, partido } = await escenario('Cierre vs carga');
-      await tiempos.iniciarEnVivo(partido.id, admin);
+      await tiempos.iniciarEnVivo(partido.id, admin, [jacob.id]);
 
       let soltarCierre: () => void = () => {};
       const cierreEnEspera = new Promise<void>((resolve) => {
@@ -371,8 +371,8 @@ describe('Partido en vivo (e2e)', () => {
     });
 
     it('cerrar detiene el reloj del tiempo que seguía corriendo', async () => {
-      const { admin, partido } = await escenario('Reloj');
-      await tiempos.iniciarEnVivo(partido.id, admin);
+      const { admin, jacob, partido } = await escenario('Reloj');
+      await tiempos.iniciarEnVivo(partido.id, admin, [jacob.id]);
       await partidos.cerrar(partido.id, admin, { propio: 0, rival: 0 });
 
       const abiertos = await db.db.execute(
@@ -384,7 +384,7 @@ describe('Partido en vivo (e2e)', () => {
 
     it('reabrir borra el marcador confirmado y deja volver a cargar', async () => {
       const { admin, jacob, partido } = await escenario('Reabrir');
-      await tiempos.iniciarEnVivo(partido.id, admin);
+      await tiempos.iniciarEnVivo(partido.id, admin, [jacob.id]);
       await partidos.cerrar(partido.id, admin, { propio: 3, rival: 1 });
 
       // Cerrado, no se puede cargar nada.

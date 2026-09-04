@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import type { MensajeAdicional, RespuestaBot } from '../channels/channel.types';
+import type { RespuestaBot } from '../channels/channel.types';
 import {
   botonesPaginados,
   ID_VER_MAS,
   paginaSiguiente,
 } from '../conversacion/pasos-comunes/paginacion';
+import { pasoSeleccionMultiple } from '../conversacion/pasos-comunes/seleccion-multiple';
 import {
   CLAVE_EQUIPO_ID,
   CLAVE_EQUIPO_NOMBRE,
@@ -20,7 +21,13 @@ import type {
 } from '../conversacion/flow.types';
 import { leerNumero, leerTexto } from '../conversacion/flow.types';
 import { MembresiasService } from '../identidad/membresias.service';
-import { describirJugador, JugadoresService, parsearJugador } from '../jugadores/jugadores.service';
+import {
+  describirJugador,
+  type Jugador,
+  JugadoresService,
+  parsearJugador,
+} from '../jugadores/jugadores.service';
+import { AlineacionService } from '../partidos/alineacion.service';
 import { describirFecha } from '../partidos/fechas';
 import { describirMinuto } from '../partidos/minuto';
 import { describirMarcador, type Partido } from '../partidos/partido.mapper';
@@ -66,10 +73,13 @@ const PASOS = {
   equipo: 'equipo',
   partido: 'partido',
   modo: 'modo',
+  titulares: 'titulares',
   panel: 'panel',
   origen: 'origen',
   jugador: 'jugador',
   jugadorLibre: 'jugador-libre',
+  cambioSale: 'cambio-sale',
+  cambioEntra: 'cambio-entra',
   duplicado: 'duplicado',
   finTiempo: 'fin-tiempo',
   finPartido: 'fin-partido',
@@ -82,6 +92,10 @@ const CLAVE_PANEL = 'panelId';
 const CLAVE_TIPO = 'tipoEvento';
 const CLAVE_ORIGEN = 'origenEvento';
 const CLAVE_JUGADOR_PENDIENTE = 'jugadorPendiente';
+/** Solo durante un cambio: el id de quien sale, mientras se elige quien entra. */
+const CLAVE_JUGADOR_SALE = 'jugadorSale';
+/** El id de quien entra, cuando un cambio queda pendiente por posible duplicado. */
+const CLAVE_JUGADOR_ENTRA_PENDIENTE = 'jugadorEntraPendiente';
 /** El "➕ ... quedó agregado a la plantilla" que un alta deja pendiente de
  * mostrar si el evento resulta un posible duplicado. */
 const CLAVE_NOTA_PENDIENTE = 'notaPendiente';
@@ -129,6 +143,7 @@ export class CargarFlujo {
     private readonly tiempos: TiemposService,
     private readonly eventos: EventosService,
     private readonly jugadores: JugadoresService,
+    private readonly alineacion: AlineacionService,
     private readonly membresias: MembresiasService,
     private readonly resumen: ResumenService,
   ) {}
@@ -145,10 +160,13 @@ export class CargarFlujo {
         }),
         this.pasoPartido(),
         this.pasoModo(),
+        this.pasoTitulares(),
         this.pasoPanel(),
         this.pasoOrigen(),
         this.pasoJugador(),
         this.pasoJugadorLibre(),
+        this.pasoCambioSale(),
+        this.pasoCambioEntra(),
         this.pasoDuplicado(),
         this.pasoFinTiempo(),
         this.pasoFinPartido(),
@@ -340,24 +358,67 @@ export class CargarFlujo {
           return { tipo: 'repetir', respuesta: preguntarModo() };
         }
 
-        const inicio = await this.tiempos.iniciarEnVivo(partido.id, ctx.usuarioId ?? '');
+        if (!(await this.siguePudiendoCargar(ctx))) return this.sinPermiso();
 
-        if (inicio.tipo === 'no_existe') return this.partidoPerdido();
-
-        if (inicio.tipo === 'cerrado') {
-          return this.finalizarCon(
-            'Alguien cerró el partido mientras decidías; ya no se puede cargar.',
-          );
-        }
-
-        const aviso =
-          inicio.tipo === 'iniciado'
-            ? '▶️ Arrancó el Tiempo 1.'
-            : await this.avisoEnCurso(inicio.partido);
-
-        return this.irAlPanel(ctx, { aviso });
+        // La titular es obligatoria para arrancar (es la única forma de medir
+        // minutos jugados por niño): siempre se pasa por acá primero. Si dos
+        // personas tocan "En vivo" a la vez, la que confirme después ve
+        // "ya_en_vivo" al llamar a `iniciarEnVivo` y su elección se descarta
+        // sin drama — el mismo criterio que ya usa el resto del partido.
+        return { tipo: 'ir', pasoId: PASOS.titulares, datos: this.datosPanel(ctx) };
       },
     };
+  }
+
+  /** Elige la titular y, con eso, arranca el partido en vivo. */
+  private pasoTitulares(): Paso {
+    return pasoSeleccionMultiple(PASOS.titulares, {
+      pregunta: 'Elige la titular. Toca a cada jugador y "Listo" cuando termines.',
+      minimo: 1,
+      sinOpciones: 'Este equipo no tiene jugadores cargados. Agrégalos con /plantilla primero.',
+      obtenerOpciones: async (ctx) => {
+        const plantilla = await this.jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
+
+        return plantilla.map((j) => ({
+          id: `${PREFIJO_JUGADOR}${j.id}`,
+          texto: describirJugador(j),
+        }));
+      },
+      alConfirmar: async (ctx, elegidos) => {
+        const titularesIds = elegidos.map((id) => id.slice(PREFIJO_JUGADOR.length));
+
+        return this.iniciarPartidoEnVivo(ctx, titularesIds);
+      },
+    });
+  }
+
+  private async iniciarPartidoEnVivo(
+    ctx: ContextoFlujo,
+    titularesIds: string[],
+  ): Promise<Transicion> {
+    const partidoId = leerTexto(ctx.datos, CLAVE_PARTIDO_ID);
+    const inicio = await this.tiempos.iniciarEnVivo(partidoId, ctx.usuarioId ?? '', titularesIds);
+
+    if (inicio.tipo === 'no_existe') return this.partidoPerdido();
+
+    if (inicio.tipo === 'cerrado') {
+      return this.finalizarCon(
+        'Alguien cerró el partido mientras elegías la titular; ya no se puede cargar.',
+      );
+    }
+
+    // No debería pasar: `pasoSeleccionMultiple` ya exige al menos uno.
+    // Defensivo, no un camino real.
+    if (inicio.tipo === 'sin_titulares') {
+      return { tipo: 'ir', pasoId: PASOS.titulares, datos: this.datosPanel(ctx) };
+    }
+
+    const aviso =
+      inicio.tipo === 'iniciado'
+        ? '▶️ Arrancó el Tiempo 1.'
+        : await this.avisoEnCurso(inicio.partido);
+
+    return this.irAlPanel(ctx, { aviso });
   }
 
   private async avisoEnCurso(partido: Partido): Promise<string> {
@@ -454,7 +515,15 @@ export class CargarFlujo {
       [CLAVE_TIPO]: crudo,
       [CLAVE_AVISO]: aviso,
       [CLAVE_PAGINA]: 0,
+      // Se limpia acá y no al volver al panel: es lo único que hace que un
+      // evento normal después de un cambio no herede "quién sale" del cambio
+      // anterior. `pasoCambioSale` lo vuelve a poner si corresponde.
+      [CLAVE_JUGADOR_SALE]: '',
     };
+
+    if (crudo === 'cambio') {
+      return { tipo: 'ir', pasoId: PASOS.cambioSale, datos };
+    }
 
     if (admiteEquipoRival(crudo)) {
       return { tipo: 'ir', pasoId: PASOS.origen, datos };
@@ -472,7 +541,6 @@ export class CargarFlujo {
         leerTexto(ctx.datos, CLAVE_EQUIPO_NOMBRE, 'Nosotros'),
         partido.rival,
       ),
-      editarMensajeId: this.panelId(ctx),
     });
 
     return {
@@ -525,9 +593,9 @@ export class CargarFlujo {
     const extras = (ctx: ContextoFlujo) => (admiteSinFicha(ctx) ? 2 : 1);
 
     const preguntar = async (ctx: ContextoFlujo, pagina: number): Promise<RespuestaBot> => {
-      const plantilla = await this.jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
+      const { enCancha } = await this.particionEnCancha(ctx);
       const { botones } = botonesPaginados(
-        plantilla.map((j) => ({ id: `${PREFIJO_JUGADOR}${j.id}`, texto: describirJugador(j) })),
+        enCancha.map((j) => ({ id: `${PREFIJO_JUGADOR}${j.id}`, texto: describirJugador(j) })),
         pagina,
         extras(ctx),
       );
@@ -541,7 +609,6 @@ export class CargarFlujo {
       return {
         texto: this.conAviso(ctx, '¿Quién?'),
         botones,
-        editarMensajeId: this.panelId(ctx),
       };
     };
 
@@ -557,8 +624,8 @@ export class CargarFlujo {
         const pagina = leerNumero(ctx.datos, CLAVE_PAGINA, 0);
 
         if (seleccion === ID_VER_MAS) {
-          const plantilla = await this.jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
-          const siguiente = paginaSiguiente(pagina, plantilla.length, extras(ctx));
+          const { enCancha } = await this.particionEnCancha(ctx);
+          const siguiente = paginaSiguiente(pagina, enCancha.length, extras(ctx));
 
           ctx.datos[CLAVE_PAGINA] = siguiente;
           ctx.datos[CLAVE_AVISO] = '';
@@ -593,12 +660,9 @@ export class CargarFlujo {
     return {
       id: PASOS.jugadorLibre,
 
-      entrar: (ctx: ContextoFlujo) =>
+      entrar: () =>
         Promise.resolve({
-          respuesta: {
-            texto: 'Escribe el nombre (y el dorsal si quieres): Jacob, 10',
-            editarMensajeId: this.panelId(ctx),
-          },
+          respuesta: { texto: 'Escribe el nombre (y el dorsal si quieres): Jacob, 10' },
         }),
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
@@ -611,13 +675,129 @@ export class CargarFlujo {
     };
   }
 
+  // --- Cambio: quién sale, quién entra -----------------------------------
+
+  private pasoCambioSale(): Paso {
+    const preguntar = async (ctx: ContextoFlujo, pagina: number): Promise<RespuestaBot> => {
+      const { enCancha } = await this.particionEnCancha(ctx);
+      const { botones } = botonesPaginados(
+        enCancha.map((j) => ({ id: `${PREFIJO_JUGADOR}${j.id}`, texto: describirJugador(j) })),
+        pagina,
+      );
+
+      return { texto: this.conAviso(ctx, '¿Quién sale?'), botones };
+    };
+
+    return {
+      id: PASOS.cambioSale,
+
+      entrar: async (ctx: ContextoFlujo): Promise<Entrada> => ({
+        respuesta: await preguntar(ctx, leerNumero(ctx.datos, CLAVE_PAGINA, 0)),
+      }),
+
+      recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
+        const seleccion = ctx.mensaje.seleccionId ?? '';
+        const pagina = leerNumero(ctx.datos, CLAVE_PAGINA, 0);
+
+        if (seleccion === ID_VER_MAS) {
+          const { enCancha } = await this.particionEnCancha(ctx);
+          const siguiente = paginaSiguiente(pagina, enCancha.length);
+
+          ctx.datos[CLAVE_PAGINA] = siguiente;
+          ctx.datos[CLAVE_AVISO] = '';
+
+          return { tipo: 'repetir', respuesta: await preguntar(ctx, siguiente) };
+        }
+
+        if (!seleccion.startsWith(PREFIJO_JUGADOR)) {
+          return { tipo: 'repetir', respuesta: await preguntar(ctx, pagina) };
+        }
+
+        return {
+          tipo: 'ir',
+          pasoId: PASOS.cambioEntra,
+          datos: {
+            ...this.datosPanel(ctx),
+            [CLAVE_JUGADOR_SALE]: seleccion.slice(PREFIJO_JUGADOR.length),
+            [CLAVE_PAGINA]: 0,
+          },
+        };
+      },
+    };
+  }
+
+  private pasoCambioEntra(): Paso {
+    // Una reserva para "Otro jugador": la banca no admite "Sin identificar"
+    // —un cambio siempre necesita saber quién entra— así que no hace falta
+    // el segundo hueco que sí reserva `pasoJugador`.
+    const preguntar = async (ctx: ContextoFlujo, pagina: number): Promise<RespuestaBot> => {
+      const { banca } = await this.particionEnCancha(ctx);
+      const { botones } = botonesPaginados(
+        banca.map((j) => ({ id: `${PREFIJO_JUGADOR}${j.id}`, texto: describirJugador(j) })),
+        pagina,
+        1,
+      );
+
+      botones.push({ id: ID_JUGADOR_OTRO, texto: 'Otro jugador' });
+
+      return { texto: this.conAviso(ctx, '¿Quién entra?'), botones };
+    };
+
+    return {
+      id: PASOS.cambioEntra,
+
+      entrar: async (ctx: ContextoFlujo): Promise<Entrada> => ({
+        respuesta: await preguntar(ctx, leerNumero(ctx.datos, CLAVE_PAGINA, 0)),
+      }),
+
+      recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
+        const seleccion = ctx.mensaje.seleccionId ?? '';
+        const pagina = leerNumero(ctx.datos, CLAVE_PAGINA, 0);
+
+        if (seleccion === ID_VER_MAS) {
+          const { banca } = await this.particionEnCancha(ctx);
+          const siguiente = paginaSiguiente(pagina, banca.length, 1);
+
+          ctx.datos[CLAVE_PAGINA] = siguiente;
+          ctx.datos[CLAVE_AVISO] = '';
+
+          return { tipo: 'repetir', respuesta: await preguntar(ctx, siguiente) };
+        }
+
+        if (seleccion === ID_JUGADOR_OTRO) {
+          return { tipo: 'ir', pasoId: PASOS.jugadorLibre, datos: this.datosPanel(ctx) };
+        }
+
+        if (seleccion.startsWith(PREFIJO_JUGADOR)) {
+          return this.registrarCambio(ctx, seleccion.slice(PREFIJO_JUGADOR.length));
+        }
+
+        const escrito = ctx.mensaje.texto?.trim();
+
+        if (escrito) return this.resolverPorNombre(ctx, escrito);
+
+        return { tipo: 'repetir', respuesta: await preguntar(ctx, pagina) };
+      },
+    };
+  }
+
+  private registrarCambio(ctx: ContextoFlujo, entraId: string, nota?: string): Promise<Transicion> {
+    const saleId = leerTexto(ctx.datos, CLAVE_JUGADOR_SALE);
+
+    return this.registrar(ctx, { jugadorId: saleId, jugadorEntraId: entraId, nota });
+  }
+
   /**
    * Busca al jugador por nombre y, si no está en la plantilla, lo da de alta.
    *
    * Es lo que hace falta al borde de la cancha: aparece un chico que nadie
-   * cargó y el gol no puede esperar a que alguien edite la plantilla. Se busca
-   * también entre los inactivos, para no crear un duplicado de alguien que
-   * estaba dado de baja.
+   * cargó y el evento no puede esperar a que alguien edite la plantilla. Se
+   * busca también entre los inactivos, para no crear un duplicado de alguien
+   * que estaba dado de baja.
+   *
+   * Con un cambio a medio cargar (`CLAVE_JUGADOR_SALE` puesto), lo que se
+   * resuelve es quien entra, no un jugador cualquiera — y ahí no hay "en
+   * cancha" que respetar, es exactamente lo contrario.
    */
   private async resolverPorNombre(ctx: ContextoFlujo, texto: string): Promise<Transicion> {
     const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
@@ -630,12 +810,83 @@ export class CargarFlujo {
       };
     }
 
+    const saleId = leerTexto(ctx.datos, CLAVE_JUGADOR_SALE);
+
+    if (saleId) {
+      const { jugador, creado } = await this.jugadores.resolverOCrear(equipoId, parseado);
+
+      return this.registrarCambio(
+        ctx,
+        jugador.id,
+        creado ? `➕ ${describirJugador(jugador)} quedó agregado a la plantilla.` : undefined,
+      );
+    }
+
+    const { enCancha, banca, hayTitular } = await this.particionEnCancha(ctx);
+    const buscado = parseado.nombre.trim().toLowerCase();
+    const enBanca = banca.find((j) => j.nombre.toLowerCase() === buscado);
+
+    // Alguien que hoy está en la banca no puede anotar ni recibir tarjeta:
+    // sin este freno, el minuto jugado que la titular existe para medir
+    // dejaría de ser confiable.
+    if (enBanca) {
+      return {
+        tipo: 'repetir',
+        respuesta: { texto: `${enBanca.nombre} no está en cancha ahora mismo.` },
+      };
+    }
+
+    const yaEnCancha = enCancha.find((j) => j.nombre.toLowerCase() === buscado);
+
+    if (yaEnCancha) return this.registrar(ctx, { jugadorId: yaEnCancha.id });
+
     const { jugador, creado } = await this.jugadores.resolverOCrear(equipoId, parseado);
+
+    // Recién creado (o encontrado fuera de la titular/banca conocidas): si el
+    // partido ya tiene titular, se suma a la cancha ahí mismo — si puede
+    // anotar, tiene que poder aparecer en los próximos eventos también.
+    if (hayTitular) {
+      await this.alineacion.agregarSiHaceFalta(
+        leerTexto(ctx.datos, CLAVE_PARTIDO_ID),
+        jugador.id,
+        ctx.usuarioId ?? '',
+      );
+    }
 
     return this.registrar(ctx, {
       jugadorId: jugador.id,
       nota: creado ? `➕ ${describirJugador(jugador)} quedó agregado a la plantilla.` : undefined,
     });
+  }
+
+  /**
+   * Divide la plantilla entre quienes están en cancha y quienes están en la
+   * banca, según la titular más los cambios ya cargados.
+   *
+   * Sin titular todavía —un partido legado, que arrancó antes de que este
+   * gate existiera— no hay nada que filtrar: se cae a la plantilla completa
+   * como "en cancha", igual que se comportaba antes de este cambio.
+   */
+  private async particionEnCancha(
+    ctx: ContextoFlujo,
+  ): Promise<{ enCancha: Jugador[]; banca: Jugador[]; hayTitular: boolean }> {
+    const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
+    const partidoId = leerTexto(ctx.datos, CLAVE_PARTIDO_ID);
+
+    const [plantilla, idsEnCancha] = await Promise.all([
+      this.jugadores.listar(equipoId),
+      this.alineacion.enCanchaDe(partidoId),
+    ]);
+
+    if (idsEnCancha.size === 0) {
+      return { enCancha: plantilla, banca: [], hayTitular: false };
+    }
+
+    return {
+      enCancha: plantilla.filter((j) => idsEnCancha.has(j.id)),
+      banca: plantilla.filter((j) => !idsEnCancha.has(j.id)),
+      hayTitular: true,
+    };
   }
 
   // --- Registro y duplicados --------------------------------------------
@@ -644,6 +895,7 @@ export class CargarFlujo {
     ctx: ContextoFlujo,
     opciones: {
       jugadorId: string | null;
+      jugadorEntraId?: string;
       equipoOrigen?: 'propio' | 'rival';
       forzar?: boolean;
       nota?: string;
@@ -664,6 +916,7 @@ export class CargarFlujo {
       tipo,
       equipoOrigen,
       jugadorId: opciones.jugadorId,
+      jugadorEntraId: opciones.jugadorEntraId ?? null,
       reportadoPor: ctx.usuarioId ?? '',
       forzar: opciones.forzar,
     };
@@ -688,6 +941,7 @@ export class CargarFlujo {
           ...this.datosPanel(ctx),
           [CLAVE_ORIGEN]: equipoOrigen,
           [CLAVE_JUGADOR_PENDIENTE]: opciones.jugadorId ?? '',
+          [CLAVE_JUGADOR_ENTRA_PENDIENTE]: opciones.jugadorEntraId ?? '',
           [CLAVE_NOTA_PENDIENTE]: opciones.nota ?? '',
           [CLAVE_AVISO]: avisoDeDuplicado(
             resultado.reciente,
@@ -719,7 +973,6 @@ export class CargarFlujo {
         { id: ID_ES_OTRO, texto: 'Es otro' },
         { id: ID_YA_ESTABA, texto: 'Ya estaba' },
       ],
-      editarMensajeId: this.panelId(ctx),
     });
 
     return {
@@ -745,9 +998,11 @@ export class CargarFlujo {
         }
 
         const pendiente = leerTexto(ctx.datos, CLAVE_JUGADOR_PENDIENTE);
+        const entraPendiente = leerTexto(ctx.datos, CLAVE_JUGADOR_ENTRA_PENDIENTE);
 
         return this.registrar(ctx, {
           jugadorId: pendiente || null,
+          jugadorEntraId: entraPendiente || undefined,
           forzar: true,
           nota: nota || undefined,
         });
@@ -774,7 +1029,6 @@ export class CargarFlujo {
           { id: ID_SI, texto: 'Sí' },
           { id: ID_NO, texto: 'Todavía no' },
         ],
-        editarMensajeId: this.panelId(ctx),
       };
     };
 
@@ -879,7 +1133,6 @@ export class CargarFlujo {
           { id: ID_SI, texto: 'Sí, finalizar' },
           { id: ID_NO, texto: 'No, falta algo' },
         ],
-        editarMensajeId: this.panelId(ctx),
       };
     };
 
@@ -951,7 +1204,6 @@ export class CargarFlujo {
           tipo: 'finalizar',
           respuesta: {
             texto: 'Partido cerrado ✅',
-            editarMensajeId: this.panelId(ctx),
             adicionales: [{ texto: resumen }],
           },
         };
@@ -1003,7 +1255,10 @@ export class CargarFlujo {
    *
    * El aviso y la bitácora se consumen acá: son de un solo uso, y dejarlos en
    * los datos haría que el próximo toque volviera a anunciar un gol de hace
-   * diez minutos.
+   * diez minutos. Cada llamada manda un mensaje nuevo (nunca edita el
+   * anterior): la bitácora pendiente se antepone al propio texto del panel en
+   * vez de mandarse aparte, así un evento sigue dejando un solo mensaje en el
+   * chat y no dos.
    */
   private async dibujarPanel(ctx: ContextoFlujo): Promise<RespuestaBot | null> {
     const partido = await this.partidoDe(ctx);
@@ -1015,7 +1270,6 @@ export class CargarFlujo {
 
     ctx.datos[CLAVE_AVISO] = '';
     ctx.datos[CLAVE_BITACORA] = [];
-    ctx.datos[CLAVE_PANEL] = this.panelId(ctx);
 
     const contexto = await this.tiempos.contextoDeCarga(partido);
     const panel = panelEnVivo({
@@ -1025,13 +1279,9 @@ export class CargarFlujo {
       aviso: aviso || undefined,
     });
 
-    const adicionales: MensajeAdicional[] = bitacora.map((texto) => ({ texto }));
+    const texto = bitacora.length > 0 ? [...bitacora, '', panel.texto].join('\n') : panel.texto;
 
-    return {
-      ...panel,
-      editarMensajeId: this.panelId(ctx),
-      ...(adicionales.length > 0 ? { adicionales } : {}),
-    };
+    return { ...panel, texto };
   }
 
   /**

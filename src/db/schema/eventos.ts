@@ -25,6 +25,16 @@ export const eventos = pgTable(
     jugadorId: uuid('jugador_id').references(() => jugadores.id, { onDelete: 'cascade' }),
 
     /**
+     * Solo para `tipo = 'cambio'`: el jugador que entra. `jugadorId` sigue
+     * significando "de quién es el evento", que para un cambio es quien sale
+     * — la misma columna que ya usan gol/tarjeta/asistencia, sin duplicar el
+     * modelo.
+     */
+    jugadorEntraId: uuid('jugador_entra_id').references(() => jugadores.id, {
+      onDelete: 'cascade',
+    }),
+
+    /**
      * B4: nulos en modo post partido, que no captura ni tiempo ni minuto.
      * El check obliga a que en vivo siempre vengan ambos.
      */
@@ -68,6 +78,12 @@ export const eventos = pgTable(
     check(
       'eventos_jugador_requerido_check',
       sql`equipo_origen = 'rival' or tipo in ('gol', 'autogol') or jugador_id is not null`,
+    ),
+    // Un cambio sin los dos jugadores identificados no dice nada: "alguien
+    // entró" no sirve para medir minutos. Y no puede ser la misma persona.
+    check(
+      'eventos_cambio_dos_jugadores_check',
+      sql`tipo <> 'cambio' or (jugador_id is not null and jugador_entra_id is not null and jugador_id <> jugador_entra_id)`,
     ),
   ],
 );

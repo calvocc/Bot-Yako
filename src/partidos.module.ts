@@ -6,6 +6,7 @@ import { Router } from './conversacion/router.service';
 import { CargarFlujo, CLAVE_DESTINO, FLUJO_CARGAR } from './eventos/cargar.flujo';
 import { EventosService } from './eventos/eventos.service';
 import { OrganizacionModule } from './organizacion.module';
+import { AlineacionService } from './partidos/alineacion.service';
 import { FLUJO_NUEVO_PARTIDO, NuevoPartidoFlujo } from './partidos/nuevo-partido.flujo';
 import { PartidosHandler } from './partidos/partidos.handler';
 import { PartidosService } from './partidos/partidos.service';
@@ -27,6 +28,7 @@ import { ResumenService } from './resumen/resumen.service';
     CompetenciasService,
     PartidosService,
     TiemposService,
+    AlineacionService,
     EventosService,
     ResumenService,
     PartidosHandler,
@@ -34,7 +36,14 @@ import { ResumenService } from './resumen/resumen.service';
     ReabrirFlujo,
     CargarFlujo,
   ],
-  exports: [CompetenciasService, PartidosService, TiemposService, EventosService, ResumenService],
+  exports: [
+    CompetenciasService,
+    PartidosService,
+    TiemposService,
+    AlineacionService,
+    EventosService,
+    ResumenService,
+  ],
 })
 export class PartidosModule implements OnModuleInit {
   constructor(

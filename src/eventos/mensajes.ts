@@ -85,9 +85,9 @@ function botonesDeControl(partido: Partido): Boton[] {
 /**
  * La línea de bitácora que queda en el chat.
  *
- * El panel se edita en el sitio, así que sin esto el chat no guardaría rastro
- * de lo que pasó y un papá no tendría nada que reenviar al grupo hasta el
- * final del partido.
+ * Es lo que va quedando de crónica del partido —y lo que un papá reenvía al
+ * grupo— así que un cambio se cuenta distinto: no hay "un" protagonista, hay
+ * quien sale y quien entra.
  */
 export function lineaDeBitacora(
   evento: EventoCargado,
@@ -95,9 +95,17 @@ export function lineaDeBitacora(
   equipoNombre: string,
   rival: string,
 ): string {
+  const cuando = evento.minutoCalculado === null ? '' : `, min ${evento.minutoCalculado}`;
+
+  if (evento.tipo === 'cambio') {
+    const sale = protagonista(evento, equipoNombre, rival);
+    const entra = protagonistaEntra(evento);
+
+    return `🔄 Cambio: sale ${sale}, entra ${entra}${cuando}`;
+  }
+
   const definicion = definicionDe(evento.tipo);
   const quien = protagonista(evento, equipoNombre, rival);
-  const cuando = evento.minutoCalculado === null ? '' : `, min ${evento.minutoCalculado}`;
   const resultado = mueveElMarcador(evento.tipo) ? ` — ${marcador.propio}-${marcador.rival}` : '';
 
   return `${definicion.emoji} ${definicion.sustantivo} de ${quien}${cuando}${resultado}`;
@@ -107,19 +115,34 @@ function mueveElMarcador(tipo: TipoEvento): boolean {
   return tipo === 'gol' || tipo === 'autogol';
 }
 
+function nombrarJugador(nombre: string | null, dorsal: number | null): string | null {
+  if (!nombre) return null;
+
+  return dorsal === null ? nombre : `${nombre} #${dorsal}`;
+}
+
 /** A quién se le atribuye el evento: el jugador si está identificado, si no el equipo. */
 export function protagonista(
   evento: Pick<EventoCargado, 'jugadorNombre' | 'jugadorDorsal' | 'equipoOrigen'>,
   equipoNombre: string,
   rival: string,
 ): string {
-  if (!evento.jugadorNombre) {
-    return evento.equipoOrigen === 'propio' ? equipoNombre : rival;
-  }
+  return (
+    nombrarJugador(evento.jugadorNombre, evento.jugadorDorsal) ??
+    (evento.equipoOrigen === 'propio' ? equipoNombre : rival)
+  );
+}
 
-  return evento.jugadorDorsal === null
-    ? evento.jugadorNombre
-    : `${evento.jugadorNombre} #${evento.jugadorDorsal}`;
+/**
+ * Quién entra en un cambio. A diferencia de `protagonista`, no tiene
+ * respaldo de equipo: el check de la base exige que siempre esté
+ * identificado, así que si no lo está es un dato inconsistente, no un rival
+ * sin ficha.
+ */
+export function protagonistaEntra(
+  evento: Pick<EventoCargado, 'jugadorEntraNombre' | 'jugadorEntraDorsal'>,
+): string {
+  return nombrarJugador(evento.jugadorEntraNombre, evento.jugadorEntraDorsal) ?? 'alguien';
 }
 
 export function botonesDeOrigen(equipoNombre: string, rival: string): Boton[] {
@@ -143,14 +166,17 @@ export function avisoDeDuplicado(
   equipoNombre: string,
   rival: string,
 ): string {
-  const definicion = definicionDe(reciente.tipo);
-  const quien = protagonista(reciente, equipoNombre, rival);
   const cuando = reciente.minutoCalculado === null ? '' : `, min ${reciente.minutoCalculado}`;
   const autor = reciente.reportanteNombre ?? 'Alguien';
 
+  const detalle =
+    reciente.tipo === 'cambio'
+      ? `Cambio: sale ${protagonista(reciente, equipoNombre, rival)}, entra ${protagonistaEntra(reciente)}`
+      : `${definicionDe(reciente.tipo).sustantivo} de ${protagonista(reciente, equipoNombre, rival)}${cuando}`;
+
   return [
     `⚠️ Hace ${segundos} segundos, ${autor} ya registró:`,
-    `${definicion.sustantivo} de ${quien}${cuando}`,
+    detalle,
     '',
     '¿Lo tuyo es otro evento o es el mismo que ya se cargó?',
   ].join('\n');

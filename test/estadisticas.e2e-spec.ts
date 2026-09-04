@@ -131,7 +131,7 @@ describe('Estadísticas (e2e)', () => {
       creadoPor: admin,
     });
 
-    await tiempos.iniciarEnVivo(partido.id, admin);
+    await tiempos.iniciarEnVivo(partido.id, admin, [jugadorId]);
 
     for (let i = 0; i < cantidad; i++) {
       // `forzar` salta el chequeo de duplicados (B3): son varios goles
