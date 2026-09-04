@@ -1,13 +1,22 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq } from 'drizzle-orm';
-import { DbService } from '../db/db.service';
-import { jugadores } from '../db/schema';
+import { and, asc, eq, ne, sql } from 'drizzle-orm';
+import { DbService, type EjecutorDb } from '../db/db.service';
+import { equipos, jugadores, personas } from '../db/schema';
 
 export interface Jugador {
   id: string;
   nombre: string;
   dorsal: number | null;
   activo: boolean;
+}
+
+/** Un jugador con el mismo nombre, en otro equipo de la misma academia. */
+export interface CandidatoAcademia {
+  jugadorId: string;
+  nombre: string;
+  dorsal: number | null;
+  equipoId: string;
+  equipoNombre: string;
 }
 
 export class DorsalOcupadoError extends Error {
@@ -23,8 +32,8 @@ export class DorsalOcupadoError extends Error {
 export class JugadoresService {
   constructor(private readonly db: DbService) {}
 
-  async listar(equipoId: string, incluirInactivos = false): Promise<Jugador[]> {
-    const filas = await this.db.db
+  async listar(equipoId: string, incluirInactivos = false, tx?: EjecutorDb): Promise<Jugador[]> {
+    const filas = await (tx ?? this.db.db)
       .select()
       .from(jugadores)
       .where(eq(jugadores.equipoId, equipoId))
@@ -42,16 +51,26 @@ export class JugadoresService {
    * lo tiene: el índice único de la base también lo impide, pero su error no
    * sirve para explicárselo a nadie.
    */
-  async crear(equipoId: string, nombre: string, dorsal?: number): Promise<Jugador> {
+  async crear(
+    equipoId: string,
+    nombre: string,
+    dorsal?: number,
+    personaId?: string,
+    tx?: EjecutorDb,
+  ): Promise<Jugador> {
+    const ejecutor = tx ?? this.db.db;
+
     if (dorsal !== undefined) {
-      const ocupado = (await this.listar(equipoId)).find((j) => j.dorsal === dorsal);
+      const ocupado = (await this.listar(equipoId, false, ejecutor)).find(
+        (j) => j.dorsal === dorsal,
+      );
 
       if (ocupado) throw new DorsalOcupadoError(dorsal, ocupado.nombre);
     }
 
-    const [fila] = await this.db.db
+    const [fila] = await ejecutor
       .insert(jugadores)
-      .values({ equipoId, nombre, dorsal: dorsal ?? null })
+      .values({ equipoId, nombre, dorsal: dorsal ?? null, personaId })
       .returning();
 
     return { id: fila.id, nombre: fila.nombre, dorsal: fila.dorsal, activo: fila.activo };
@@ -82,43 +101,154 @@ export class JugadoresService {
   }
 
   /**
-   * Busca un jugador por nombre y, si no está en la plantilla, lo da de alta.
-   *
-   * Es lo que hace falta al borde de la cancha: aparece alguien que nadie
-   * cargó y el evento no puede esperar a que se edite la plantilla. Se busca
-   * también entre los inactivos, para no crear un duplicado de alguien que
-   * estaba dado de baja. Compartido entre la carga en vivo
-   * (`cargar.flujo.ts`) y la carga post partido, que resuelven jugadores de
-   * la misma forma.
+   * Busca un jugador por nombre dentro de la plantilla de un equipo (activos
+   * e inactivos), sin crear nada. Extraído de `resolverOCrear` para que el
+   * llamador pueda decidir qué hacer con un "no está" antes de dar de alta —
+   * en particular, ofrecer vincularlo con su ficha de otro equipo de la
+   * misma academia en vez de crear un duplicado sin relación.
    */
-  async resolverOCrear(
-    equipoId: string,
-    parseado: JugadorParseado,
-  ): Promise<{ jugador: Jugador; creado: boolean }> {
+  async buscarEnEquipo(equipoId: string, parseado: JugadorParseado): Promise<Jugador | null> {
     const plantilla = await this.listar(equipoId, true);
     const buscado = parseado.nombre.toLowerCase();
 
     // El nombre exacto manda, pero si no matchea y el dorsal sí es de alguien
     // conocido, es la misma persona escrita distinto ("Jacob, 10" contra
     // "Jacob Restrepo" #10): usarlo evita un duplicado en la plantilla.
-    const existente =
+    return (
       plantilla.find((j) => j.nombre.toLowerCase() === buscado) ??
       (parseado.dorsal !== undefined
         ? plantilla.find((j) => j.dorsal === parseado.dorsal)
-        : undefined);
+        : undefined) ??
+      null
+    );
+  }
+
+  /**
+   * Busca un jugador por nombre y, si no está en la plantilla, lo da de alta.
+   *
+   * Es lo que hace falta al borde de la cancha: aparece alguien que nadie
+   * cargó y el evento no puede esperar a que se edite la plantilla. Compartido
+   * entre la carga en vivo (`cargar.flujo.ts`) y la carga post partido, que
+   * resuelven jugadores de la misma forma.
+   *
+   * No busca en otros equipos de la academia — eso es a propósito: crear acá
+   * puede pasar en medio de cualquier carga, sin oportunidad de preguntar
+   * "¿es el mismo Jacob de Sub-9?" antes de escribir. `cargar.flujo.ts` sí
+   * pregunta, con `buscarEnEquipo` + `buscarEnAcademia` + `vincularNuevoEquipo`
+   * por separado, antes de decidir crear uno nuevo sin vínculo.
+   */
+  async resolverOCrear(
+    equipoId: string,
+    parseado: JugadorParseado,
+  ): Promise<{ jugador: Jugador; creado: boolean }> {
+    const existente = await this.buscarEnEquipo(equipoId, parseado);
 
     if (existente) return { jugador: existente, creado: false };
 
-    // El dorsal se descarta si ya es de otro: el alta no puede fallar en
-    // medio de una carga por un número.
+    const jugador = await this.crearConDorsalSiLibre(equipoId, parseado);
+
+    return { jugador, creado: true };
+  }
+
+  /**
+   * Jugadores con el mismo nombre en otros equipos de la misma academia.
+   *
+   * Es la base para no duplicar personas entre equipos: antes de crear a
+   * alguien que no está en la plantilla de este equipo, se busca si ya
+   * existe en otro — para ofrecer vincularlo en vez de crear una ficha sin
+   * relación. Solo entre jugadores activos: uno dado de baja en otro equipo
+   * no es un candidato obvio a "juega acá también".
+   */
+  async buscarEnAcademia(
+    academiaId: string,
+    nombre: string,
+    excluirEquipoId?: string,
+  ): Promise<CandidatoAcademia[]> {
+    const buscado = nombre.trim().toLowerCase();
+
+    if (!buscado) return [];
+
+    const filas = await this.db.db
+      .select({
+        jugadorId: jugadores.id,
+        nombre: jugadores.nombre,
+        dorsal: jugadores.dorsal,
+        equipoId: jugadores.equipoId,
+        equipoNombre: equipos.nombre,
+      })
+      .from(jugadores)
+      .innerJoin(equipos, eq(equipos.id, jugadores.equipoId))
+      .where(
+        and(
+          eq(equipos.academiaId, academiaId),
+          eq(jugadores.activo, true),
+          sql`lower(trim(${jugadores.nombre})) = ${buscado}`,
+          excluirEquipoId ? ne(jugadores.equipoId, excluirEquipoId) : undefined,
+        ),
+      )
+      .orderBy(asc(jugadores.nombre));
+
+    return filas;
+  }
+
+  /**
+   * Da de alta a un jugador en un equipo nuevo, vinculado a la misma persona
+   * que una ficha ya existente (de otro equipo de la academia).
+   *
+   * Si esa ficha todavía no tiene `personaId` —el caso normal, hoy nadie lo
+   * usa— se le crea uno ahí mismo: recién en este momento hay confirmación de
+   * que dos fichas son la misma persona, así que es el primer punto donde
+   * vale la pena escribir esa relación. Todo en una transacción para que dos
+   * cargas concurrentes vinculando al mismo jugador no lo dejen a medias.
+   */
+  async vincularNuevoEquipo(
+    equipoId: string,
+    parseado: JugadorParseado,
+    jugadorOrigenId: string,
+  ): Promise<Jugador> {
+    return this.db.db.transaction(async (tx) => {
+      const [origen] = await tx
+        .select()
+        .from(jugadores)
+        .where(eq(jugadores.id, jugadorOrigenId))
+        .for('update')
+        .limit(1);
+
+      if (!origen) {
+        throw new Error(`No encontré el jugador de origen ${jugadorOrigenId} para vincular`);
+      }
+
+      let personaId = origen.personaId;
+
+      if (!personaId) {
+        const [persona] = await tx.insert(personas).values({ nombre: origen.nombre }).returning();
+
+        personaId = persona.id;
+        await tx.update(jugadores).set({ personaId }).where(eq(jugadores.id, origen.id));
+      }
+
+      return this.crearConDorsalSiLibre(equipoId, parseado, personaId, tx);
+    });
+  }
+
+  /** El dorsal pedido, o ninguno si ya es de otro en este equipo — el alta
+   * no puede fallar en medio de una carga por un número. */
+  private async crearConDorsalSiLibre(
+    equipoId: string,
+    parseado: JugadorParseado,
+    personaId?: string,
+    tx?: EjecutorDb,
+  ): Promise<Jugador> {
+    const plantilla = await this.listar(equipoId, true, tx);
     const dorsalLibre = plantilla.every((j) => j.dorsal !== parseado.dorsal);
-    const jugador = await this.crear(
+
+    return this.crear(
       equipoId,
       parseado.nombre,
       dorsalLibre ? parseado.dorsal : undefined,
+      personaId,
+      tx,
     );
-
-    return { jugador, creado: true };
   }
 }
 

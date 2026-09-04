@@ -311,6 +311,49 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     expect(plantilla.map((j) => j.nombre)).toContain('Samuel');
   });
 
+  it('un nombre que ya juega en otro equipo de la academia pide confirmar antes de crear', async () => {
+    const { usuarioId, academia, equipo: sub11, decir, tocar } = await escenario('Vínculo');
+    // Jacob ya existe en Sub-11 (lo crea `escenario`). El mismo usuario admin
+    // también dirige Sub-13 — un DT con dos categorías, caso real.
+    const sub13 = await equipos.crear(
+      academia.id,
+      'Sub-13',
+      { cantidadTiempos: 2, minutosPorTiempo: 25 },
+      usuarioId,
+    );
+    await jugadores.crear(sub13.id, 'Local', 1);
+    await crearPartido(sub13.id);
+
+    await decir('/cargar');
+    // Dos equipos elegibles: hay que elegir Sub-13 explícitamente.
+    const botonSub13 = adaptador.ultimosBotones.find((b) => b.texto.includes('Sub-13'));
+    await tocar(botonSub13!.id);
+
+    await tocar('md:vivo');
+    await elegirTitulares(tocar, ['Local']);
+    await tocar('ev:gol');
+    await tocar('or:propio');
+    await tocar('jg:otro');
+
+    await decir('Jacob');
+    expect(adaptador.ultimoTexto).toContain('¿Es el mismo Jacob que ya juega en Sub-11?');
+
+    await tocar('ok:si');
+
+    const textos = adaptador.enviados.map((e) => e.respuesta.texto).join('\n');
+    expect(textos).toContain('Gol de Jacob');
+    expect(textos).toContain('vinculado con su ficha de Sub-11');
+
+    // Sub-13 tiene su propia ficha de Jacob (sin dorsal — el #10 de Sub-11
+    // no dice nada de si está libre acá), enlazada por persona a la de Sub-11.
+    const plantillaSub13 = await jugadores.listar(sub13.id);
+    const jacobEnSub13 = plantillaSub13.find((j) => j.nombre === 'Jacob');
+    expect(jacobEnSub13).toBeDefined();
+
+    const plantillaSub11 = await jugadores.listar(sub11.id);
+    expect(plantillaSub11.find((j) => j.nombre === 'Jacob')?.id).not.toBe(jacobEnSub13?.id);
+  });
+
   it('no deja arrancar en vivo sin elegir al menos un titular', async () => {
     const { equipo, decir, tocar } = await escenario('Sin titular');
     await crearPartido(equipo.id);

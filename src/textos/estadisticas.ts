@@ -22,6 +22,22 @@ export const textos = {
     ].join('\n');
   },
 
+  totalPersona: (datos: {
+    nombre: string;
+    temporada: number;
+    equipos: number;
+    partidosConEvento: number;
+    goles: number;
+    asistencias: number;
+    amarillas: number;
+  }): string => {
+    return [
+      `🧮 Total en la academia — ${datos.nombre} · temporada ${datos.temporada} (${datos.equipos} equipos)`,
+      `Partidos jugados: ${datos.partidosConEvento}`,
+      `Goles: ${datos.goles}  ·  Asistencias: ${datos.asistencias}  ·  Amarillas: ${datos.amarillas}`,
+    ].join('\n');
+  },
+
   sinPartidosCerrados: (equipoNombre: string, temporada: number) =>
     `📋 ${equipoNombre} — temporada ${temporada}\nSin partidos cerrados todavía.`,
 

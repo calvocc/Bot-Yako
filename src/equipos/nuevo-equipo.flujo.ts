@@ -54,7 +54,7 @@ export class NuevoEquipoFlujo {
         this.pasoNombre(),
         this.pasoFormato(),
         this.pasoFormatoCustom(),
-        pasoCargarPlantilla(PASOS.plantilla, this.jugadores, {
+        pasoCargarPlantilla(PASOS.plantilla, this.jugadores, this.equipos, {
           claveEquipoId: CLAVE_EQUIPO_ID,
           alTerminar: (ctx, cargados) => ({
             tipo: 'finalizar',
