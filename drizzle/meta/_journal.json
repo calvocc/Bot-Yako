@@ -71,6 +71,13 @@
       "when": 1788559169817,
       "tag": "0009_estadisticas_persona",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788560866923,
+      "tag": "0010_padres_vinculados_a_jugadores",
+      "breakpoints": true
     }
   ]
 }

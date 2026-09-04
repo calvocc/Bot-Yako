@@ -25,6 +25,18 @@ export function mensajeDeCanje(resultado: ResultadoCanje | CanjeConRol): Respues
         botones: [textos.canje.botonYaEraMiembro()],
       };
 
+    case 'ok_jugador':
+      return {
+        texto: textos.canje.okJugador(resultado.jugadorNombre, resultado.equipoNombre),
+        botones: [textos.canje.botonOkJugador()],
+      };
+
+    case 'ya_vinculado_jugador':
+      return {
+        texto: textos.canje.yaVinculadoJugador(resultado.jugadorNombre, resultado.equipoNombre),
+        botones: [textos.canje.botonYaVinculadoJugador()],
+      };
+
     case 'no_existe':
       return { texto: textos.canje.noExiste() };
 

@@ -361,7 +361,12 @@ export class OnboardingFlujo {
     const resultado = await this.invitaciones.canjear(codigo, usuarioId);
     const respuesta = mensajeDeCanje(resultado);
 
-    if (resultado.estado === 'ok' || resultado.estado === 'ya_eras_miembro') {
+    if (
+      resultado.estado === 'ok' ||
+      resultado.estado === 'ya_eras_miembro' ||
+      resultado.estado === 'ok_jugador' ||
+      resultado.estado === 'ya_vinculado_jugador'
+    ) {
       return { tipo: 'finalizar', respuesta };
     }
 
