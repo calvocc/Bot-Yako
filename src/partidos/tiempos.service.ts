@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import { DbService, type EjecutorDb } from '../db/db.service';
-import { partidoTiempos, partidos, usuarios } from '../db/schema';
+import { partidoTiempos, partidos, partidoTitulares, usuarios } from '../db/schema';
 import { calcularMinuto, type Minuto, type TiempoJugado } from './minuto';
 import { mapearPartido, type Partido } from './partido.mapper';
 
@@ -18,6 +18,9 @@ export interface ContextoDeCarga {
 export type ResultadoInicio =
   | { tipo: 'iniciado'; partido: Partido }
   | { tipo: 'ya_en_vivo'; partido: Partido }
+  /** No se puede arrancar sin al menos un titular: es la única forma de que
+   * el minuto jugado por niño sea confiable. */
+  | { tipo: 'sin_titulares'; partido: Partido }
   | { tipo: 'cerrado'; partido: Partido }
   | { tipo: 'no_existe' };
 
@@ -56,8 +59,19 @@ export type ResultadoFinTiempo =
 export class TiemposService {
   constructor(private readonly db: DbService) {}
 
-  /** Pasa el partido a modo en vivo y arranca el Tiempo 1, todo junto. */
-  async iniciarEnVivo(partidoId: string, usuarioId: string): Promise<ResultadoInicio> {
+  /**
+   * Pasa el partido a modo en vivo y arranca el Tiempo 1, todo junto.
+   *
+   * La titular se escribe en la misma transacción que el arranque: así no
+   * hay ventana donde el partido ya esté "en vivo" pero sin nadie en cancha
+   * todavía, ni riesgo de que dos papás eligiendo titular a la vez terminen
+   * mezclando sus dos listas en una.
+   */
+  async iniciarEnVivo(
+    partidoId: string,
+    usuarioId: string,
+    titularesIds: readonly string[],
+  ): Promise<ResultadoInicio> {
     return this.db.db.transaction(async (tx) => {
       const partido = await this.bloquear(tx, partidoId);
 
@@ -68,7 +82,19 @@ export class TiemposService {
         return { tipo: 'ya_en_vivo' as const, partido };
       }
 
+      if (titularesIds.length === 0) {
+        return { tipo: 'sin_titulares' as const, partido };
+      }
+
       const ahora = new Date();
+
+      await tx.insert(partidoTitulares).values(
+        titularesIds.map((jugadorId) => ({
+          partidoId,
+          jugadorId,
+          creadoPor: usuarioId,
+        })),
+      );
 
       await tx.insert(partidoTiempos).values({
         partidoId,

@@ -57,6 +57,13 @@
       "when": 1788541966370,
       "tag": "0007_competencias_borrar_texto",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788542585008,
+      "tag": "0008_alineacion_titular_y_cambios",
+      "breakpoints": true
     }
   ]
 }

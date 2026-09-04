@@ -13,7 +13,7 @@ import {
 import { competencias } from './competencias';
 import { estadoPartidoEnum, estadoTiempoEnum, modoCargaPartidoEnum } from './enums';
 import { usuarios } from './identidad';
-import { equipos } from './organizacion';
+import { equipos, jugadores } from './organizacion';
 
 export const partidos = pgTable(
   'partidos',
@@ -96,6 +96,37 @@ export const partidoTiempos = pgTable(
   ],
 );
 
+/**
+ * Titular del partido: quiénes lo arrancan.
+ *
+ * Es la única forma de que el minuto jugado por niño sea confiable — sin
+ * saber quién estaba en cancha, un gol es de "alguien de la plantilla", no de
+ * quien realmente lo jugó. Se exige al menos una fila antes de dejar arrancar
+ * el partido en vivo (`TiemposService.iniciarEnVivo`).
+ *
+ * Quién sigue en cancha en un momento dado no se guarda acá: se deriva de
+ * esta lista más los eventos `cambio` no deshechos, en `alineacion.ts` — el
+ * mismo principio que ya usa el marcador (derivado del trigger sobre
+ * `eventos`, nunca una segunda fuente de verdad que se pueda desincronizar).
+ */
+export const partidoTitulares = pgTable(
+  'partido_titulares',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    partidoId: uuid('partido_id')
+      .notNull()
+      .references(() => partidos.id, { onDelete: 'cascade' }),
+    jugadorId: uuid('jugador_id')
+      .notNull()
+      .references(() => jugadores.id, { onDelete: 'cascade' }),
+    creadoPor: uuid('creado_por')
+      .notNull()
+      .references(() => usuarios.id),
+    creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique('partido_titulares_partido_jugador_key').on(t.partidoId, t.jugadorId)],
+);
+
 export const partidosRelations = relations(partidos, ({ one, many }) => ({
   equipo: one(equipos, { fields: [partidos.equipoId], references: [equipos.id] }),
   competencia: one(competencias, {
@@ -103,8 +134,14 @@ export const partidosRelations = relations(partidos, ({ one, many }) => ({
     references: [competencias.id],
   }),
   tiempos: many(partidoTiempos),
+  titulares: many(partidoTitulares),
 }));
 
 export const partidoTiemposRelations = relations(partidoTiempos, ({ one }) => ({
   partido: one(partidos, { fields: [partidoTiempos.partidoId], references: [partidos.id] }),
+}));
+
+export const partidoTitularesRelations = relations(partidoTitulares, ({ one }) => ({
+  partido: one(partidos, { fields: [partidoTitulares.partidoId], references: [partidos.id] }),
+  jugador: one(jugadores, { fields: [partidoTitulares.jugadorId], references: [jugadores.id] }),
 }));
