@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { RespuestaBot } from '../channels/channel.types';
+import { botonComando } from '../conversacion/comandos';
 import { MembresiasService } from '../identidad/membresias.service';
 import { textos as textosComunes } from '../textos/comunes';
 import { textos } from '../textos/estadisticas';
@@ -35,7 +36,7 @@ export class EstadisticasHandler {
 
     const equipos = await this.membresias.equiposDe(usuarioId);
 
-    if (equipos.length === 0) return textosComunes.sinEquipos();
+    if (equipos.length === 0) return this.sinEquipos();
 
     const bloques: string[] = [];
 
@@ -61,7 +62,7 @@ export class EstadisticasHandler {
 
     const equipos = await this.membresias.equiposDe(usuarioId);
 
-    if (equipos.length === 0) return textosComunes.sinEquipos();
+    if (equipos.length === 0) return this.sinEquipos();
 
     const bloques: string[] = [];
 
@@ -73,6 +74,13 @@ export class EstadisticasHandler {
     }
 
     return { texto: bloques.join('\n\n') };
+  }
+
+  private sinEquipos(): RespuestaBot {
+    return {
+      texto: textosComunes.sinEquipos(),
+      botones: [botonComando('start', textosComunes.botonEmpezar())],
+    };
   }
 
   private lineaJugador(equipoNombre: string, stat: EstadisticaJugador): string {

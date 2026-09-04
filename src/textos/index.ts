@@ -18,6 +18,13 @@ import { textos as router } from './router';
  * en un solo lugar, sin rastrear en qué `.flujo.ts` vive. El dominio de
  * eventos (panel en vivo, bitácora) queda aparte en `src/eventos/mensajes.ts`
  * — ya seguía este mismo patrón desde antes de este catálogo.
+ *
+ * Ningún call site importa este índice todavía (cada uno importa su archivo
+ * de dominio directo); queda como el punto único al que engancharse el día
+ * que haga falta importar el catálogo completo. `index.spec.ts` compara esta
+ * lista contra los archivos que de verdad existen en el directorio, así que
+ * agregar un dominio nuevo sin registrarlo acá (o viceversa) rompe el test en
+ * vez de desincronizarse en silencio.
  */
 export const textos = {
   comunes,
