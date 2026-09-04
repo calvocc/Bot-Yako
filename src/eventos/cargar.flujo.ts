@@ -130,11 +130,10 @@ const BOTONES_POST_REENTRADA = [
 /**
  * Carga de eventos durante el partido (§4 y §5 del flujo).
  *
- * Todo pasa por un solo mensaje que se edita en el sitio: el panel. Los
- * sub-pasos —de qué equipo, quién, confirmaciones— reemplazan ese mismo
- * mensaje y vuelven al panel al terminar, así que el chat no se llena de
- * preguntas viejas. Lo que sí queda en el chat es la bitácora: una línea por
- * evento, que es lo que un papá reenvía al grupo sin esperar al resumen.
+ * Cada interacción manda un mensaje nuevo — nunca se edita el anterior. La
+ * bitácora de cada evento (una línea, la que un papá reenvía al grupo sin
+ * esperar al resumen) se antepone al texto del propio panel en ese mismo
+ * mensaje nuevo, así un evento sigue dejando un solo mensaje y no dos.
  */
 @Injectable()
 export class CargarFlujo {
@@ -796,10 +795,16 @@ export class CargarFlujo {
    * que estaba dado de baja.
    *
    * Con un cambio a medio cargar (`CLAVE_JUGADOR_SALE` puesto), lo que se
-   * resuelve es quien entra, no un jugador cualquiera — y ahí no hay "en
-   * cancha" que respetar, es exactamente lo contrario.
+   * resuelve es quien entra, no un jugador cualquiera — y ahí "en cancha" se
+   * respeta al revés: alguien que ya está jugando no puede "entrar" de nuevo,
+   * ni siquiera el mismo que sale (eso además lo rechazaría el check de la
+   * base, pero acá se avisa claro antes de intentarlo).
    */
   private async resolverPorNombre(ctx: ContextoFlujo, texto: string): Promise<Transicion> {
+    // Puede terminar dando de alta un jugador o sumándolo a la cancha:
+    // revalida antes de escribir nada, como el resto de los caminos de carga.
+    if (!(await this.siguePudiendoCargar(ctx))) return this.sinPermiso();
+
     const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
     const parseado = parsearJugador(texto);
 
@@ -811,8 +816,21 @@ export class CargarFlujo {
     }
 
     const saleId = leerTexto(ctx.datos, CLAVE_JUGADOR_SALE);
+    const { enCancha, banca, hayTitular } = await this.particionEnCancha(ctx);
+    const buscado = parseado.nombre.trim().toLowerCase();
+    const yaEnCancha = enCancha.find((j) => j.nombre.toLowerCase() === buscado);
 
     if (saleId) {
+      // Quien sale sigue "en cancha" hasta que este cambio se registre, así
+      // que escribir su propio nombre también cae acá: no hay forma válida
+      // de que alguien que ya está jugando "entre" de nuevo.
+      if (yaEnCancha) {
+        return {
+          tipo: 'repetir',
+          respuesta: { texto: `${yaEnCancha.nombre} ya está en cancha.` },
+        };
+      }
+
       const { jugador, creado } = await this.jugadores.resolverOCrear(equipoId, parseado);
 
       return this.registrarCambio(
@@ -822,8 +840,6 @@ export class CargarFlujo {
       );
     }
 
-    const { enCancha, banca, hayTitular } = await this.particionEnCancha(ctx);
-    const buscado = parseado.nombre.trim().toLowerCase();
     const enBanca = banca.find((j) => j.nombre.toLowerCase() === buscado);
 
     // Alguien que hoy está en la banca no puede anotar ni recibir tarjeta:
@@ -835,8 +851,6 @@ export class CargarFlujo {
         respuesta: { texto: `${enBanca.nombre} no está en cancha ahora mismo.` },
       };
     }
-
-    const yaEnCancha = enCancha.find((j) => j.nombre.toLowerCase() === buscado);
 
     if (yaEnCancha) return this.registrar(ctx, { jugadorId: yaEnCancha.id });
 
