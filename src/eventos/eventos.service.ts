@@ -220,21 +220,30 @@ export class EventosService {
    * Post partido no tiene edición fina: es más simple, y suficiente para un
    * resumen reducido, tirar lo cargado y volver a empezar que ofrecer un
    * editor evento por evento.
+   *
+   * Toma el mismo `for update` sobre el partido que `registrar()`: sin él,
+   * un "Corregir todo" podía intercalarse con una carga en curso (otra
+   * sesión todavía insertando goleadores) y dejar una mezcla de eventos
+   * viejos y nuevos, sin que a nadie se le avisara.
    */
   async borrarEventosPostPartido(partidoId: string, usuarioId: string): Promise<number> {
-    const borradas = await this.db.db
-      .update(eventos)
-      .set({ eliminadoEn: new Date(), eliminadoPor: usuarioId })
-      .where(
-        and(
-          eq(eventos.partidoId, partidoId),
-          eq(eventos.origen, 'post_partido'),
-          isNull(eventos.eliminadoEn),
-        ),
-      )
-      .returning({ id: eventos.id });
+    return this.db.db.transaction(async (tx) => {
+      await this.leerPartido(tx, partidoId);
 
-    return borradas.length;
+      const borradas = await tx
+        .update(eventos)
+        .set({ eliminadoEn: new Date(), eliminadoPor: usuarioId })
+        .where(
+          and(
+            eq(eventos.partidoId, partidoId),
+            eq(eventos.origen, 'post_partido'),
+            isNull(eventos.eliminadoEn),
+          ),
+        )
+        .returning({ id: eventos.id });
+
+      return borradas.length;
+    });
   }
 
   /**

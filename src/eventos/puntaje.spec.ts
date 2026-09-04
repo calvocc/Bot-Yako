@@ -43,6 +43,17 @@ describe('calcularMvp', () => {
     expect(destacado).toBeNull();
   });
 
+  it('no elige a nadie con puntaje neto negativo, aunque haya tenido un evento positivo', () => {
+    // Una asistencia (+2) seguida de una roja (-3) da -1 neto: no alcanza,
+    // aunque alguna vez haya tenido "un evento positivo".
+    const destacado = calcularMvp([
+      evento({ jugadorId: 'jacob', jugadorNombre: 'Jacob', tipo: 'asistencia' }),
+      evento({ jugadorId: 'jacob', jugadorNombre: 'Jacob', tipo: 'tarjeta_roja' }),
+    ]);
+
+    expect(destacado).toBeNull();
+  });
+
   it('no cuenta eventos del rival ni sin jugador identificado', () => {
     const destacado = calcularMvp([
       evento({ equipoOrigen: 'rival', jugadorId: null, jugadorNombre: null }),

@@ -355,6 +355,32 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
       expect(cargados).toHaveLength(1);
       expect(cargados[0].jugadorNombre).toBe('Andrés');
     });
+
+    it('"/saltar" no se guarda como el nombre de un jugador', async () => {
+      const { equipo, decir, tocar } = await escenario('Post partido saltar');
+      const partido = await crearPartido(equipo.id);
+
+      await decir('/cargar');
+      await tocar('md:post');
+
+      // "/saltar" es una palabra de flujo genérica (COMANDOS_DE_FLUJO), no
+      // "/ninguna": tiene que pedir de nuevo, no crear un jugador "/saltar".
+      await decir('/saltar');
+      expect(adaptador.ultimoTexto).toContain('Para saltar escribe /ninguna');
+
+      await decir('/ninguna');
+      expect(adaptador.ultimoTexto).toContain('¿Hubo tarjetas?');
+
+      await decir('/saltar');
+      expect(adaptador.ultimoTexto).toContain('Para saltar escribe /ninguna');
+
+      await decir('/ninguna');
+
+      expect(await eventos.delPartido(partido.id)).toHaveLength(0);
+
+      const plantilla = await jugadores.listar(equipo.id, true);
+      expect(plantilla.map((j) => j.nombre)).not.toContain('/saltar');
+    });
   });
 
   const crearPartido = (equipoId: string) =>

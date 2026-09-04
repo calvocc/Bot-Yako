@@ -33,22 +33,18 @@ export interface JugadorDestacado {
   autogoles: number;
 }
 
-interface Acumulado extends JugadorDestacado {
-  /** Si tuvo al menos un evento de puntaje positivo (gol o asistencia). */
-  tienePositivo: boolean;
-}
-
 /**
  * Calcula el jugador destacado del partido.
  *
  * Solo entran jugadores del equipo propio con ficha identificada: un gol o
  * autogol del rival no tiene jugador propio detrás, y una tarjeta o
- * asistencia del rival no se carga (ver `admiteEquipoRival`). Sin al menos un
- * evento positivo no se elige MVP, para no premiar al menos amonestado en un
- * partido donde solo hubo tarjetas.
+ * asistencia del rival no se carga (ver `admiteEquipoRival`). Se exige
+ * puntaje neto positivo, no solo "algún evento positivo": una asistencia
+ * seguida de una roja da neto negativo, y elegirlo MVP igual sería premiar
+ * a alguien peor que nadie en el partido donde solo hubo tarjetas.
  */
 export function calcularMvp(eventos: readonly EventoCargado[]): JugadorDestacado | null {
-  const acumulados = new Map<string, Acumulado>();
+  const acumulados = new Map<string, JugadorDestacado>();
 
   for (const evento of eventos) {
     if (evento.equipoOrigen !== 'propio' || !evento.jugadorId) continue;
@@ -63,13 +59,9 @@ export function calcularMvp(eventos: readonly EventoCargado[]): JugadorDestacado
       amarillas: 0,
       rojas: 0,
       autogoles: 0,
-      tienePositivo: false,
     };
 
-    const puntos = PUNTOS[evento.tipo];
-
-    actual.puntos += puntos;
-    if (puntos > 0) actual.tienePositivo = true;
+    actual.puntos += PUNTOS[evento.tipo];
 
     switch (evento.tipo) {
       case 'gol':
@@ -94,7 +86,7 @@ export function calcularMvp(eventos: readonly EventoCargado[]): JugadorDestacado
     acumulados.set(evento.jugadorId, actual);
   }
 
-  const candidatos = [...acumulados.values()].filter((c) => c.tienePositivo);
+  const candidatos = [...acumulados.values()].filter((c) => c.puntos > 0);
 
   if (candidatos.length === 0) return null;
 
@@ -110,19 +102,7 @@ export function calcularMvp(eventos: readonly EventoCargado[]): JugadorDestacado
     return a.dorsal - b.dorsal;
   });
 
-  const ganador = candidatos[0];
-
-  return {
-    jugadorId: ganador.jugadorId,
-    nombre: ganador.nombre,
-    dorsal: ganador.dorsal,
-    puntos: ganador.puntos,
-    goles: ganador.goles,
-    asistencias: ganador.asistencias,
-    amarillas: ganador.amarillas,
-    rojas: ganador.rojas,
-    autogoles: ganador.autogoles,
-  };
+  return candidatos[0];
 }
 
 /** "Jacob (8 pts — 2 goles, 1 asistencia)". Solo lista lo que sumó o restó. */

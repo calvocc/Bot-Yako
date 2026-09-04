@@ -39,6 +39,19 @@ function esNinguno(texto: string): boolean {
   return limpio === '' || limpio === 'ninguno' || limpio === 'ninguna';
 }
 
+/**
+ * Cualquier otra cosa con barra es un comando, no el nombre de nadie.
+ *
+ * El router le entrega crudo al flujo cualquier palabra de `COMANDOS_DE_FLUJO`
+ * (`/listo`, `/saltar`...) mientras haya una sesión abierta — es lo mismo que
+ * usa `pasoCargarPlantilla` para no guardar "/listo@YakoBot" como jugador.
+ * Sin esto, "/saltar" pasaba de largo por `esNinguno`, `parsearJugador` lo
+ * tomaba como un nombre válido y creaba un jugador real llamado "/saltar".
+ */
+function esComandoDesconocido(texto: string): boolean {
+  return texto.startsWith('/') && !esNinguno(texto);
+}
+
 export function pasoGoleadoresPost(
   id: string,
   siguientePasoId: string,
@@ -58,6 +71,17 @@ export function pasoGoleadoresPost(
 
     recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
       const texto = ctx.mensaje.texto?.trim() ?? '';
+
+      if (esComandoDesconocido(texto)) {
+        return {
+          tipo: 'repetir',
+          respuesta: {
+            texto: 'Para saltar escribe /ninguna. Para cargar, escribe así: Jacob 2, Andrés 1',
+            editarMensajeId: ganchos.panelId(ctx),
+          },
+        };
+      }
+
       const goleadores: GoleadorParseado[] | null = esNinguno(texto)
         ? []
         : parsearGoleadores(texto);
@@ -102,6 +126,18 @@ export function pasoTarjetasPost(
 
     recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
       const texto = ctx.mensaje.texto?.trim() ?? '';
+
+      if (esComandoDesconocido(texto)) {
+        return {
+          tipo: 'repetir',
+          respuesta: {
+            texto:
+              'Para saltar escribe /ninguna. Para cargar, escribe así: Andrés amarilla, Jacob roja',
+            editarMensajeId: ganchos.panelId(ctx),
+          },
+        };
+      }
+
       const tarjetas: TarjetaParseada[] | null = esNinguno(texto) ? [] : parsearTarjetas(texto);
 
       if (tarjetas === null) {
