@@ -31,6 +31,11 @@ import { segundosDesde } from './dedup';
 import { admiteEquipoRival, esTipoDeEvento } from './evento.tipos';
 import { EventosService, type SolicitudEvento } from './eventos.service';
 import {
+  type GanchosPostPartido,
+  pasoGoleadoresPost,
+  pasoTarjetasPost,
+} from './post-partido.flujo';
+import {
   avisoDeDuplicado,
   botonesDeOrigen,
   ID_DESHACER,
@@ -68,6 +73,8 @@ const PASOS = {
   duplicado: 'duplicado',
   finTiempo: 'fin-tiempo',
   finPartido: 'fin-partido',
+  goleadoresPost: 'goleadores-post',
+  tarjetasPost: 'tarjetas-post',
 } as const;
 
 const CLAVE_PARTIDO_ID = 'partidoId';
@@ -87,6 +94,8 @@ const CLAVE_BITACORA = 'bitacora';
 const PREFIJO_PARTIDO = 'pt:';
 const ID_MODO_VIVO = 'md:vivo';
 const ID_MODO_POST = 'md:post';
+const ID_POST_CORREGIR = 'pp:corregir';
+const ID_POST_LISTO = 'pp:listo';
 
 /** Lo que el panel tiene que contar cuando se vuelve a él desde un sub-paso. */
 interface Novedad {
@@ -97,6 +106,11 @@ interface Novedad {
 const BOTONES_MODO = [
   { id: ID_MODO_VIVO, texto: '🔴 En vivo' },
   { id: ID_MODO_POST, texto: '📝 Post partido' },
+];
+
+const BOTONES_POST_REENTRADA = [
+  { id: ID_POST_CORREGIR, texto: 'Corregir todo' },
+  { id: ID_POST_LISTO, texto: 'Nada más' },
 ];
 
 /**
@@ -138,6 +152,20 @@ export class CargarFlujo {
         this.pasoDuplicado(),
         this.pasoFinTiempo(),
         this.pasoFinPartido(),
+        pasoGoleadoresPost(
+          PASOS.goleadoresPost,
+          PASOS.tarjetasPost,
+          this.jugadores,
+          this.eventos,
+          this.ganchosPostPartido(),
+        ),
+        pasoTarjetasPost(
+          PASOS.tarjetasPost,
+          PASOS.finPartido,
+          this.jugadores,
+          this.eventos,
+          this.ganchosPostPartido(),
+        ),
       ],
     };
   }
@@ -214,6 +242,33 @@ export class CargarFlujo {
   // --- Bifurcación por modo (§4) ----------------------------------------
 
   private pasoModo(): Paso {
+    const preguntarModo = (): RespuestaBot => ({
+      texto: '¿Vas a cargar en vivo o ya terminó el partido?',
+      botones: BOTONES_MODO,
+    });
+
+    // 4c: reentrada a un partido ya cargado como post partido (RF-4.2). Se
+    // muestra el resumen actual antes de dejar tocar nada: así no se pisa
+    // por accidente algo que ya se cargó bien.
+    const preguntarReentrada = async (
+      ctx: ContextoFlujo,
+      partido: Partido,
+    ): Promise<RespuestaBot> => {
+      const resumen = await this.resumen.generar(
+        partido,
+        leerTexto(ctx.datos, CLAVE_EQUIPO_NOMBRE, 'Tu equipo'),
+      );
+
+      return {
+        texto: [
+          resumen,
+          '',
+          '¿Agregas o corriges algo? "Corregir todo" empieza de nuevo: goleadores y tarjetas.',
+        ].join('\n'),
+        botones: BOTONES_POST_REENTRADA,
+      };
+    };
+
     return {
       id: PASOS.modo,
 
@@ -227,14 +282,8 @@ export class CargarFlujo {
           return { transicion: this.finalizarCon(this.textoPartidoCerrado()) };
         }
 
-        // 4c: cargado como post partido. Editar esos datos llega con el modo
-        // post partido completo; por ahora se dice claro, no se rompe.
         if (partido.modoCarga === 'post_partido') {
-          return {
-            transicion: this.finalizarCon(
-              `Ese partido se cargó como post partido (${describirMarcador(partido)}). Todavía no puedo editar esos datos desde acá.`,
-            ),
-          };
+          return { respuesta: await preguntarReentrada(ctx, partido) };
         }
 
         // 4b: ya está en vivo; no se vuelve a preguntar.
@@ -243,38 +292,55 @@ export class CargarFlujo {
         }
 
         // 4a: sin modo definido.
-        return {
-          respuesta: {
-            texto: [
-              '¿Vas a cargar en vivo o ya terminó el partido?',
-              '',
-              'El modo post partido todavía no está listo; llega en la próxima entrega.',
-            ].join('\n'),
-            botones: BOTONES_MODO,
-          },
-        };
+        return { respuesta: preguntarModo() };
       },
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
+        const partido = await this.partidoDe(ctx);
+
+        if (!partido) return this.partidoPerdido();
+
+        if (partido.estado === 'cerrado') {
+          return this.finalizarCon(this.textoPartidoCerrado());
+        }
+
         const seleccion = ctx.mensaje.seleccionId ?? '';
 
+        if (partido.modoCarga === 'post_partido') {
+          if (seleccion === ID_POST_LISTO) return this.finalizarCon('Listo, no cambié nada.');
+
+          if (seleccion !== ID_POST_CORREGIR) {
+            return { tipo: 'repetir', respuesta: await preguntarReentrada(ctx, partido) };
+          }
+
+          if (!(await this.siguePudiendoCargar(ctx))) return this.sinPermiso();
+
+          await this.eventos.borrarEventosPostPartido(partido.id, ctx.usuarioId ?? '');
+
+          return { tipo: 'ir', pasoId: PASOS.goleadoresPost, datos: this.datosPanel(ctx) };
+        }
+
         if (seleccion === ID_MODO_POST) {
-          return this.finalizarCon(
-            'Todavía no puedo cargar post partido; llega en la próxima entrega. El partido queda como estaba.',
-          );
+          if (!(await this.siguePudiendoCargar(ctx))) return this.sinPermiso();
+
+          const inicio = await this.tiempos.iniciarPostPartido(partido.id, ctx.usuarioId ?? '');
+
+          if (inicio.tipo === 'no_existe') return this.partidoPerdido();
+
+          if (inicio.tipo === 'cerrado' || inicio.tipo === 'ya_tiene_modo') {
+            return this.finalizarCon(
+              'Alguien cambió el partido mientras decidías; vuelve a intentar con /cargar.',
+            );
+          }
+
+          return { tipo: 'ir', pasoId: PASOS.goleadoresPost, datos: this.datosPanel(ctx) };
         }
 
         if (seleccion !== ID_MODO_VIVO) {
-          return {
-            tipo: 'repetir',
-            respuesta: { texto: 'Toca una de las dos opciones:', botones: BOTONES_MODO },
-          };
+          return { tipo: 'repetir', respuesta: preguntarModo() };
         }
 
-        const inicio = await this.tiempos.iniciarEnVivo(
-          leerTexto(ctx.datos, CLAVE_PARTIDO_ID),
-          ctx.usuarioId ?? '',
-        );
+        const inicio = await this.tiempos.iniciarEnVivo(partido.id, ctx.usuarioId ?? '');
 
         if (inicio.tipo === 'no_existe') return this.partidoPerdido();
 
@@ -564,31 +630,11 @@ export class CargarFlujo {
       };
     }
 
-    const plantilla = await this.jugadores.listar(equipoId, true);
-    const buscado = parseado.nombre.toLowerCase();
-    // El nombre exacto manda, pero si no matchea y el dorsal sí es de alguien
-    // conocido, es la misma persona escrita distinto ("Jacob, 10" contra
-    // "Jacob Restrepo" #10): usarlo evita un duplicado en la plantilla.
-    const existente =
-      plantilla.find((j) => j.nombre.toLowerCase() === buscado) ??
-      (parseado.dorsal !== undefined
-        ? plantilla.find((j) => j.dorsal === parseado.dorsal)
-        : undefined);
-
-    if (existente) return this.registrar(ctx, { jugadorId: existente.id });
-
-    // El dorsal se descarta si ya es de otro: el alta no puede fallar en medio
-    // de un partido por un número.
-    const dorsalLibre = plantilla.every((j) => j.dorsal !== parseado.dorsal);
-    const creado = await this.jugadores.crear(
-      equipoId,
-      parseado.nombre,
-      dorsalLibre ? parseado.dorsal : undefined,
-    );
+    const { jugador, creado } = await this.jugadores.resolverOCrear(equipoId, parseado);
 
     return this.registrar(ctx, {
-      jugadorId: creado.id,
-      nota: `➕ ${describirJugador(creado)} quedó agregado a la plantilla.`,
+      jugadorId: jugador.id,
+      nota: creado ? `➕ ${describirJugador(jugador)} quedó agregado a la plantilla.` : undefined,
     });
   }
 
@@ -1052,6 +1098,18 @@ export class CargarFlujo {
     const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
 
     return this.membresias.puede(ctx.usuarioId, equipoId, 'editor');
+  }
+
+  /** Lo que `post-partido.flujo.ts` necesita prestado de acá. */
+  private ganchosPostPartido(): GanchosPostPartido {
+    return {
+      panelId: (ctx) => this.panelId(ctx),
+      datosPanel: (ctx) => this.datosPanel(ctx),
+      partidoId: (ctx) => leerTexto(ctx.datos, CLAVE_PARTIDO_ID),
+      siguePudiendoCargar: (ctx) => this.siguePudiendoCargar(ctx),
+      sinPermiso: () => this.sinPermiso(),
+      partidoPerdido: () => this.partidoPerdido(),
+    };
   }
 
   private sinPermiso(): Transicion {

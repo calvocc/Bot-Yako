@@ -15,6 +15,12 @@ export interface SolicitudEvento {
   reportadoPor: string;
   /** Salta el chequeo de duplicados: el usuario ya dijo que es otro evento. */
   forzar?: boolean;
+  /**
+   * `post_partido` carga en bloque, sin reloj (RF-4.1): sin ventana de 60
+   * segundos que comprobar (no hay carrera entre dos reportes en tiempo
+   * real) y sin tiempo/minuto que calcular. Por defecto `en_vivo`.
+   */
+  origen?: 'en_vivo' | 'post_partido';
 }
 
 export interface EventoCargado {
@@ -84,7 +90,11 @@ export class EventosService {
       if (!partido) return { tipo: 'no_existe' as const };
       if (partido.estado === 'cerrado') return { tipo: 'partido_cerrado' as const, partido };
 
-      if (!solicitud.forzar) {
+      const esPostPartido = solicitud.origen === 'post_partido';
+
+      // La ventana de 60s existe para la carrera de dos toques casi
+      // simultáneos en vivo; una carga post partido no tiene ese escenario.
+      if (!esPostPartido && !solicitud.forzar) {
         const reciente = await this.eventoReciente(tx, solicitud);
 
         if (reciente && puedeSerDuplicado(reciente, { jugadorId: solicitud.jugadorId ?? null })) {
@@ -92,7 +102,9 @@ export class EventosService {
         }
       }
 
-      const contexto = await this.tiempos.contextoDeCarga(partido, tx);
+      // Post partido no tiene reloj: `contextoDeCarga` asume un partido que
+      // se está jugando en este momento, así que acá ni se llama.
+      const contexto = esPostPartido ? null : await this.tiempos.contextoDeCarga(partido, tx);
 
       const [fila] = await tx
         .insert(eventos)
@@ -101,9 +113,9 @@ export class EventosService {
           tipo: solicitud.tipo,
           equipoOrigen: solicitud.equipoOrigen,
           jugadorId: solicitud.jugadorId ?? null,
-          tiempo: contexto.tiempo,
-          minutoCalculado: contexto.minuto.minuto,
-          origen: 'en_vivo',
+          tiempo: contexto?.tiempo ?? null,
+          minutoCalculado: contexto?.minuto.minuto ?? null,
+          origen: solicitud.origen ?? 'en_vivo',
           reportadoPor: solicitud.reportadoPor,
         })
         .returning({ id: eventos.id });
@@ -199,6 +211,39 @@ export class EventosService {
     return this.consulta(tx ?? this.db.db)
       .where(and(eq(eventos.partidoId, partidoId), isNull(eventos.eliminadoEn)))
       .orderBy(eventos.creadoEn);
+  }
+
+  /**
+   * Borra (soft-delete) los eventos post partido vigentes, para recargar
+   * desde cero cuando el usuario elige "Agregar/corregir" (RF-4.2).
+   *
+   * Post partido no tiene edición fina: es más simple, y suficiente para un
+   * resumen reducido, tirar lo cargado y volver a empezar que ofrecer un
+   * editor evento por evento.
+   *
+   * Toma el mismo `for update` sobre el partido que `registrar()`: sin él,
+   * un "Corregir todo" podía intercalarse con una carga en curso (otra
+   * sesión todavía insertando goleadores) y dejar una mezcla de eventos
+   * viejos y nuevos, sin que a nadie se le avisara.
+   */
+  async borrarEventosPostPartido(partidoId: string, usuarioId: string): Promise<number> {
+    return this.db.db.transaction(async (tx) => {
+      await this.leerPartido(tx, partidoId);
+
+      const borradas = await tx
+        .update(eventos)
+        .set({ eliminadoEn: new Date(), eliminadoPor: usuarioId })
+        .where(
+          and(
+            eq(eventos.partidoId, partidoId),
+            eq(eventos.origen, 'post_partido'),
+            isNull(eventos.eliminadoEn),
+          ),
+        )
+        .returning({ id: eventos.id });
+
+      return borradas.length;
+    });
   }
 
   /**

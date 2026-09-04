@@ -80,6 +80,46 @@ export class JugadoresService {
 
     return filas.length > 0;
   }
+
+  /**
+   * Busca un jugador por nombre y, si no está en la plantilla, lo da de alta.
+   *
+   * Es lo que hace falta al borde de la cancha: aparece alguien que nadie
+   * cargó y el evento no puede esperar a que se edite la plantilla. Se busca
+   * también entre los inactivos, para no crear un duplicado de alguien que
+   * estaba dado de baja. Compartido entre la carga en vivo
+   * (`cargar.flujo.ts`) y la carga post partido, que resuelven jugadores de
+   * la misma forma.
+   */
+  async resolverOCrear(
+    equipoId: string,
+    parseado: JugadorParseado,
+  ): Promise<{ jugador: Jugador; creado: boolean }> {
+    const plantilla = await this.listar(equipoId, true);
+    const buscado = parseado.nombre.toLowerCase();
+
+    // El nombre exacto manda, pero si no matchea y el dorsal sí es de alguien
+    // conocido, es la misma persona escrita distinto ("Jacob, 10" contra
+    // "Jacob Restrepo" #10): usarlo evita un duplicado en la plantilla.
+    const existente =
+      plantilla.find((j) => j.nombre.toLowerCase() === buscado) ??
+      (parseado.dorsal !== undefined
+        ? plantilla.find((j) => j.dorsal === parseado.dorsal)
+        : undefined);
+
+    if (existente) return { jugador: existente, creado: false };
+
+    // El dorsal se descarta si ya es de otro: el alta no puede fallar en
+    // medio de una carga por un número.
+    const dorsalLibre = plantilla.every((j) => j.dorsal !== parseado.dorsal);
+    const jugador = await this.crear(
+      equipoId,
+      parseado.nombre,
+      dorsalLibre ? parseado.dorsal : undefined,
+    );
+
+    return { jugador, creado: true };
+  }
 }
 
 export interface JugadorParseado {
@@ -126,6 +166,82 @@ export function parsearPlantilla(texto: string): JugadorParseado[] {
     .split('\n')
     .map((l) => parsearJugador(l))
     .filter((j): j is JugadorParseado => j !== null);
+}
+
+export interface GoleadorParseado {
+  nombre: string;
+  cantidad: number;
+}
+
+/**
+ * "Jacob 2, Andrés 1" — cuántos goles metió cada uno, para la carga post
+ * partido (RF-4.1: goleadores sin minuto).
+ *
+ * Reusa `parsearJugador` por segmento separado por comas: la gramática
+ * "nombre + número" es la misma que la de la plantilla, solo cambia qué
+ * significa el número (cantidad de goles, no dorsal). Sin número se asume
+ * un solo gol.
+ */
+export function parsearGoleadores(texto: string): GoleadorParseado[] | null {
+  const segmentos = texto
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (segmentos.length === 0) return null;
+
+  const goleadores: GoleadorParseado[] = [];
+
+  for (const segmento of segmentos) {
+    const parseado = parsearJugador(segmento);
+
+    if (!parseado) return null;
+
+    goleadores.push({ nombre: parseado.nombre, cantidad: parseado.dorsal ?? 1 });
+  }
+
+  return goleadores;
+}
+
+export interface TarjetaParseada {
+  nombre: string;
+  color: 'amarilla' | 'roja';
+}
+
+const COLORES_TARJETA: Record<string, 'amarilla' | 'roja'> = {
+  amarilla: 'amarilla',
+  amarillas: 'amarilla',
+  roja: 'roja',
+  rojas: 'roja',
+};
+
+/**
+ * "Andrés amarilla, Jacob roja" — tarjetas de la carga post partido (RF-4.1:
+ * tarjetas sin minuto). Acá el segundo término no es un número, así que no
+ * se puede reusar `parsearJugador`: se toma la última palabra como color y
+ * el resto como nombre.
+ */
+export function parsearTarjetas(texto: string): TarjetaParseada[] | null {
+  const segmentos = texto
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (segmentos.length === 0) return null;
+
+  const tarjetas: TarjetaParseada[] = [];
+
+  for (const segmento of segmentos) {
+    const palabras = segmento.split(/\s+/);
+    const color = COLORES_TARJETA[palabras[palabras.length - 1]?.toLowerCase() ?? ''];
+    const nombre = palabras.slice(0, -1).join(' ').trim();
+
+    if (!color || !nombre) return null;
+
+    tarjetas.push({ nombre, color });
+  }
+
+  return tarjetas;
 }
 
 export function describirJugador(jugador: Jugador | JugadorParseado): string {

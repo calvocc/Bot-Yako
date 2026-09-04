@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { EventosService, type EventoCargado } from '../eventos/eventos.service';
 import { definicionDe, type TipoEvento } from '../eventos/evento.tipos';
 import { protagonista } from '../eventos/mensajes';
+import { calcularMvp, describirMvp } from '../eventos/puntaje';
 import { describirFecha } from '../partidos/fechas';
 import { marcadorDe, type Partido } from '../partidos/partido.mapper';
 
@@ -64,6 +65,14 @@ export function componerResumen({ partido, equipoNombre, eventos }: DatosResumen
 
   if (propios.length === 0) {
     lineas.push('Sin eventos cargados.');
+  } else {
+    // Sin eventos no hay a quién destacar; con solo tarjetas, tampoco (M4:
+    // hace falta al menos un evento positivo).
+    const destacado = calcularMvp(eventos);
+
+    if (destacado) {
+      lineas.push('', `MVP del partido: ${describirMvp(destacado)}`);
+    }
   }
 
   if (partido.estado !== 'cerrado') {
