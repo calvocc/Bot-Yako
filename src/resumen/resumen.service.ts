@@ -5,6 +5,7 @@ import { protagonista } from '../eventos/mensajes';
 import { calcularMvp, describirMvp } from '../eventos/puntaje';
 import { describirFecha } from '../partidos/fechas';
 import { marcadorDe, type Partido } from '../partidos/partido.mapper';
+import { textos } from '../textos/resumen';
 
 export interface DatosResumen {
   partido: Partido;
@@ -66,19 +67,19 @@ export function componerResumen({ partido, equipoNombre, eventos }: DatosResumen
   }
 
   if (propios.length === 0) {
-    lineas.push('Sin eventos cargados.');
+    lineas.push(textos.sinEventos());
   } else {
     // Sin eventos no hay a quién destacar; con solo tarjetas, tampoco (M4:
     // hace falta al menos un evento positivo).
     const destacado = calcularMvp(eventos);
 
     if (destacado) {
-      lineas.push('', `MVP del partido: ${describirMvp(destacado)}`);
+      lineas.push('', textos.mvp(describirMvp(destacado)));
     }
   }
 
   if (partido.estado !== 'cerrado') {
-    lineas.push('', '⏳ El partido todavía está abierto.');
+    lineas.push('', textos.partidoAbierto());
   }
 
   return lineas.join('\n');

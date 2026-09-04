@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import type { RespuestaBot } from '../channels/channel.types';
 import { botonComando } from '../conversacion/comandos';
 import { MembresiasService } from '../identidad/membresias.service';
+import { textos as textosComunes } from '../textos/comunes';
+import { textos } from '../textos/partidos';
 import { describirFecha } from './fechas';
 import { describirMarcador, type Partido } from './partido.mapper';
 import { PartidosService } from './partidos.service';
@@ -15,14 +17,14 @@ export class PartidosHandler {
 
   /** `/partidos` — los últimos partidos de cada equipo del usuario. */
   async listar(usuarioId?: string): Promise<RespuestaBot> {
-    if (!usuarioId) return { texto: 'Primero usa /start.' };
+    if (!usuarioId) return { texto: textosComunes.primeroUsaStart() };
 
     const equipos = await this.membresias.equiposDe(usuarioId);
 
     if (equipos.length === 0) {
       return {
-        texto: 'Todavía no perteneces a ningún equipo.',
-        botones: [botonComando('start', 'Empezar')],
+        texto: textosComunes.sinEquipos(),
+        botones: [botonComando('start', textosComunes.botonEmpezar())],
       };
     }
 
@@ -33,7 +35,7 @@ export class PartidosHandler {
 
       const cuerpo =
         recientes.length === 0
-          ? '  Sin partidos todavía.'
+          ? textos.listar.sinPartidos()
           : recientes.map((p) => `  ${this.linea(p)}`).join('\n');
 
       bloques.push(`*${equipo.equipoNombre}*\n${cuerpo}`);
@@ -41,7 +43,7 @@ export class PartidosHandler {
 
     return {
       texto: bloques.join('\n\n'),
-      botones: [botonComando('nuevopartido', 'Crear partido')],
+      botones: [botonComando('nuevopartido', textos.listar.botonCrearPartido)],
     };
   }
 

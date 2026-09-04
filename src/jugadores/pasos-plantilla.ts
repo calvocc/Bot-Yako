@@ -2,6 +2,8 @@ import type { MensajeEntrante, RespuestaBot } from '../channels/channel.types';
 import { parsearComando } from '../conversacion/comandos';
 import type { ContextoFlujo, Entrada, Paso, Transicion } from '../conversacion/flow.types';
 import { leerNumero, leerTexto } from '../conversacion/flow.types';
+import { textos as textosComunes } from '../textos/comunes';
+import { textos } from '../textos/jugadores';
 import { DorsalOcupadoError, describirJugador, parsearPlantilla } from './jugadores.service';
 import type { JugadoresService } from './jugadores.service';
 
@@ -53,16 +55,7 @@ export function pasoCargarPlantilla(
 
     entrar(): Promise<Entrada> {
       return Promise.resolve({
-        respuesta: {
-          texto: [
-            'Ahora carga la plantilla. Escribe *nombre y dorsal*, así:',
-            '',
-            'Jacob, 10',
-            '',
-            'Puedes mandar varios de una vez, uno por línea.',
-            `Cuando termines, escribe ${COMANDO_LISTO}.`,
-          ].join('\n'),
-        },
+        respuesta: { texto: textos.cargarPlantilla.instrucciones(COMANDO_LISTO) },
       });
     },
 
@@ -80,16 +73,14 @@ export function pasoCargarPlantilla(
       if (texto.startsWith('/')) {
         return {
           tipo: 'repetir',
-          respuesta: {
-            texto: `Para terminar escribe ${COMANDO_LISTO}. Para agregar a alguien, "Jacob, 10".`,
-          },
+          respuesta: { texto: textos.cargarPlantilla.esComando(COMANDO_LISTO) },
         };
       }
 
       if (puedeEscribir && !(await puedeEscribir(ctx))) {
         return {
           tipo: 'finalizar',
-          respuesta: { texto: 'Ya no tienes permiso para editar esta plantilla.' },
+          respuesta: { texto: textosComunes.sinPermisoPara('editar esta plantilla') },
         };
       }
 
@@ -99,9 +90,7 @@ export function pasoCargarPlantilla(
       if (parseados.length === 0) {
         return {
           tipo: 'repetir',
-          respuesta: {
-            texto: `No entendí eso. Escribe algo como "Jacob, 10", o ${COMANDO_LISTO} para terminar.`,
-          },
+          respuesta: { texto: textos.cargarPlantilla.noEntendido(COMANDO_LISTO) },
         };
       }
 
@@ -154,19 +143,11 @@ function resumenDeAlta(agregados: string[], problemas: string[], total: number):
     lineas.push(`⚠️ ${problemas.join(' · ')}`);
   }
 
-  lineas.push(
-    '',
-    `Van ${total} jugador${total === 1 ? '' : 'es'}. Sigue o escribe ${COMANDO_LISTO}.`,
-  );
+  lineas.push('', textos.cargarPlantilla.resumenAlta(total, COMANDO_LISTO));
 
   return lineas.join('\n');
 }
 
 export function respuestaPlantillaLista(cargados: number, siguiente: string): RespuestaBot {
-  return {
-    texto:
-      cargados === 0
-        ? `Sin jugadores por ahora. Puedes cargarlos después con /plantilla.\n\n${siguiente}`
-        : `Plantilla lista con ${cargados} jugador${cargados === 1 ? '' : 'es'}. ✅\n\n${siguiente}`,
-  };
+  return { texto: textos.cargarPlantilla.listaLista(cargados, siguiente) };
 }

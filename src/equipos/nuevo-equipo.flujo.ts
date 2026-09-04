@@ -8,6 +8,8 @@ import {
   pasoCargarPlantilla,
   respuestaPlantillaLista,
 } from '../jugadores/pasos-plantilla';
+import { textos as textosComunes } from '../textos/comunes';
+import { textos } from '../textos/equipos';
 import {
   EquiposService,
   FORMATOS_SUGERIDOS,
@@ -84,10 +86,7 @@ export class NuevoEquipoFlujo {
           return {
             transicion: {
               tipo: 'finalizar',
-              respuesta: {
-                texto:
-                  'Crear equipos es cosa de administradores, y no eres admin de ninguna academia.',
-              },
+              respuesta: { texto: textos.soloAdmins() },
             },
           };
         }
@@ -104,7 +103,7 @@ export class NuevoEquipoFlujo {
 
         return {
           respuesta: {
-            texto: '¿En cuál academia?',
+            texto: textos.preguntaAcademia(),
             botones: administradas.map((a) => ({
               id: `${PREFIJO_ACADEMIA}${a.academiaId}`,
               texto: a.nombre.slice(0, 20),
@@ -126,7 +125,7 @@ export class NuevoEquipoFlujo {
           return {
             tipo: 'repetir',
             respuesta: {
-              texto: 'Toca una de las academias:',
+              texto: textos.tocaUnaAcademia(),
               botones: administradas.map((a) => ({
                 id: `${PREFIJO_ACADEMIA}${a.academiaId}`,
                 texto: a.nombre.slice(0, 20),
@@ -154,9 +153,7 @@ export class NuevoEquipoFlujo {
 
         return Promise.resolve({
           respuesta: {
-            texto: nombreRepetido
-              ? `Ya existe un equipo llamado "${nombreRepetido}". Elige otro nombre:`
-              : '¿Cómo se llama el equipo nuevo? (por ejemplo: Sub-9)',
+            texto: nombreRepetido ? textos.nombreRepetido(nombreRepetido) : textos.preguntaNombre(),
           },
         });
       },
@@ -167,7 +164,7 @@ export class NuevoEquipoFlujo {
         if (!nombre) {
           return Promise.resolve({
             tipo: 'repetir',
-            respuesta: { texto: 'Necesito un nombre para el equipo.' },
+            respuesta: { texto: textos.necesitoNombre() },
           });
         }
 
@@ -187,13 +184,13 @@ export class NuevoEquipoFlujo {
       entrar: () =>
         Promise.resolve({
           respuesta: {
-            texto: '¿Formato de partido para esta categoría?',
+            texto: textos.preguntaFormato(),
             botones: [
               ...FORMATOS_SUGERIDOS.map((f, i) => ({
                 id: `${PREFIJO_FORMATO}${i}`,
                 texto: f.etiqueta,
               })),
-              { id: OPCION_OTRO, texto: 'Otro' },
+              { id: OPCION_OTRO, texto: textos.botonFormatoOtro },
             ],
           },
         }),
@@ -220,16 +217,14 @@ export class NuevoEquipoFlujo {
 
       entrar: () =>
         Promise.resolve({
-          respuesta: {
-            texto: `Escribe "tiempos x minutos", por ejemplo: 3 x 20\n\n(${LIMITES_FORMATO.tiemposMin}-${LIMITES_FORMATO.tiemposMax} tiempos, ${LIMITES_FORMATO.minutosMin}-${LIMITES_FORMATO.minutosMax} minutos)`,
-          },
+          respuesta: { texto: textosComunes.preguntaFormatoCustom(LIMITES_FORMATO) },
         }),
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
         const formato = parsearFormato(ctx.mensaje.texto ?? '');
 
         if (!formato) {
-          return { tipo: 'repetir', respuesta: { texto: 'No lo entendí. Escríbelo así: 3 x 20' } };
+          return { tipo: 'repetir', respuesta: { texto: textosComunes.formatoNoEntendido() } };
         }
 
         return this.crear(ctx, formato);
@@ -253,7 +248,7 @@ export class NuevoEquipoFlujo {
     if (!sigueSiendoAdmin) {
       return {
         tipo: 'finalizar',
-        respuesta: { texto: 'Ya no eres admin de esta academia, así que no creé el equipo.' },
+        respuesta: { texto: textos.yaNoEsAdmin() },
       };
     }
 

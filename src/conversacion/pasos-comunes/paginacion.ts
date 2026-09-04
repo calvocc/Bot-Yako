@@ -1,4 +1,5 @@
 import type { Boton } from '../../channels/channel.types';
+import { textos } from '../../textos/pasos-comunes';
 
 /**
  * Máximo de opciones por mensaje.
@@ -35,7 +36,7 @@ export function botonesPaginados(
   const botones: Boton[] = trozo.map((o) => ({ id: o.id, texto: recortar(o.texto, 20) }));
 
   if (hayMas) {
-    botones.push({ id: ID_VER_MAS, texto: 'Ver más' });
+    botones.push({ id: ID_VER_MAS, texto: textos.verMas });
   }
 
   return { botones, hayMas };

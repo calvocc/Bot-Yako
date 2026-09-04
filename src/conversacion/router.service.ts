@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { MensajeEntrante, RespuestaBot } from '../channels/channel.types';
-import { esComandoDeFlujo, parsearComando, PREFIJO_BOTON_COMANDO } from './comandos';
+import { textos as textosComunes } from '../textos/comunes';
+import { textos } from '../textos/router';
+import { botonComando, esComandoDeFlujo, parsearComando, PREFIJO_BOTON_COMANDO } from './comandos';
 import { FlowEngine } from './flow-engine.service';
 import type { DatosFlujo } from './flow.types';
 
@@ -148,19 +150,15 @@ export class Router {
     const habia = await this.motor.tieneFlujoActivo(mensaje);
     await this.motor.abandonar(mensaje);
 
-    return {
-      texto: habia
-        ? 'Listo, cancelé lo que estábamos haciendo. Escribe /ayuda si quieres ver las opciones.'
-        : 'No había nada en curso. Escribe /ayuda si quieres ver las opciones.',
-    };
+    return { texto: habia ? textos.canceladoConFlujo() : textos.canceladoSinFlujo() };
   }
 
   private comandoDesconocido(nombre: string): RespuestaBot {
     this.logger.debug(`Comando no registrado: /${nombre}`);
 
     return {
-      texto: `No conozco el comando /${nombre}.`,
-      botones: [{ id: 'cmd:ayuda', texto: 'Ver qué puedo hacer' }],
+      texto: textos.comandoDesconocido(nombre),
+      botones: [botonComando('ayuda', textosComunes.botonAyuda())],
     };
   }
 
@@ -169,14 +167,14 @@ export class Router {
     // abierta. Se orienta al usuario en vez de ignorarlo en silencio.
     if (mensaje.seleccionId) {
       return {
-        texto: 'Ese botón ya no está disponible; seguramente es de un mensaje anterior.',
-        botones: [{ id: 'cmd:ayuda', texto: 'Ver qué puedo hacer' }],
+        texto: textos.botonViejo(),
+        botones: [botonComando('ayuda', textosComunes.botonAyuda())],
       };
     }
 
     return {
-      texto: 'No estoy seguro de qué necesitas.',
-      botones: [{ id: 'cmd:ayuda', texto: 'Ver qué puedo hacer' }],
+      texto: textos.sinContexto(),
+      botones: [botonComando('ayuda', textosComunes.botonAyuda())],
     };
   }
 }

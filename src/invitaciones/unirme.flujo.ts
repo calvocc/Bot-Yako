@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import type { ContextoComando } from '../conversacion/router.service';
 import type { RespuestaBot } from '../channels/channel.types';
 import type { Flujo, Paso, Transicion } from '../conversacion/flow.types';
+import { textos as textosComunes } from '../textos/comunes';
+import { textos } from '../textos/invitaciones';
 import { InvitacionesService } from './invitaciones.service';
 import { mensajeDeCanje } from './mensajes-canje';
 
@@ -20,7 +22,7 @@ export class UnirmeFlujo {
   async manejarDirecto(ctx: ContextoComando, usuarioId?: string): Promise<RespuestaBot | null> {
     if (!ctx.argumento || !usuarioId) return null;
 
-    return this.canjearYResponder(ctx.argumento, usuarioId);
+    return (await this.canjear(ctx.argumento, usuarioId)).respuesta;
   }
 
   private pasoCodigo(): Paso {
@@ -29,7 +31,7 @@ export class UnirmeFlujo {
 
       entrar: () =>
         Promise.resolve({
-          respuesta: { texto: 'Pega el código del equipo al que te quieres sumar.' },
+          respuesta: { texto: textos.unirme.pedirCodigo() },
         }),
 
       recibir: async (ctx): Promise<Transicion> => {
@@ -38,22 +40,31 @@ export class UnirmeFlujo {
         if (!codigo || !ctx.usuarioId) {
           return {
             tipo: 'repetir',
-            respuesta: { texto: 'Necesito el código. Se ve así: YAKO-X7F2A' },
+            respuesta: { texto: textosComunes.necesitoElCodigo() },
           };
         }
 
-        const respuesta = await this.canjearYResponder(codigo, ctx.usuarioId);
-        const exitoso = respuesta.texto.includes('✅') || respuesta.texto.includes('Ya eras');
+        const { exitoso, respuesta } = await this.canjear(codigo, ctx.usuarioId);
 
-        // Un código inválido deja el flujo abierto para reintentar; uno válido
-        // lo cierra.
+        // Un código inválido deja el flujo abierto para reintentar; uno
+        // válido lo cierra. Se decide por `resultado.estado` (tipado), no
+        // por el texto ya renderizado: comparar substrings del mensaje se
+        // rompe en silencio en cuanto alguien reescribe el copy.
         return exitoso ? { tipo: 'finalizar', respuesta } : { tipo: 'repetir', respuesta };
       },
     };
   }
 
-  private async canjearYResponder(codigo: string, usuarioId: string): Promise<RespuestaBot> {
+  private async canjear(
+    codigo: string,
+    usuarioId: string,
+  ): Promise<{ exitoso: boolean; respuesta: RespuestaBot }> {
     // El canje ya deja la membresía aplicada, en su misma transacción.
-    return mensajeDeCanje(await this.invitaciones.canjear(codigo, usuarioId));
+    const resultado = await this.invitaciones.canjear(codigo, usuarioId);
+
+    return {
+      exitoso: resultado.estado === 'ok' || resultado.estado === 'ya_eras_miembro',
+      respuesta: mensajeDeCanje(resultado),
+    };
   }
 }

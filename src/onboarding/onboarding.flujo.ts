@@ -20,6 +20,8 @@ import {
   respuestaPlantillaLista,
 } from '../jugadores/pasos-plantilla';
 import { mensajeDeCanje } from '../invitaciones/mensajes-canje';
+import { textos as textosComunes } from '../textos/comunes';
+import { textos } from '../textos/onboarding';
 
 export const FLUJO_ONBOARDING = 'onboarding';
 
@@ -45,8 +47,7 @@ const OPCION_CODIGO = 'onb:codigo';
 const PREFIJO_FORMATO = 'onb:fmt:';
 const OPCION_FORMATO_OTRO = 'onb:fmt:otro';
 
-const CIERRE =
-  'Ya puedes crear otro equipo con /nuevoequipo, invitar a los papás con /invitar, o ver tus equipos con /equipos.';
+const CIERRE = textos.cierre();
 
 @Injectable()
 export class OnboardingFlujo {
@@ -114,8 +115,8 @@ export class OnboardingFlujo {
             transicion: {
               tipo: 'finalizar',
               respuesta: {
-                texto: `¡Hola de nuevo! Ya estás en:\n\n${lista}\n\n${CIERRE}`,
-                botones: [botonComando('ayuda', 'Ver qué puedo hacer')],
+                texto: textos.holaDeNuevo(lista, CIERRE),
+                botones: [botonComando('ayuda', textosComunes.botonAyuda())],
               },
             },
           };
@@ -123,11 +124,10 @@ export class OnboardingFlujo {
 
         return {
           respuesta: {
-            texto:
-              '¡Hola! Soy Yako ⚽, llevo las estadísticas de tu academia.\n\nPara empezar, dime:',
+            texto: textos.bienvenida(),
             botones: [
-              { id: OPCION_CODIGO, texto: 'Tengo invitación' },
-              { id: OPCION_CREAR, texto: 'Crear academia' },
+              { id: OPCION_CODIGO, texto: textos.botonTengoInvitacion },
+              { id: OPCION_CREAR, texto: textos.botonCrearAcademia },
             ],
           },
         };
@@ -147,10 +147,10 @@ export class OnboardingFlujo {
         return Promise.resolve({
           tipo: 'repetir',
           respuesta: {
-            texto: 'Elige una de las dos opciones:',
+            texto: textos.eligeUnaOpcion(),
             botones: [
-              { id: OPCION_CODIGO, texto: 'Tengo invitación' },
-              { id: OPCION_CREAR, texto: 'Crear academia' },
+              { id: OPCION_CODIGO, texto: textos.botonTengoInvitacion },
+              { id: OPCION_CREAR, texto: textos.botonCrearAcademia },
             ],
           },
         });
@@ -169,9 +169,7 @@ export class OnboardingFlujo {
 
         return Promise.resolve({
           respuesta: {
-            texto: error
-              ? `${error}\n\nPega el código aquí:`
-              : 'Pega el código de invitación que te compartieron.',
+            texto: error ? textos.pedirCodigoConError(error) : textos.pedirCodigo(),
           },
         });
       },
@@ -182,7 +180,7 @@ export class OnboardingFlujo {
         if (!codigo || !ctx.usuarioId) {
           return {
             tipo: 'repetir',
-            respuesta: { texto: 'Necesito el código. Se ve así: YAKO-X7F2A' },
+            respuesta: { texto: textosComunes.necesitoElCodigo() },
           };
         }
 
@@ -197,10 +195,7 @@ export class OnboardingFlujo {
 
       entrar: () =>
         Promise.resolve({
-          respuesta: {
-            texto:
-              'Perfecto, vas a ser el administrador.\n\n¿Cómo se llama la academia u organización?',
-          },
+          respuesta: { texto: textos.preguntaNombreAcademia() },
         }),
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
@@ -209,7 +204,7 @@ export class OnboardingFlujo {
         if (!nombre || nombre.length < 2) {
           return {
             tipo: 'repetir',
-            respuesta: { texto: 'Necesito un nombre de al menos 2 letras. ¿Cómo se llama?' },
+            respuesta: { texto: textos.nombreAcademiaCorto() },
           };
         }
 
@@ -235,8 +230,8 @@ export class OnboardingFlujo {
         const nombreRepetido = typeof repetido === 'string' ? repetido : '';
 
         const texto = nombreRepetido
-          ? `Ya tienes un equipo llamado "${nombreRepetido}". Elige otro nombre:`
-          : `Academia "${leerTexto(ctx.datos, CLAVE_ACADEMIA_NOMBRE)}" creada ✅\n\nAhora el primer equipo o categoría. ¿Cómo se llama? (por ejemplo: Sub-11)`;
+          ? textos.nombreEquipoRepetido(nombreRepetido)
+          : textos.academiaCreada(leerTexto(ctx.datos, CLAVE_ACADEMIA_NOMBRE));
 
         return Promise.resolve({ respuesta: { texto } });
       },
@@ -247,7 +242,7 @@ export class OnboardingFlujo {
         if (!nombre) {
           return Promise.resolve({
             tipo: 'repetir',
-            respuesta: { texto: '¿Cómo se llama el equipo? (por ejemplo: Sub-11)' },
+            respuesta: { texto: textos.preguntaNombreEquipo() },
           });
         }
 
@@ -267,13 +262,13 @@ export class OnboardingFlujo {
       entrar: (ctx: ContextoFlujo) =>
         Promise.resolve({
           respuesta: {
-            texto: `¿Formato de partido para ${leerTexto(ctx.datos, CLAVE_EQUIPO_NOMBRE)}?`,
+            texto: textos.preguntaFormato(leerTexto(ctx.datos, CLAVE_EQUIPO_NOMBRE)),
             botones: [
               ...FORMATOS_SUGERIDOS.map((f, i) => ({
                 id: `${PREFIJO_FORMATO}${i}`,
                 texto: f.etiqueta,
               })),
-              { id: OPCION_FORMATO_OTRO, texto: 'Otro' },
+              { id: OPCION_FORMATO_OTRO, texto: textos.botonFormatoOtro },
             ],
           },
         }),
@@ -304,9 +299,7 @@ export class OnboardingFlujo {
 
       entrar: () =>
         Promise.resolve({
-          respuesta: {
-            texto: `Escribe el formato como "tiempos x minutos". Por ejemplo: 3 x 20\n\n(entre ${LIMITES_FORMATO.tiemposMin} y ${LIMITES_FORMATO.tiemposMax} tiempos, de ${LIMITES_FORMATO.minutosMin} a ${LIMITES_FORMATO.minutosMax} minutos)`,
-          },
+          respuesta: { texto: textosComunes.preguntaFormatoCustom(LIMITES_FORMATO) },
         }),
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
@@ -315,7 +308,7 @@ export class OnboardingFlujo {
         if (!formato) {
           return {
             tipo: 'repetir',
-            respuesta: { texto: 'No lo entendí. Escríbelo así: 3 x 20' },
+            respuesta: { texto: textosComunes.formatoNoEntendido() },
           };
         }
 

@@ -20,6 +20,8 @@ import {
   type FormatoPartido,
 } from '../equipos/equipos.service';
 import { MembresiasService } from '../identidad/membresias.service';
+import { textos as textosComunes } from '../textos/comunes';
+import { textos } from '../textos/partidos';
 import { describirFecha, hoyLocal, parsearFecha, sumarDias } from './fechas';
 import { PartidosService } from './partidos.service';
 
@@ -70,7 +72,7 @@ export class NuevoPartidoFlujo {
         pasoSelectorEquipo(PASOS.equipo, this.membresias, {
           siguiente: PASOS.rival,
           rolMinimo: 'editor',
-          pregunta: '¿De qué equipo es el partido?',
+          pregunta: textos.nuevoPartido.preguntaEquipo,
         }),
         this.pasoRival(),
         this.pasoFecha(),
@@ -88,7 +90,7 @@ export class NuevoPartidoFlujo {
 
       entrar: () =>
         Promise.resolve({
-          respuesta: { texto: 'Vamos a crear un partido. ¿Contra quién juegan?' },
+          respuesta: { texto: textos.nuevoPartido.preguntaRival() },
         }),
 
       recibir: (ctx: ContextoFlujo): Promise<Transicion> => {
@@ -97,7 +99,7 @@ export class NuevoPartidoFlujo {
         if (!rival) {
           return Promise.resolve({
             tipo: 'repetir',
-            respuesta: { texto: 'Necesito el nombre del rival.' },
+            respuesta: { texto: textos.nuevoPartido.necesitoRival() },
           });
         }
 
@@ -121,11 +123,14 @@ export class NuevoPartidoFlujo {
 
         return Promise.resolve({
           respuesta: {
-            texto: '¿Qué día se juega? Toca una opción o escribe la fecha (12-10).',
+            texto: textos.nuevoPartido.preguntaFecha(),
             botones: [
-              { id: `${PREFIJO_FECHA}${dia}`, texto: 'Hoy' },
-              { id: `${PREFIJO_FECHA}${sumarDias(dia, -1)}`, texto: 'Ayer' },
-              { id: `${PREFIJO_FECHA}${sumarDias(dia, 1)}`, texto: 'Mañana' },
+              { id: `${PREFIJO_FECHA}${dia}`, texto: textos.nuevoPartido.botonHoy },
+              { id: `${PREFIJO_FECHA}${sumarDias(dia, -1)}`, texto: textos.nuevoPartido.botonAyer },
+              {
+                id: `${PREFIJO_FECHA}${sumarDias(dia, 1)}`,
+                texto: textos.nuevoPartido.botonManana,
+              },
             ],
           },
         });
@@ -140,7 +145,7 @@ export class NuevoPartidoFlujo {
         if (!fecha) {
           return Promise.resolve({
             tipo: 'repetir',
-            respuesta: { texto: 'No entendí la fecha. Escríbela así: 12-10 (o "hoy").' },
+            respuesta: { texto: textos.nuevoPartido.fechaNoEntendida() },
           });
         }
 
@@ -181,8 +186,8 @@ export class NuevoPartidoFlujo {
 
       return [
         ...paginados,
-        { id: ID_COMPETENCIA_OTRA, texto: 'Nueva competencia' },
-        { id: ID_COMPETENCIA_NINGUNA, texto: 'Sin competencia' },
+        { id: ID_COMPETENCIA_OTRA, texto: textos.nuevoPartido.botonNuevaCompetencia },
+        { id: ID_COMPETENCIA_NINGUNA, texto: textos.nuevoPartido.botonSinCompetencia },
       ];
     };
 
@@ -192,7 +197,12 @@ export class NuevoPartidoFlujo {
       entrar: async (ctx: ContextoFlujo): Promise<Entrada> => {
         const lista = await listar(ctx);
 
-        return { respuesta: { texto: '¿En qué competencia?', botones: botones(lista, 0) } };
+        return {
+          respuesta: {
+            texto: textos.nuevoPartido.preguntaCompetencia(),
+            botones: botones(lista, 0),
+          },
+        };
       },
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
@@ -218,7 +228,10 @@ export class NuevoPartidoFlujo {
 
           return {
             tipo: 'repetir',
-            respuesta: { texto: '¿En qué competencia?', botones: botones(lista, siguiente) },
+            respuesta: {
+              texto: textos.nuevoPartido.preguntaCompetencia(),
+              botones: botones(lista, siguiente),
+            },
             datos: { [CLAVE_PAGINA_COMPETENCIA]: siguiente },
           };
         }
@@ -247,7 +260,7 @@ export class NuevoPartidoFlujo {
         return {
           tipo: 'repetir',
           respuesta: {
-            texto: 'Toca una opción o escribe el nombre:',
+            texto: textos.nuevoPartido.tocaOpcionOEscribeNombre(),
             botones: botones(lista, pagina),
           },
           datos: { [CLAVE_PAGINA_COMPETENCIA]: pagina },
@@ -260,7 +273,8 @@ export class NuevoPartidoFlujo {
     return {
       id: PASOS.competenciaLibre,
 
-      entrar: () => Promise.resolve({ respuesta: { texto: '¿Cómo se llama la competencia?' } }),
+      entrar: () =>
+        Promise.resolve({ respuesta: { texto: textos.nuevoPartido.preguntaCompetenciaLibre() } }),
 
       recibir: (ctx: ContextoFlujo): Promise<Transicion> => {
         const nombre = ctx.mensaje.texto?.trim();
@@ -268,7 +282,7 @@ export class NuevoPartidoFlujo {
         if (!nombre) {
           return Promise.resolve({
             tipo: 'repetir',
-            respuesta: { texto: 'Escribe el nombre de la competencia.' },
+            respuesta: { texto: textos.nuevoPartido.necesitoNombreCompetencia() },
           });
         }
 
@@ -284,7 +298,7 @@ export class NuevoPartidoFlujo {
     if (!equipo) {
       return {
         tipo: 'finalizar',
-        respuesta: { texto: 'No encontré el equipo. Vuelve a empezar.' },
+        respuesta: { texto: textosComunes.noEncontre('el equipo', 'Vuelve a empezar.') },
       };
     }
 
@@ -313,10 +327,10 @@ export class NuevoPartidoFlujo {
 
         return {
           respuesta: {
-            texto: `¿Formato del partido? El del equipo es ${describirFormato(habitual)}.`,
+            texto: textos.nuevoPartido.preguntaFormato(describirFormato(habitual)),
             botones: [
-              { id: ID_FORMATO_HABITUAL, texto: 'El de siempre' },
-              { id: ID_FORMATO_OTRO, texto: 'Otro para este' },
+              { id: ID_FORMATO_HABITUAL, texto: textos.nuevoPartido.botonFormatoHabitual },
+              { id: ID_FORMATO_OTRO, texto: textos.nuevoPartido.botonFormatoOtro },
             ],
           },
         };
@@ -345,16 +359,14 @@ export class NuevoPartidoFlujo {
 
       entrar: () =>
         Promise.resolve({
-          respuesta: {
-            texto: `Escribe "tiempos x minutos", por ejemplo: 3 x 20\n\n(${LIMITES_FORMATO.tiemposMin}-${LIMITES_FORMATO.tiemposMax} tiempos, ${LIMITES_FORMATO.minutosMin}-${LIMITES_FORMATO.minutosMax} minutos)`,
-          },
+          respuesta: { texto: textosComunes.preguntaFormatoCustom(LIMITES_FORMATO) },
         }),
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
         const formato = parsearFormato(ctx.mensaje.texto ?? '');
 
         if (!formato) {
-          return { tipo: 'repetir', respuesta: { texto: 'No lo entendí. Escríbelo así: 3 x 20' } };
+          return { tipo: 'repetir', respuesta: { texto: textosComunes.formatoNoEntendido() } };
         }
 
         return this.crear(ctx, formato);
@@ -396,7 +408,7 @@ export class NuevoPartidoFlujo {
     if (!puede) {
       return {
         tipo: 'finalizar',
-        respuesta: { texto: 'Ya no tienes permiso de carga en ese equipo, así que no creé nada.' },
+        respuesta: { texto: textosComunes.permisoRevocado('editor', 'no creé nada') },
       };
     }
 
@@ -427,15 +439,7 @@ export class NuevoPartidoFlujo {
 
     return {
       tipo: 'finalizar',
-      respuesta: {
-        texto: [
-          'Partido creado ✅',
-          detalle,
-          `Formato: ${describirFormato(formato)}`,
-          '',
-          'Cuando arranque, usa /cargar.',
-        ].join('\n'),
-      },
+      respuesta: { texto: textos.nuevoPartido.creado(detalle, describirFormato(formato)) },
     };
   }
 }

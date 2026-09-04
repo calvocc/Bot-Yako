@@ -9,6 +9,8 @@ import {
 } from '../conversacion/pasos-comunes/selector-equipo';
 import { MembresiasService } from '../identidad/membresias.service';
 import { ETIQUETA_ROL, type Rol } from '../identidad/roles';
+import { textos as textosComunes } from '../textos/comunes';
+import { textos } from '../textos/invitaciones';
 import { deepLinkDe, InvitacionesService, VIGENCIA_DIAS_DEFECTO } from './invitaciones.service';
 
 export const FLUJO_INVITAR = 'invitar';
@@ -21,8 +23,8 @@ const PREFIJO_USOS = 'inv:usos:';
 
 /** Un código para una persona, o uno para mandar al grupo entero. */
 const OPCIONES_USOS = [
-  { usos: 1, etiqueta: 'Una persona' },
-  { usos: 25, etiqueta: 'Todo el grupo' },
+  { usos: 1, etiqueta: textos.invitar.botonUnaPersona },
+  { usos: 25, etiqueta: textos.invitar.botonTodoElGrupo },
 ] as const;
 
 @Injectable()
@@ -41,7 +43,7 @@ export class InvitarFlujo {
         pasoSelectorEquipo(PASOS.equipo, this.membresias, {
           siguiente: PASOS.rol,
           rolMinimo: 'admin',
-          pregunta: '¿Para cuál equipo es la invitación?',
+          pregunta: textos.invitar.preguntaEquipo,
         }),
         this.pasoRol(),
         this.pasoUsos(),
@@ -56,10 +58,10 @@ export class InvitarFlujo {
       entrar: () =>
         Promise.resolve({
           respuesta: {
-            texto: '¿Qué podrá hacer quien use este código?',
+            texto: textos.invitar.preguntaRol,
             botones: [
-              { id: `${PREFIJO_ROL}viewer`, texto: 'Solo consultar' },
-              { id: `${PREFIJO_ROL}editor`, texto: 'Cargar eventos' },
+              { id: `${PREFIJO_ROL}viewer`, texto: textos.invitar.botonSoloConsultar },
+              { id: `${PREFIJO_ROL}editor`, texto: textos.invitar.botonCargarEventos },
             ],
           },
         }),
@@ -71,10 +73,10 @@ export class InvitarFlujo {
           return Promise.resolve({
             tipo: 'repetir',
             respuesta: {
-              texto: 'Toca una de las dos opciones:',
+              texto: textos.invitar.repetirRol,
               botones: [
-                { id: `${PREFIJO_ROL}viewer`, texto: 'Solo consultar' },
-                { id: `${PREFIJO_ROL}editor`, texto: 'Cargar eventos' },
+                { id: `${PREFIJO_ROL}viewer`, texto: textos.invitar.botonSoloConsultar },
+                { id: `${PREFIJO_ROL}editor`, texto: textos.invitar.botonCargarEventos },
               ],
             },
           });
@@ -101,7 +103,7 @@ export class InvitarFlujo {
       entrar: (): Promise<Entrada> =>
         Promise.resolve({
           respuesta: {
-            texto: '¿Para cuántas personas?',
+            texto: textos.invitar.preguntaUsos,
             botones: OPCIONES_USOS.map((o) => ({
               id: `${PREFIJO_USOS}${o.usos}`,
               texto: o.etiqueta,
@@ -127,7 +129,7 @@ export class InvitarFlujo {
         if (!esAdmin) {
           return {
             tipo: 'finalizar',
-            respuesta: { texto: 'Solo un admin del equipo puede generar invitaciones.' },
+            respuesta: { texto: textosComunes.soloAdmin('generar invitaciones para este equipo') },
           };
         }
 
@@ -145,19 +147,14 @@ export class InvitarFlujo {
     const rol = ctx.datos[CLAVE_ROL] as Rol;
     const usuarioBot = this.config.get('TELEGRAM_BOT_USERNAME');
 
-    const lineas = [
-      `Código para *${equipo}* — ${ETIQUETA_ROL[rol]}`,
-      `Válido ${VIGENCIA_DIAS_DEFECTO} días · ${invitacion.usosMaximos === 1 ? '1 uso' : `hasta ${invitacion.usosMaximos} personas`}`,
-      '',
-      invitacion.codigo,
-    ];
-
-    if (usuarioBot) {
-      lineas.push('', 'O comparte este enlace:', deepLinkDe(invitacion.codigo, usuarioBot));
-    }
-
-    lineas.push('', 'Quien lo reciba entra con /unirme y el código.');
-
-    return lineas.join('\n');
+    return textos.invitar.codigoGenerado({
+      equipo,
+      rol: ETIQUETA_ROL[rol],
+      dias: VIGENCIA_DIAS_DEFECTO,
+      etiquetaUsos:
+        invitacion.usosMaximos === 1 ? '1 uso' : `hasta ${invitacion.usosMaximos} personas`,
+      codigo: invitacion.codigo,
+      enlace: usuarioBot ? deepLinkDe(invitacion.codigo, usuarioBot) : undefined,
+    });
   }
 }

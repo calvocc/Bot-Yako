@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import type { RespuestaBot } from '../channels/channel.types';
 import { botonComando } from '../conversacion/comandos';
 import { MembresiasService } from '../identidad/membresias.service';
+import { textos as textosComunes } from '../textos/comunes';
+import { textos } from '../textos/estadisticas';
 import {
   EstadisticasService,
   temporadaActual,
@@ -9,11 +11,6 @@ import {
   type EstadisticaJugador,
   type Goleador,
 } from './estadisticas.service';
-
-const SIN_EQUIPOS: RespuestaBot = {
-  texto: 'Todavía no perteneces a ningún equipo.',
-  botones: [botonComando('start', 'Empezar')],
-};
 
 /**
  * `/stats [jugador]` y `/tabla` (RF-6). Cualquier rol puede usarlos —Viewer
@@ -29,19 +26,17 @@ export class EstadisticasHandler {
   ) {}
 
   async stats(argumento: string | undefined, usuarioId?: string): Promise<RespuestaBot> {
-    if (!usuarioId) return { texto: 'Primero usa /start.' };
+    if (!usuarioId) return { texto: textosComunes.primeroUsaStart() };
 
     const nombre = argumento?.trim();
 
     if (!nombre) {
-      return {
-        texto: '¿De qué jugador? Escribe /stats seguido del nombre, por ejemplo: /stats Jacob',
-      };
+      return { texto: textos.preguntaJugador() };
     }
 
     const equipos = await this.membresias.equiposDe(usuarioId);
 
-    if (equipos.length === 0) return SIN_EQUIPOS;
+    if (equipos.length === 0) return this.sinEquipos();
 
     const bloques: string[] = [];
 
@@ -54,18 +49,20 @@ export class EstadisticasHandler {
     }
 
     if (bloques.length === 0) {
-      return { texto: `No encontré a nadie llamado "${nombre}" con estadísticas cargadas.` };
+      return {
+        texto: textosComunes.noEncontre(`a nadie llamado "${nombre}" con estadísticas cargadas`),
+      };
     }
 
     return { texto: bloques.join('\n\n') };
   }
 
   async tabla(usuarioId?: string): Promise<RespuestaBot> {
-    if (!usuarioId) return { texto: 'Primero usa /start.' };
+    if (!usuarioId) return { texto: textosComunes.primeroUsaStart() };
 
     const equipos = await this.membresias.equiposDe(usuarioId);
 
-    if (equipos.length === 0) return SIN_EQUIPOS;
+    if (equipos.length === 0) return this.sinEquipos();
 
     const bloques: string[] = [];
 
@@ -79,14 +76,24 @@ export class EstadisticasHandler {
     return { texto: bloques.join('\n\n') };
   }
 
-  private lineaJugador(equipoNombre: string, stat: EstadisticaJugador): string {
-    const dorsal = stat.dorsal !== null ? ` #${stat.dorsal}` : '';
+  private sinEquipos(): RespuestaBot {
+    return {
+      texto: textosComunes.sinEquipos(),
+      botones: [botonComando('start', textosComunes.botonEmpezar())],
+    };
+  }
 
-    return [
-      `📊 ${stat.nombre}${dorsal} — ${equipoNombre} · temporada ${stat.temporada}`,
-      `Partidos jugados: ${stat.partidosConEvento}`,
-      `Goles: ${stat.goles}  ·  Asistencias: ${stat.asistencias}  ·  Amarillas: ${stat.amarillas}`,
-    ].join('\n');
+  private lineaJugador(equipoNombre: string, stat: EstadisticaJugador): string {
+    return textos.lineaJugador({
+      nombre: stat.nombre,
+      dorsal: stat.dorsal,
+      equipoNombre,
+      temporada: stat.temporada,
+      partidosConEvento: stat.partidosConEvento,
+      goles: stat.goles,
+      asistencias: stat.asistencias,
+      amarillas: stat.amarillas,
+    });
   }
 
   private bloqueEquipo(
@@ -95,16 +102,18 @@ export class EstadisticasHandler {
     goleador: Goleador | null,
   ): string {
     if (!stat) {
-      return `📋 ${equipoNombre} — temporada ${temporadaActual()}\nSin partidos cerrados todavía.`;
+      return textos.sinPartidosCerrados(equipoNombre, temporadaActual());
     }
 
-    const perdidos = stat.perdidos === 1 ? '1 perdido' : `${stat.perdidos} perdidos`;
-    const golLinea = goleador ? ` · Goleador: ${goleador.nombre} (${goleador.goles})` : '';
-
-    return [
-      `📋 ${equipoNombre} — temporada ${stat.temporada}`,
-      `${stat.partidosJugados} partidos · ${stat.ganados} ganados · ${stat.empatados} empates · ${perdidos}`,
-      `Goles a favor: ${stat.golesFavor}${golLinea}`,
-    ].join('\n');
+    return textos.bloqueEquipo({
+      equipoNombre,
+      temporada: stat.temporada,
+      partidosJugados: stat.partidosJugados,
+      ganados: stat.ganados,
+      empatados: stat.empatados,
+      perdidos: stat.perdidos,
+      golesFavor: stat.golesFavor,
+      goleador,
+    });
   }
 }
