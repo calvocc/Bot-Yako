@@ -119,6 +119,27 @@ describe('componerResumen', () => {
     expect(texto).not.toContain('MVP del partido');
   });
 
+  it('cuenta un cambio con quien sale y quien entra (no solo quien sale)', () => {
+    const texto = componerResumen({
+      partido: partido(),
+      equipoNombre: 'Ringo Amaya',
+      eventos: [
+        {
+          ...gol('Jacob', 34),
+          tipo: 'cambio',
+          jugadorEntraId: 'j-andres',
+          jugadorEntraNombre: 'Andrés',
+          jugadorEntraDorsal: 7,
+        },
+      ],
+    });
+
+    expect(texto).toContain("🔄 Cambio: Jacob → Andrés '34");
+    // Sin dorsal: es el mismo estilo que el resto del resumen (a diferencia
+    // de la bitácora en vivo, que sí lo muestra).
+    expect(texto).not.toContain('#7');
+  });
+
   it('no muestra MVP sin eventos cargados', () => {
     const texto = componerResumen({
       partido: partido(),

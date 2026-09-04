@@ -12,4 +12,4 @@ ALTER TABLE "partido_titulares" ADD CONSTRAINT "partido_titulares_partido_id_par
 ALTER TABLE "partido_titulares" ADD CONSTRAINT "partido_titulares_jugador_id_jugadores_id_fk" FOREIGN KEY ("jugador_id") REFERENCES "public"."jugadores"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "partido_titulares" ADD CONSTRAINT "partido_titulares_creado_por_usuarios_id_fk" FOREIGN KEY ("creado_por") REFERENCES "public"."usuarios"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "eventos" ADD CONSTRAINT "eventos_jugador_entra_id_jugadores_id_fk" FOREIGN KEY ("jugador_entra_id") REFERENCES "public"."jugadores"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "eventos" ADD CONSTRAINT "eventos_cambio_dos_jugadores_check" CHECK (tipo <> 'cambio' or (jugador_id is not null and jugador_entra_id is not null and jugador_id <> jugador_entra_id));
+ALTER TABLE "eventos" ADD CONSTRAINT "eventos_cambio_dos_jugadores_check" CHECK (tipo <> 'cambio' or (jugador_id is not null and jugador_entra_id is not null and jugador_id <> jugador_entra_id)) NOT VALID;

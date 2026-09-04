@@ -81,6 +81,14 @@ export const eventos = pgTable(
     ),
     // Un cambio sin los dos jugadores identificados no dice nada: "alguien
     // entró" no sirve para medir minutos. Y no puede ser la misma persona.
+    //
+    // `tipo = 'cambio'` ya existía como botón antes de que `jugador_entra_id`
+    // existiera, así que cualquier base con partidos ya jugados puede tener
+    // cambios viejos con esa columna en null. La migración agrega este check
+    // con `NOT VALID` a mano (drizzle no tiene esa opción en `check()`): así
+    // se exige en todo cambio nuevo sin que la migración falle validando
+    // filas viejas que nunca van a poder cumplirlo — no hay forma de saber,
+    // a esta altura, quién entró en un cambio cargado antes de este cambio.
     check(
       'eventos_cambio_dos_jugadores_check',
       sql`tipo <> 'cambio' or (jugador_id is not null and jugador_entra_id is not null and jugador_id <> jugador_entra_id)`,

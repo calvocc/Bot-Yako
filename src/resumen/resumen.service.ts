@@ -84,9 +84,25 @@ export function componerResumen({ partido, equipoNombre, eventos }: DatosResumen
   return lineas.join('\n');
 }
 
-/** "Jacob '23" — el apóstrofo es la convención futbolística para el minuto. */
+/**
+ * "Jacob '23" — el apóstrofo es la convención futbolística para el minuto.
+ *
+ * Un cambio no tiene "un" protagonista: hay quien sale y quien entra, así que
+ * se cuenta con los dos, igual que ya hace la bitácora en vivo (`mensajes.ts`).
+ */
 function describirEvento(evento: EventoCargado, equipoNombre: string, rival: string): string {
+  const cuando = evento.minutoCalculado === null ? '' : ` '${evento.minutoCalculado}`;
+
+  if (evento.tipo === 'cambio') {
+    const sale = evento.jugadorNombre ?? protagonista(evento, equipoNombre, rival);
+    // Sin dorsal, igual que `quien` más abajo: el resumen no lo muestra en
+    // ningún otro evento, así que un cambio tampoco debería ser la excepción.
+    const entra = evento.jugadorEntraNombre ?? 'alguien';
+
+    return `${sale} → ${entra}${cuando}`;
+  }
+
   const quien = evento.jugadorNombre ?? protagonista(evento, equipoNombre, rival);
 
-  return evento.minutoCalculado === null ? quien : `${quien} '${evento.minutoCalculado}`;
+  return `${quien}${cuando}`;
 }
