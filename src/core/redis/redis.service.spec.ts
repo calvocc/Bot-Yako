@@ -27,6 +27,17 @@ describe('RedisService', () => {
     (servicio as unknown as { conectado: boolean }).conectado = true;
   };
 
+  it('distingue "no hay Redis" de "Redis no responde"', () => {
+    // `/health` necesita esta diferencia: sin ella, no haber configurado Redis
+    // —que es una decisión, no una avería— se reporta igual que una caída.
+    expect(servicio.configurado).toBe(true);
+
+    const sinUrl = new RedisService({ get: () => undefined } as unknown as TypedConfigService);
+
+    expect(sinUrl.configurado).toBe(false);
+    expect(sinUrl.disponible).toBe(false);
+  });
+
   it('queda no disponible cuando la conexión se cierra', () => {
     emitir('ready');
     expect(servicio.disponible).toBe(true);
