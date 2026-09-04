@@ -57,9 +57,15 @@ para ejecutar DDL.
 
 ### Redis es opcional a propósito
 
-Sin `REDIS_URL` el bot arranca igual y `/health` responde `degradado`. Redis acelera el partido en
-vivo (caché de sesión, ventana de duplicados, locks) pero no es fuente de verdad: todo tiene respaldo
-en Postgres. Exigirlo solo lograría que una caída de la caché tumbara el bot.
+Sin `REDIS_URL` el bot arranca igual y `/health` responde `redis: "no_configurado"` con
+`estado: "ok"`. Redis acelera la lectura de sesión y descarta reentregas del webhook, pero no es
+fuente de verdad: la detección de goles duplicados vive en Postgres desde la Fase 3
+([ADR-0004](adr/0004-dedup-atomico-en-postgres.md)) y el estado conversacional se escribe siempre en
+Postgres. Exigirlo solo lograría que una caída de la caché tumbara el bot.
+
+`degradado` está reservado para cuando algo que **esperábamos** que funcione no funciona: un Redis
+configurado que deja de responder. No haberlo configurado es una decisión, no una avería — y marcarla
+como tal convertía el estado normal del servicio en una alarma permanente.
 
 ---
 
@@ -79,7 +85,10 @@ Yako escuchando en el puerto 8080
 1. **Rotar las credenciales.** El token del bot y la contraseña de la base se compartieron por chat
    durante la puesta en marcha, así que hay que darlos por comprometidos: `/revoke` en BotFather y
    *Reset database password* en Supabase. Después se actualizan en Railway → Variables.
-2. **Redis en Upstash** (opcional). Sin él, `/health` responde `degradado` y el bot funciona igual.
+2. **Redis en Upstash** (opcional, y hoy no aporta gran cosa). Ahorra una consulta a Postgres por
+   toque de botón, de las ~25-30 que hace cargar un gol; el peso real está en la latencia de región,
+   no en la caché. Revisarlo si algún día hace falta pub/sub para sincronizar paneles, rate limiting,
+   o si crece la carga.
 3. **Rama por defecto en GitHub.** Settings → General → Default branch: cambiar a `main`. Después se
    puede borrar `claude/football-stats-bot-i95v3b`, cuyos commits ya viven en las ramas de fase.
 4. **Apuntar Railway a `main`.** El servicio sigue `fase-1-canal-y-motor` para haber podido validar
@@ -134,9 +143,10 @@ Debe mostrar la URL de Railway y `pending_update_count` en 0, sin `last_error_me
 curl https://<dominio-railway>/health
 ```
 
-- `{"estado":"ok"}` — Postgres y Redis responden.
-- `{"estado":"degradado", "redis":"caido"}` — falta `REDIS_URL` o Upstash no responde. El bot
-  funciona; conviene revisarlo pero no es una caída.
+- `{"estado":"ok", "redis":"no_configurado"}` — lo normal hoy: no hay Redis y no hace falta.
+- `{"estado":"ok", "redis":"ok"}` — hay Redis y responde.
+- `{"estado":"degradado", "redis":"caido"}` — hay `REDIS_URL` pero no responde. El bot funciona
+  contra Postgres; conviene revisarlo, pero no es una caída.
 - `{"postgres":"caido"}` — esto sí es grave: revisar `DATABASE_URL`.
 
 Y la prueba de verdad: escribirle `/ayuda` al bot en Telegram.

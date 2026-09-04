@@ -74,6 +74,17 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return this.conectado;
   }
 
+  /**
+   * ¿Se configuró un Redis?
+   *
+   * Distinto de `disponible`: separa "no hay Redis porque decidimos no
+   * tenerlo" de "hay uno y no responde". Solo lo segundo es un problema, y sin
+   * esta distinción `/health` reporta las dos situaciones como una caída.
+   */
+  get configurado(): boolean {
+    return this.cliente !== null;
+  }
+
   /** Acceso directo al cliente. Usar solo tras comprobar `disponible`. */
   get raw(): Redis {
     if (!this.cliente) {

@@ -33,9 +33,10 @@ pnpm db:migrate
 pnpm start:dev
 ```
 
-`GET /health` responde el estado de Postgres y Redis. Si Redis no está disponible el
-servicio arranca igual, en modo degradado: Redis acelera el partido en vivo pero no es
-fuente de verdad.
+`GET /health` responde el estado de Postgres y Redis. Redis es opcional: sin `REDIS_URL`
+el servicio arranca igual y se reporta `redis: "no_configurado"` con `estado: "ok"`, porque
+no tenerlo es una decisión y no una avería. `degradado` queda para cuando hay un Redis
+configurado que deja de responder — ahí el bot sigue funcionando contra Postgres.
 
 ### Comandos
 
