@@ -367,6 +367,40 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     expect(botonesQuien.some((t) => t.startsWith('Jacob'))).toBe(false);
   });
 
+  it('cambio: escribir el nombre de quien ya está en cancha (o el que sale) se rechaza', async () => {
+    const { equipo, decir, tocar } = await escenario('Cambio nombre en cancha');
+    await crearPartido(equipo.id);
+
+    await decir('/cargar');
+    await tocar('md:vivo');
+    // Los dos titulares: no queda nadie en la banca, así que "¿Quién entra?"
+    // solo ofrece "Otro jugador" — cualquier nombre escrito tiene que
+    // resolverse contra quien ya está jugando, no contra un botón.
+    await elegirTitulares(tocar, ['Jacob', 'Andrés']);
+
+    await tocar('ev:cambio');
+    await tocar(adaptador.ultimosBotones.find((b) => b.texto.startsWith('Jacob'))!.id);
+    expect(adaptador.ultimoTexto).toContain('¿Quién entra?');
+
+    // Alguien que sigue en cancha (Andrés, que no sale) no puede "entrar".
+    await decir('Andrés');
+    expect(adaptador.ultimoTexto).toContain('Andrés ya está en cancha.');
+
+    // Ni el propio jugador que está saliendo: sigue en cancha hasta que el
+    // cambio se registre, así que escribir su nombre cae en el mismo freno
+    // en vez de chocar contra el check de la base (jugador_id <>
+    // jugador_entra_id) con un error crudo.
+    await decir('Jacob');
+    expect(adaptador.ultimoTexto).toContain('Jacob ya está en cancha.');
+
+    // Alguien nuevo sí puede entrar.
+    adaptador.limpiar();
+    await decir('Samuel, 4');
+
+    const textos = adaptador.enviados.map((e) => e.respuesta.texto).join('\n');
+    expect(textos).toContain('🔄 Cambio: sale Jacob #10, entra Samuel #4');
+  });
+
   describe('post partido (RF-4)', () => {
     it('carga goleadores y tarjetas sin reloj, y el resumen trae el MVP', async () => {
       const { equipo, decir, tocar } = await escenario('Post partido');
