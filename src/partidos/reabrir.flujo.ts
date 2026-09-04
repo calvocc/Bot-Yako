@@ -12,6 +12,8 @@ import {
   ID_VER_MAS,
   paginaSiguiente,
 } from '../conversacion/pasos-comunes/paginacion';
+import { textos as textosComunes } from '../textos/comunes';
+import { textos } from '../textos/partidos';
 import { describirFecha } from './fechas';
 import { describirMarcador, type Partido } from './partido.mapper';
 import { PartidosService } from './partidos.service';
@@ -45,7 +47,7 @@ export class ReabrirFlujo {
         pasoSelectorEquipo(PASOS.equipo, this.membresias, {
           siguiente: PASOS.partido,
           rolMinimo: 'admin',
-          pregunta: '¿De qué equipo?',
+          pregunta: textos.reabrir.preguntaEquipo,
         }),
         this.pasoPartido(),
       ],
@@ -75,13 +77,13 @@ export class ReabrirFlujo {
           return {
             transicion: {
               tipo: 'finalizar',
-              respuesta: { texto: 'Ese equipo no tiene partidos cerrados.' },
+              respuesta: { texto: textos.reabrir.sinPartidosCerrados() },
             },
           };
         }
 
         return {
-          respuesta: { texto: '¿Cuál quieres reabrir?', botones: preguntar(lista, 0) },
+          respuesta: { texto: textos.reabrir.preguntaCual(), botones: preguntar(lista, 0) },
         };
       },
 
@@ -95,7 +97,10 @@ export class ReabrirFlujo {
 
           return {
             tipo: 'repetir',
-            respuesta: { texto: '¿Cuál quieres reabrir?', botones: preguntar(lista, siguiente) },
+            respuesta: {
+              texto: textos.reabrir.preguntaCual(),
+              botones: preguntar(lista, siguiente),
+            },
             datos: { [CLAVE_PAGINA]: siguiente },
           };
         }
@@ -105,7 +110,7 @@ export class ReabrirFlujo {
         if (!elegido) {
           return {
             tipo: 'repetir',
-            respuesta: { texto: 'Toca uno de los partidos:', botones: preguntar(lista, pagina) },
+            respuesta: { texto: textos.reabrir.tocaUnPartido(), botones: preguntar(lista, pagina) },
           };
         }
 
@@ -118,20 +123,23 @@ export class ReabrirFlujo {
         if (!sigueSiendoAdmin) {
           return {
             tipo: 'finalizar',
-            respuesta: { texto: 'Ya no eres admin de ese equipo, así que no reabrí nada.' },
+            respuesta: { texto: textosComunes.permisoRevocado('no reabrí nada') },
           };
         }
 
         const resultado = await this.partidos.reabrir(elegido.id);
 
         if (resultado.tipo === 'no_existe') {
-          return { tipo: 'finalizar', respuesta: { texto: 'No encontré ese partido.' } };
+          return {
+            tipo: 'finalizar',
+            respuesta: { texto: textosComunes.noEncontre('ese partido') },
+          };
         }
 
         if (resultado.tipo === 'no_estaba_cerrado') {
           return {
             tipo: 'finalizar',
-            respuesta: { texto: 'Alguien lo reabrió antes que tú; ya se le puede cargar.' },
+            respuesta: { texto: textos.reabrir.yaLoReabrieron() },
           };
         }
 
@@ -140,11 +148,11 @@ export class ReabrirFlujo {
         return {
           tipo: 'finalizar',
           respuesta: {
-            texto: [
-              `Partido reabierto ✅ ${equipoNombre} vs ${elegido.rival} — ${describirFecha(elegido.fecha)}`,
-              '',
-              'Corrige lo que falte con /cargar y vuelve a cerrarlo con /finalizar.',
-            ].join('\n'),
+            texto: textos.reabrir.reabierto(
+              equipoNombre,
+              elegido.rival,
+              describirFecha(elegido.fecha),
+            ),
           },
         };
       },

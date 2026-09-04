@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import type { RespuestaBot } from '../channels/channel.types';
-import { botonComando } from '../conversacion/comandos';
 import { describirFormato } from './equipos.service';
 import { MembresiasService } from '../identidad/membresias.service';
 import { ETIQUETA_ROL_CORTA } from '../identidad/roles';
+import { textos as textosComunes } from '../textos/comunes';
+import { textos } from '../textos/equipos';
 import { EquiposService } from './equipos.service';
 
 @Injectable()
@@ -16,17 +17,12 @@ export class EquiposHandler {
   /** `/equipos` — los equipos del usuario, con su rol y formato. */
   async listar(usuarioId?: string): Promise<RespuestaBot> {
     if (!usuarioId) {
-      return { texto: 'Primero usa /start.' };
+      return { texto: textosComunes.primeroUsaStart() };
     }
 
     const suyos = await this.membresias.equiposDe(usuarioId);
 
-    if (suyos.length === 0) {
-      return {
-        texto: 'Todavía no perteneces a ningún equipo.',
-        botones: [botonComando('start', 'Empezar')],
-      };
-    }
+    if (suyos.length === 0) return textosComunes.sinEquipos();
 
     const lineas = await Promise.all(
       suyos.map(async (e) => {
@@ -42,6 +38,6 @@ export class EquiposHandler {
       }),
     );
 
-    return { texto: `Tus equipos:\n\n${lineas.join('\n')}` };
+    return { texto: textos.listado(lineas.join('\n')) };
   }
 }

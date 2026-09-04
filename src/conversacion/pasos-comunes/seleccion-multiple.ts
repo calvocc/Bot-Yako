@@ -1,4 +1,5 @@
 import type { Boton } from '../../channels/channel.types';
+import { textos } from '../../textos/pasos-comunes';
 import type { ContextoFlujo, DatosFlujo, Entrada, Paso, Transicion } from '../flow.types';
 import { leerNumero } from '../flow.types';
 import { botonesPaginados, ID_VER_MAS, type OpcionPaginable, paginaSiguiente } from './paginacion';
@@ -50,13 +51,13 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
   ): { texto: string; botones: Boton[] } => {
     const marcadas = lista.map((o) => ({
       id: o.id,
-      texto: elegidos.includes(o.id) ? `✅ ${o.texto}` : o.texto,
+      texto: elegidos.includes(o.id) ? textos.marcaSeleccionado(o.texto) : o.texto,
     }));
     const { botones } = botonesPaginados(marcadas, pagina, RESERVA_BOTON_CONFIRMAR);
 
     botones.push({
       id: ID_CONFIRMAR,
-      texto: `${opciones.textoConfirmar ?? 'Listo'} (${elegidos.length})`,
+      texto: `${opciones.textoConfirmar ?? textos.confirmarListo} (${elegidos.length})`,
     });
 
     return {
@@ -98,9 +99,10 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
 
       if (seleccion === ID_CONFIRMAR) {
         if (elegidos.length < minimo) {
-          const aviso = minimo === 1 ? 'Elige al menos uno.' : `Elige al menos ${minimo}.`;
-
-          return { tipo: 'repetir', respuesta: armar(lista, elegidos, pagina, aviso) };
+          return {
+            tipo: 'repetir',
+            respuesta: armar(lista, elegidos, pagina, textos.eligeAlMenos(minimo)),
+          };
         }
 
         return opciones.alConfirmar(ctx, elegidos);

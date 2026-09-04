@@ -12,6 +12,8 @@ import {
   paginaSiguiente,
 } from '../conversacion/pasos-comunes/paginacion';
 import { MembresiasService } from './membresias.service';
+import { textos as textosComunes } from '../textos/comunes';
+import { textos } from '../textos/permisos';
 import { ETIQUETA_ROL_CORTA, ROLES, type Rol } from './roles';
 
 export const FLUJO_PERMISOS = 'permisos';
@@ -37,7 +39,7 @@ export class PermisosFlujo {
         pasoSelectorEquipo(PASOS.equipo, this.membresias, {
           siguiente: PASOS.miembro,
           rolMinimo: 'admin',
-          pregunta: '¿En cuál equipo quieres cambiar permisos?',
+          pregunta: textos.preguntaEquipo,
         }),
         this.pasoMiembro(),
         this.pasoRol(),
@@ -58,7 +60,7 @@ export class PermisosFlujo {
             transicion: {
               tipo: 'finalizar',
               respuesta: {
-                texto: `En ${leerTexto(ctx.datos, CLAVE_EQUIPO_NOMBRE)} todavía no hay nadie más. Invita con /invitar.`,
+                texto: textos.soloElUsuario(leerTexto(ctx.datos, CLAVE_EQUIPO_NOMBRE)),
               },
             },
           };
@@ -72,7 +74,7 @@ export class PermisosFlujo {
           leerNumero(ctx.datos, CLAVE_PAGINA),
         );
 
-        return { respuesta: { texto: '¿A quién le cambias el rol?', botones } };
+        return { respuesta: { texto: textos.preguntaMiembro(), botones } };
       },
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
@@ -92,7 +94,7 @@ export class PermisosFlujo {
         }
 
         if (!seleccion.startsWith(PREFIJO_MIEMBRO)) {
-          return { tipo: 'finalizar', respuesta: { texto: 'No cambié ningún permiso.' } };
+          return { tipo: 'finalizar', respuesta: { texto: textos.noCambieNada() } };
         }
 
         const miembroId = seleccion.slice(PREFIJO_MIEMBRO.length);
@@ -102,7 +104,7 @@ export class PermisosFlujo {
         if (!miembro) {
           return {
             tipo: 'finalizar',
-            respuesta: { texto: 'Esa persona ya no está en el equipo.' },
+            respuesta: { texto: textos.yaNoEstaEnElEquipo() },
           };
         }
 
@@ -122,7 +124,7 @@ export class PermisosFlujo {
       entrar: (ctx: ContextoFlujo) =>
         Promise.resolve({
           respuesta: {
-            texto: `¿Qué rol le doy a ${leerTexto(ctx.datos, CLAVE_MIEMBRO_NOMBRE)}?`,
+            texto: textos.preguntaRol(leerTexto(ctx.datos, CLAVE_MIEMBRO_NOMBRE)),
             botones: ROLES.map((rol) => ({
               id: `${PREFIJO_ROL}${rol}`,
               texto: ETIQUETA_ROL_CORTA[rol],
@@ -134,7 +136,7 @@ export class PermisosFlujo {
         const seleccion = ctx.mensaje.seleccionId ?? '';
 
         if (!seleccion.startsWith(PREFIJO_ROL)) {
-          return { tipo: 'finalizar', respuesta: { texto: 'No cambié ningún permiso.' } };
+          return { tipo: 'finalizar', respuesta: { texto: textos.noCambieNada() } };
         }
 
         const nuevoRol = seleccion.slice(PREFIJO_ROL.length) as Rol;
@@ -149,7 +151,7 @@ export class PermisosFlujo {
         if (!sigueSiendoAdmin) {
           return {
             tipo: 'finalizar',
-            respuesta: { texto: 'Solo un admin puede cambiar permisos.' },
+            respuesta: { texto: textosComunes.soloAdmin('cambiar permisos') },
           };
         }
 
@@ -164,7 +166,7 @@ export class PermisosFlujo {
             return {
               tipo: 'finalizar',
               respuesta: {
-                texto: `${nombre} es el único admin de ${leerTexto(ctx.datos, CLAVE_EQUIPO_NOMBRE)}. Nombra a otro admin antes de bajarle el rol.`,
+                texto: textos.unicoAdmin(nombre, leerTexto(ctx.datos, CLAVE_EQUIPO_NOMBRE)),
               },
             };
           }
@@ -175,7 +177,11 @@ export class PermisosFlujo {
         return {
           tipo: 'finalizar',
           respuesta: {
-            texto: `Listo: ${nombre} ahora es ${ETIQUETA_ROL_CORTA[nuevoRol]} en ${leerTexto(ctx.datos, CLAVE_EQUIPO_NOMBRE)} ✅`,
+            texto: textos.rolCambiado(
+              nombre,
+              ETIQUETA_ROL_CORTA[nuevoRol],
+              leerTexto(ctx.datos, CLAVE_EQUIPO_NOMBRE),
+            ),
           },
         };
       },

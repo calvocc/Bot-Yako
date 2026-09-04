@@ -12,6 +12,8 @@ import {
   paginaSiguiente,
 } from '../conversacion/pasos-comunes/paginacion';
 import { MembresiasService } from '../identidad/membresias.service';
+import { textos as textosComunes } from '../textos/comunes';
+import { textos } from '../textos/jugadores';
 import { CLAVE_ALTAS, pasoCargarPlantilla } from './pasos-plantilla';
 import { describirJugador, JugadoresService } from './jugadores.service';
 
@@ -44,7 +46,7 @@ export class PlantillaFlujo {
       pasos: [
         pasoSelectorEquipo(PASOS.equipo, this.membresias, {
           siguiente: PASOS.ver,
-          pregunta: '¿De cuál equipo quieres ver la plantilla?',
+          pregunta: textos.preguntaEquipo,
         }),
         this.pasoVer(),
         pasoCargarPlantilla(PASOS.agregar, this.jugadores, {
@@ -64,8 +66,8 @@ export class PlantillaFlujo {
             respuesta: {
               texto:
                 cargados === 0
-                  ? 'No agregué a nadie.'
-                  : `Listo, agregué ${cargados} jugador${cargados === 1 ? '' : 'es'}. ✅`,
+                  ? textos.agregar.ningunoAgregado()
+                  : textos.agregar.agregados(cargados),
             },
           }),
         }),
@@ -88,17 +90,21 @@ export class PlantillaFlujo {
 
         const cuerpo =
           lista.length === 0
-            ? 'Esta plantilla está vacía.'
+            ? textos.ver.plantillaVacia()
             : lista.map((j) => `• ${describirJugador(j)}`).join('\n');
 
         return {
           respuesta: {
-            texto: `Plantilla de ${leerTexto(ctx.datos, CLAVE_EQUIPO_NOMBRE)} (${lista.length}):\n\n${cuerpo}`,
+            texto: textos.ver.encabezado(
+              leerTexto(ctx.datos, CLAVE_EQUIPO_NOMBRE),
+              lista.length,
+              cuerpo,
+            ),
             botones: puedeEditar
               ? [
-                  { id: OPCION_AGREGAR, texto: 'Agregar' },
-                  ...(lista.length > 0 ? [{ id: OPCION_BAJA, texto: 'Dar de baja' }] : []),
-                  { id: OPCION_CERRAR, texto: 'Listo' },
+                  { id: OPCION_AGREGAR, texto: textos.ver.botonAgregar },
+                  ...(lista.length > 0 ? [{ id: OPCION_BAJA, texto: textos.ver.botonBaja }] : []),
+                  { id: OPCION_CERRAR, texto: textos.ver.botonCerrar },
                 ]
               : undefined,
           },
@@ -128,7 +134,7 @@ export class PlantillaFlujo {
         // un "ese botón ya no está disponible" al tocar "Listo".
         return Promise.resolve({
           tipo: 'finalizar',
-          respuesta: { texto: 'Listo 👍' },
+          respuesta: { texto: textos.ver.cerrado() },
         });
       },
     };
@@ -147,10 +153,7 @@ export class PlantillaFlujo {
         );
 
         return {
-          respuesta: {
-            texto: '¿A quién das de baja? Sus estadísticas de partidos ya jugados se conservan.',
-            botones,
-          },
+          respuesta: { texto: textos.baja.pregunta(), botones },
         };
       },
 
@@ -170,7 +173,7 @@ export class PlantillaFlujo {
         }
 
         if (!seleccion.startsWith(PREFIJO_BAJA)) {
-          return { tipo: 'finalizar', respuesta: { texto: 'No di de baja a nadie.' } };
+          return { tipo: 'finalizar', respuesta: { texto: textos.baja.ningunoDeBaja() } };
         }
 
         const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
@@ -185,7 +188,7 @@ export class PlantillaFlujo {
         if (!puede) {
           return {
             tipo: 'finalizar',
-            respuesta: { texto: 'No tienes permiso para editar la plantilla.' },
+            respuesta: { texto: textosComunes.sinPermisoPara('editar la plantilla') },
           };
         }
 
@@ -193,7 +196,9 @@ export class PlantillaFlujo {
 
         return {
           tipo: 'finalizar',
-          respuesta: { texto: listo ? 'Jugador dado de baja ✅' : 'No encontré a ese jugador.' },
+          respuesta: {
+            texto: listo ? textos.baja.dadoDeBaja() : textosComunes.noEncontre('a ese jugador'),
+          },
         };
       },
     };

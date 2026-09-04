@@ -1,6 +1,7 @@
 import type { Boton } from '../../channels/channel.types';
 import type { EquipoDelUsuario, MembresiasService } from '../../identidad/membresias.service';
 import type { Rol } from '../../identidad/roles';
+import { textos } from '../../textos/pasos-comunes';
 import type { ContextoFlujo, Entrada, Paso, Transicion } from '../flow.types';
 
 export const CLAVE_EQUIPO_ID = 'equipoId';
@@ -38,8 +39,8 @@ export function pasoSelectorEquipo(
   const {
     siguiente,
     rolMinimo,
-    pregunta = '¿Con cuál equipo?',
-    sinEquipos = 'Todavía no perteneces a ningún equipo. Usa /start para crear tu academia o entrar con un código.',
+    pregunta = textos.selectorEquipo.pregunta,
+    sinEquipos = textos.selectorEquipo.sinEquipos,
   } = opciones;
 
   const irA = (equipo: EquipoDelUsuario): Transicion => ({
@@ -92,7 +93,7 @@ export function pasoSelectorEquipo(
         return {
           tipo: 'repetir',
           respuesta: {
-            texto: 'No reconocí ese equipo. Toca uno de los botones:',
+            texto: textos.selectorEquipo.noReconocido,
             botones: elegidos.map(botonDe),
           },
         };
@@ -129,8 +130,8 @@ function mensajeSinEquipos(base: string, rolMinimo?: Rol): string {
   // Distinguir "no tienes equipos" de "no tienes permiso" evita que alguien
   // crea que perdió su equipo cuando en realidad le falta un rol.
   return rolMinimo === 'admin'
-    ? 'Esto solo lo puede hacer un administrador, y no eres admin de ningún equipo.'
-    : 'No tienes permiso para cargar en ningún equipo. Pídele al admin que te dé rol de Editor.';
+    ? textos.selectorEquipo.sinEquiposAdmin
+    : textos.selectorEquipo.sinEquiposEditor;
 }
 
 function recortar(texto: string, maximo: number): string {
