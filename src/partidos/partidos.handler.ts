@@ -46,7 +46,7 @@ export class PartidosHandler {
   }
 
   private linea(partido: Partido): string {
-    const detalle = [describirFecha(partido.fecha), partido.competencia]
+    const detalle = [describirFecha(partido.fecha), partido.competenciaNombre]
       .filter(Boolean)
       .join(' · ');
 

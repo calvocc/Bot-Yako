@@ -1,0 +1,1 @@
+ALTER TABLE "partidos" DROP COLUMN "competencia";

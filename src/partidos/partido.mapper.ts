@@ -10,7 +10,9 @@ export interface Partido {
   rival: string;
   /** `yyyy-mm-dd`: el día que se jugó, sin hora. */
   fecha: string;
-  competencia: string | null;
+  competenciaId: string | null;
+  /** Resuelto por join; `null` tanto si no tiene competencia como si no se pidió el join. */
+  competenciaNombre: string | null;
   cantidadTiempos: number;
   minutosPorTiempo: number;
   modoCarga: ModoCarga | null;
@@ -28,13 +30,17 @@ export interface Partido {
   cerradoPor: string | null;
 }
 
-export function mapearPartido(fila: typeof partidos.$inferSelect): Partido {
+export function mapearPartido(
+  fila: typeof partidos.$inferSelect,
+  competenciaNombre: string | null = null,
+): Partido {
   return {
     id: fila.id,
     equipoId: fila.equipoId,
     rival: fila.rival,
     fecha: fila.fecha,
-    competencia: fila.competencia,
+    competenciaId: fila.competenciaId,
+    competenciaNombre,
     cantidadTiempos: fila.cantidadTiempos,
     minutosPorTiempo: fila.minutosPorTiempo,
     modoCarga: fila.modoCarga,

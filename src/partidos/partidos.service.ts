@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, gte, isNotNull, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, gte, ne } from 'drizzle-orm';
 import { DbService, type EjecutorDb } from '../db/db.service';
 import type { FormatoPartido } from '../equipos/equipos.service';
-import { partidos, usuarios } from '../db/schema';
+import { competencias, partidos, usuarios } from '../db/schema';
 import { hoyLocal, sumarDias } from './fechas';
 import { mapearPartido, type Partido } from './partido.mapper';
 import { TiemposService } from './tiempos.service';
@@ -12,7 +12,7 @@ export interface NuevoPartido {
   rival: string;
   /** `yyyy-mm-dd`. */
   fecha: string;
-  competencia?: string | null;
+  competenciaId?: string | null;
   formato: FormatoPartido;
   creadoPor: string;
 }
@@ -49,24 +49,27 @@ export class PartidosService {
         equipoId: datos.equipoId,
         rival: datos.rival,
         fecha: datos.fecha,
-        competencia: datos.competencia ?? null,
+        competenciaId: datos.competenciaId ?? null,
         cantidadTiempos: datos.formato.cantidadTiempos,
         minutosPorTiempo: datos.formato.minutosPorTiempo,
         creadoPor: datos.creadoPor,
       })
-      .returning();
+      .returning({ id: partidos.id });
 
-    return mapearPartido(fila);
+    // Se relee con el join en vez de mapear el `.returning()` crudo: así
+    // `competenciaNombre` sale resuelto igual que en cualquier otra lectura,
+    // sin duplicar la lógica del join en dos sitios.
+    const creado = await this.obtener(fila.id);
+
+    if (!creado) throw new Error(`El partido ${fila.id} desapareció justo después de crearlo`);
+
+    return creado;
   }
 
   async obtener(partidoId: string, tx?: EjecutorDb): Promise<Partido | null> {
-    const [fila] = await (tx ?? this.db.db)
-      .select()
-      .from(partidos)
-      .where(eq(partidos.id, partidoId))
-      .limit(1);
+    const [fila] = await this.consulta(tx).where(eq(partidos.id, partidoId)).limit(1);
 
-    return fila ? mapearPartido(fila) : null;
+    return fila ? mapearPartido(fila, fila.competenciaNombre) : null;
   }
 
   /**
@@ -78,9 +81,7 @@ export class PartidosService {
    * hasta reventar el `smallint` de `minuto_calculado`.
    */
   async abiertosDe(equipoId: string, limite = PARTIDOS_POR_LISTA): Promise<Partido[]> {
-    const filas = await this.db.db
-      .select()
-      .from(partidos)
+    const filas = await this.consulta()
       .where(
         and(
           eq(partidos.equipoId, equipoId),
@@ -91,18 +92,16 @@ export class PartidosService {
       .orderBy(desc(partidos.fecha), desc(partidos.creadoEn))
       .limit(limite);
 
-    return filas.map(mapearPartido);
+    return filas.map((f) => mapearPartido(f, f.competenciaNombre));
   }
 
   async recientesDe(equipoId: string, limite = PARTIDOS_POR_LISTA): Promise<Partido[]> {
-    const filas = await this.db.db
-      .select()
-      .from(partidos)
+    const filas = await this.consulta()
       .where(eq(partidos.equipoId, equipoId))
       .orderBy(desc(partidos.fecha), desc(partidos.creadoEn))
       .limit(limite);
 
-    return filas.map(mapearPartido);
+    return filas.map((f) => mapearPartido(f, f.competenciaNombre));
   }
 
   /**
@@ -114,32 +113,20 @@ export class PartidosService {
    * "no tiene partidos cerrados" siendo falso.
    */
   async cerradosDe(equipoId: string, limite = 30): Promise<Partido[]> {
-    const filas = await this.db.db
-      .select()
-      .from(partidos)
+    const filas = await this.consulta()
       .where(and(eq(partidos.equipoId, equipoId), eq(partidos.estado, 'cerrado')))
       .orderBy(desc(partidos.fecha), desc(partidos.creadoEn))
       .limit(limite);
 
-    return filas.map(mapearPartido);
+    return filas.map((f) => mapearPartido(f, f.competenciaNombre));
   }
 
-  /**
-   * Competencias que el equipo ya usó, para ofrecerlas como botones.
-   *
-   * Sale de los datos en vez de una lista fija porque cada academia juega lo
-   * suyo: proponer "Liga del Atlántico" a un equipo de Medellín no ayuda.
-   */
-  async competenciasDe(equipoId: string, limite = 4): Promise<string[]> {
-    const filas = await this.db.db
-      .select({ competencia: partidos.competencia })
+  /** Columnas propias del partido más el nombre de su competencia, si tiene. */
+  private consulta(tx?: EjecutorDb) {
+    return (tx ?? this.db.db)
+      .select({ ...getTableColumns(partidos), competenciaNombre: competencias.nombre })
       .from(partidos)
-      .where(and(eq(partidos.equipoId, equipoId), isNotNull(partidos.competencia)))
-      .groupBy(partidos.competencia)
-      .orderBy(desc(sql`max(${partidos.fecha})`))
-      .limit(limite);
-
-    return filas.map((f) => f.competencia).filter((c): c is string => c !== null);
+      .leftJoin(competencias, eq(partidos.competenciaId, competencias.id));
   }
 
   /**
@@ -178,7 +165,7 @@ export class PartidosService {
       // minuto seguiría creciendo para siempre sobre un partido terminado.
       await this.tiempos.cerrarTiempoAbierto(tx, partidoId, usuarioId);
 
-      const [fila] = await tx
+      await tx
         .update(partidos)
         .set({
           estado: 'cerrado',
@@ -188,10 +175,13 @@ export class PartidosService {
           marcadorPropioConfirmado: marcador.propio,
           marcadorRivalConfirmado: marcador.rival,
         })
-        .where(eq(partidos.id, partidoId))
-        .returning();
+        .where(eq(partidos.id, partidoId));
 
-      return { tipo: 'cerrado' as const, partido: mapearPartido(fila) };
+      // Con join: el resumen que se genera justo después de cerrar necesita
+      // el nombre de la competencia, y `update...returning()` no lo trae.
+      const [fila] = await this.consulta(tx).where(eq(partidos.id, partidoId)).limit(1);
+
+      return { tipo: 'cerrado' as const, partido: mapearPartido(fila, fila.competenciaNombre) };
     });
   }
 
@@ -220,7 +210,7 @@ export class PartidosService {
         return { tipo: 'no_estaba_cerrado' as const, partido };
       }
 
-      const [fila] = await tx
+      await tx
         .update(partidos)
         .set({
           estado: 'en_progreso',
@@ -229,10 +219,11 @@ export class PartidosService {
           marcadorPropioConfirmado: null,
           marcadorRivalConfirmado: null,
         })
-        .where(eq(partidos.id, partidoId))
-        .returning();
+        .where(eq(partidos.id, partidoId));
 
-      return { tipo: 'reabierto' as const, partido: mapearPartido(fila) };
+      const [fila] = await this.consulta(tx).where(eq(partidos.id, partidoId)).limit(1);
+
+      return { tipo: 'reabierto' as const, partido: mapearPartido(fila, fila.competenciaNombre) };
     });
   }
 

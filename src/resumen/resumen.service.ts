@@ -46,7 +46,9 @@ export function componerResumen({ partido, equipoNombre, eventos }: DatosResumen
   const marcador = marcadorDe(partido);
   const encabezado = `🏆 ${equipoNombre}  ${marcador.propio} - ${marcador.rival}  ${partido.rival}`;
 
-  const contexto = [partido.competencia, describirFecha(partido.fecha)].filter(Boolean).join(' · ');
+  const contexto = [partido.competenciaNombre, describirFecha(partido.fecha)]
+    .filter(Boolean)
+    .join(' · ');
 
   const lineas = [encabezado, contexto].filter(Boolean);
 

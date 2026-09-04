@@ -144,7 +144,7 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     expect(creados).toHaveLength(1);
     expect(creados[0]).toMatchObject({
       rival: 'Deportivo Norte',
-      competencia: 'Liga del Atlántico',
+      competenciaNombre: 'Liga del Atlántico',
     });
   });
 
@@ -389,7 +389,6 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
         equipoId,
         rival: 'Deportivo Norte',
         fecha: '2026-09-06',
-        competencia: 'Liga',
         formato: { cantidadTiempos: 2, minutosPorTiempo: 25 },
         creadoPor,
       }),

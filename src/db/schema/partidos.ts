@@ -10,6 +10,7 @@ import {
   unique,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { competencias } from './competencias';
 import { estadoPartidoEnum, estadoTiempoEnum, modoCargaPartidoEnum } from './enums';
 import { usuarios } from './identidad';
 import { equipos } from './organizacion';
@@ -23,7 +24,8 @@ export const partidos = pgTable(
       .references(() => equipos.id, { onDelete: 'cascade' }),
     rival: text('rival').notNull(),
     fecha: date('fecha').notNull(),
-    competencia: text('competencia'),
+    /** Nula = "sin competencia", una elección válida (amistoso suelto). */
+    competenciaId: uuid('competencia_id').references(() => competencias.id),
 
     cantidadTiempos: smallint('cantidad_tiempos').notNull(),
     minutosPorTiempo: smallint('minutos_por_tiempo').notNull(),
@@ -96,6 +98,10 @@ export const partidoTiempos = pgTable(
 
 export const partidosRelations = relations(partidos, ({ one, many }) => ({
   equipo: one(equipos, { fields: [partidos.equipoId], references: [equipos.id] }),
+  competencia: one(competencias, {
+    fields: [partidos.competenciaId],
+    references: [competencias.id],
+  }),
   tiempos: many(partidoTiempos),
 }));
 

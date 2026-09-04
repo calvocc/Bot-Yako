@@ -97,7 +97,6 @@ describe('Partido en vivo (e2e)', () => {
       equipoId: equipo.id,
       rival: 'Deportivo Norte',
       fecha: hoyLocal(),
-      competencia: 'Liga',
       formato: { cantidadTiempos: 2, minutosPorTiempo: 25 },
       creadoPor: admin,
     });
@@ -244,12 +243,6 @@ describe('Partido en vivo (e2e)', () => {
       // 31 reales + 5 corridos. Con la duración configurada daría 30.
       expect(evento.tipo === 'registrado' && evento.evento.minutoCalculado).toBe(36);
     });
-  });
-
-  it('propone las competencias que el equipo ya jugó', async () => {
-    const { equipo } = await escenario('Competencias');
-
-    expect(await partidos.competenciasDe(equipo.id)).toEqual(['Liga']);
   });
 
   describe('marcador y deshacer', () => {
