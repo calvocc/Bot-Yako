@@ -1,7 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { AcademiasService } from '../src/academias/academias.service';
-import { textoDePrueba } from '../src/channels/testing/fake.adapter';
+import { ChannelRegistry } from '../src/channels/channel.registry';
+import { ProcesadorMensajes } from '../src/channels/procesador-mensajes.service';
+import { FakeChannelAdapter, textoDePrueba } from '../src/channels/testing/fake.adapter';
 import { ConfigModule } from '../src/config/config.module';
 import { ConversacionModule } from '../src/conversacion/conversacion.module';
 import { RedisModule } from '../src/core/redis/redis.module';
@@ -14,6 +16,7 @@ import { EstadisticasService } from '../src/estadisticas/estadisticas.service';
 import { EventosService } from '../src/eventos/eventos.service';
 import { IdentidadModule } from '../src/identidad/identidad.module';
 import { IdentidadService } from '../src/identidad/identidad.service';
+import { MembresiasService } from '../src/identidad/membresias.service';
 import { JugadoresService } from '../src/jugadores/jugadores.service';
 import { OrganizacionModule } from '../src/organizacion.module';
 import { PartidosModule } from '../src/partidos.module';
@@ -32,11 +35,14 @@ describe('Estadísticas (e2e)', () => {
   let equipos: EquiposService;
   let jugadores: JugadoresService;
   let identidad: IdentidadService;
+  let membresias: MembresiasService;
   let partidos: PartidosService;
   let tiempos: TiemposService;
   let eventos: EventosService;
   let estadisticas: EstadisticasService;
   let handler: EstadisticasHandler;
+  let procesador: ProcesadorMensajes;
+  let adaptador: FakeChannelAdapter;
 
   let siguiente = 1;
   const nuevoCanalId = () => String(960000 + siguiente++);
@@ -53,15 +59,21 @@ describe('Estadísticas (e2e)', () => {
         PartidosModule,
         EstadisticasModule,
       ],
+      providers: [ChannelRegistry, ProcesadorMensajes],
     }).compile();
 
     await app.init();
+
+    adaptador = new FakeChannelAdapter('telegram');
+    app.get(ChannelRegistry).registrar(adaptador);
+    procesador = app.get(ProcesadorMensajes);
 
     db = app.get(DbService);
     academias = app.get(AcademiasService);
     equipos = app.get(EquiposService);
     jugadores = app.get(JugadoresService);
     identidad = app.get(IdentidadService);
+    membresias = app.get(MembresiasService);
     partidos = app.get(PartidosService);
     tiempos = app.get(TiemposService);
     eventos = app.get(EventosService);
@@ -74,10 +86,19 @@ describe('Estadísticas (e2e)', () => {
     await app.close();
   });
 
+  beforeEach(() => adaptador.limpiar());
+
   const usuario = async (): Promise<string> => {
     const canalUserId = nuevoCanalId();
 
     return identidad.resolverUsuario(textoDePrueba('', { canalUserId, chatId: canalUserId }));
+  };
+
+  /** Un canal nuevo, listo para mandarle mensajes a `procesador.procesar`. */
+  const nuevoCanal = () => {
+    const id = nuevoCanalId();
+
+    return { canalUserId: id, chatId: id };
   };
 
   const escenario = async (nombre: string) => {
@@ -227,6 +248,54 @@ describe('Estadísticas (e2e)', () => {
       expect(respuesta.texto).toContain('1 partidos');
       expect(respuesta.texto).toContain('1 ganados');
       expect(respuesta.texto).toContain('Goleador: Jacob (4)');
+    });
+  });
+
+  /**
+   * Criterios de aceptación #4 y #6: un Viewer consulta estadísticas sin
+   * permiso de carga, probado como conversación completa (a través del
+   * router, no llamando el handler directo) sin depender de la API de
+   * Telegram.
+   */
+  describe('conversación completa (criterios de aceptación #4 y #6)', () => {
+    it('un Viewer sin permiso de carga consulta /stats y /tabla', async () => {
+      const { equipo, admin } = await escenario('Viewer conversación');
+      const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
+
+      await partidoConGoles(equipo.id, admin, '2026-08-01', jacob.id, 3);
+
+      const canalViewer = nuevoCanal();
+      const viewerId = await identidad.resolverUsuario(textoDePrueba('', canalViewer));
+
+      await membresias.asignarRol(viewerId, equipo.id, 'viewer');
+      expect(await membresias.puede(viewerId, equipo.id, 'editor')).toBe(false);
+
+      await procesador.procesar(textoDePrueba('/stats Jacob', canalViewer));
+      expect(adaptador.ultimoTexto).toContain('📊 Jacob #10');
+      expect(adaptador.ultimoTexto).toContain('Goles: 3');
+
+      adaptador.limpiar();
+      await procesador.procesar(textoDePrueba('/tabla', canalViewer));
+      expect(adaptador.ultimoTexto).toContain('📋 Sub-11');
+      expect(adaptador.ultimoTexto).toContain('Goleador: Jacob (3)');
+
+      // Ni /stats ni /tabla escribieron nada: un Viewer no tiene permiso de
+      // carga y estas consultas no deberían necesitarlo tampoco.
+      expect(await eventos.delPartido((await partidos.recientesDe(equipo.id))[0].id)).toHaveLength(
+        3,
+      );
+    });
+
+    it('un usuario sin ningún equipo lo dice, sin romper la conversación', async () => {
+      const canal = nuevoCanal();
+      await identidad.resolverUsuario(textoDePrueba('', canal));
+
+      await procesador.procesar(textoDePrueba('/stats Jacob', canal));
+      expect(adaptador.ultimoTexto).toContain('Todavía no perteneces a ningún equipo');
+
+      adaptador.limpiar();
+      await procesador.procesar(textoDePrueba('/tabla', canal));
+      expect(adaptador.ultimoTexto).toContain('Todavía no perteneces a ningún equipo');
     });
   });
 });
