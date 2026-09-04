@@ -1,7 +1,9 @@
 /** Textos de `/stats` y `/tabla`. */
 export const textos = {
-  preguntaJugador: () =>
-    '¿De qué jugador? Escribe /stats seguido del nombre, por ejemplo: /stats Jacob',
+  /** `/stats` sin nombre: plantilla de un equipo, con la invitación a pedir el detalle de alguien. */
+  listadoJugadores: (equipoNombre: string, cuerpo: string) =>
+    `📋 ${equipoNombre}:\n\n${cuerpo}\n\nEscribe /stats seguido de un nombre para ver sus estadísticas.`,
+  sinJugadores: () => 'Sin jugadores en este equipo todavía.',
 
   lineaJugador: (datos: {
     nombre: string;
@@ -45,5 +47,22 @@ export const textos = {
       `${datos.partidosJugados} partidos · ${datos.ganados} ganados · ${datos.empatados} empates · ${perdidos}`,
       `Goles a favor: ${datos.golesFavor}${golLinea}`,
     ].join('\n');
+  },
+
+  porCampeonato: () => 'Por campeonato:',
+  /** Una línea por competencia (o el grupo "Sin competencia") del desglose de `/tabla`. */
+  lineaCompetencia: (datos: {
+    nombre: string;
+    partidosJugados: number;
+    ganados: number;
+    empatados: number;
+    perdidos: number;
+    goleador: { nombre: string; goles: number } | null;
+  }): string => {
+    const golLinea = datos.goleador
+      ? ` · Goleador: ${datos.goleador.nombre} (${datos.goleador.goles})`
+      : '';
+
+    return `🏆 ${datos.nombre}: ${datos.partidosJugados} partidos · ${datos.ganados}G ${datos.empatados}E ${datos.perdidos}P${golLinea}`;
   },
 };

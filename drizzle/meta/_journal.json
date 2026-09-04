@@ -64,6 +64,13 @@
       "when": 1788542585008,
       "tag": "0008_alineacion_titular_y_cambios",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788556800000,
+      "tag": "0009_estadisticas_por_competencia",
+      "breakpoints": true
     }
   ]
 }

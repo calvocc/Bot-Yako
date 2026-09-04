@@ -1,5 +1,21 @@
 import { textos } from './estadisticas';
 
+describe('estadisticas.listadoJugadores', () => {
+  it('incluye el equipo, el cuerpo y la invitación a pedir el detalle', () => {
+    const texto = textos.listadoJugadores('Sub-11', '• Jacob #10\n• Andrés #7');
+
+    expect(texto).toContain('📋 Sub-11:');
+    expect(texto).toContain('• Jacob #10');
+    expect(texto).toContain('/stats seguido de un nombre');
+  });
+});
+
+describe('estadisticas.sinJugadores', () => {
+  it('avisa que el equipo no tiene plantilla cargada', () => {
+    expect(textos.sinJugadores()).toBe('Sin jugadores en este equipo todavía.');
+  });
+});
+
 describe('estadisticas.lineaJugador', () => {
   it('incluye dorsal cuando existe', () => {
     const texto = textos.lineaJugador({
@@ -79,5 +95,46 @@ describe('estadisticas.bloqueEquipo', () => {
     });
 
     expect(texto).not.toContain('Goleador');
+  });
+});
+
+describe('estadisticas.lineaCompetencia', () => {
+  it('incluye el nombre del campeonato y el resultado', () => {
+    const texto = textos.lineaCompetencia({
+      nombre: 'Liga del Atlántico',
+      partidosJugados: 10,
+      ganados: 6,
+      empatados: 2,
+      perdidos: 2,
+      goleador: null,
+    });
+
+    expect(texto).toBe('🏆 Liga del Atlántico: 10 partidos · 6G 2E 2P');
+  });
+
+  it('incluye al goleador del campeonato cuando lo hay', () => {
+    const texto = textos.lineaCompetencia({
+      nombre: 'Copa Relámpago',
+      partidosJugados: 3,
+      ganados: 2,
+      empatados: 1,
+      perdidos: 0,
+      goleador: { nombre: 'Jacob', goles: 5 },
+    });
+
+    expect(texto).toContain('Goleador: Jacob (5)');
+  });
+
+  it('acepta "Sin competencia" como nombre del grupo sin campeonato', () => {
+    const texto = textos.lineaCompetencia({
+      nombre: 'Sin competencia',
+      partidosJugados: 2,
+      ganados: 1,
+      empatados: 0,
+      perdidos: 1,
+      goleador: null,
+    });
+
+    expect(texto).toContain('🏆 Sin competencia: 2 partidos');
   });
 });
