@@ -30,13 +30,13 @@ export function mensajeDeCanje(resultado: ResultadoCanje | CanjeConRol): Respues
     case 'ok_jugador':
       return {
         texto: textos.canje.okJugador(resultado.jugadorNombre, resultado.equipoNombre),
-        botones: [textos.canje.botonOkJugador()],
+        botones: [botonComando('ayuda', textosComunes.botonAyuda())],
       };
 
     case 'ya_vinculado_jugador':
       return {
         texto: textos.canje.yaVinculadoJugador(resultado.jugadorNombre, resultado.equipoNombre),
-        botones: [textos.canje.botonYaVinculadoJugador()],
+        botones: [botonComando('mishijos', textos.canje.botonYaVinculadoJugador())],
       };
 
     case 'no_existe':

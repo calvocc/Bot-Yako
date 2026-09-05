@@ -41,34 +41,39 @@ export class MembresiasService {
    * (Frente B: `usuarios_jugadores`), con rol `'viewer'` — un papá ve todo el
    * equipo de su hijo, igual que un Viewer normal. Si además tiene una fila
    * directa en `usuarios_equipos` para ese mismo equipo, esa es la que manda
-   * (puede ser un rol mayor, nunca uno menor a viewer).
+   * (puede ser un rol mayor, nunca uno menor a viewer). El join con `jugadores`
+   * exige `activo`: si dan de baja al hijo, el vínculo (`usuarios_jugadores`)
+   * sigue existiendo pero deja de dar acceso — no hay otro punto donde
+   * revocarlo, así que el filtro tiene que vivir acá.
    */
   async equiposDe(usuarioId: string, rolMinimo?: Rol): Promise<EquipoDelUsuario[]> {
-    const directos = await this.db.db
-      .select({
-        equipoId: equipos.id,
-        equipoNombre: equipos.nombre,
-        academiaId: academias.id,
-        academiaNombre: academias.nombre,
-        rol: usuariosEquipos.rol,
-      })
-      .from(usuariosEquipos)
-      .innerJoin(equipos, eq(equipos.id, usuariosEquipos.equipoId))
-      .innerJoin(academias, eq(academias.id, equipos.academiaId))
-      .where(eq(usuariosEquipos.usuarioId, usuarioId));
+    const [directos, porHijo] = await Promise.all([
+      this.db.db
+        .select({
+          equipoId: equipos.id,
+          equipoNombre: equipos.nombre,
+          academiaId: academias.id,
+          academiaNombre: academias.nombre,
+          rol: usuariosEquipos.rol,
+        })
+        .from(usuariosEquipos)
+        .innerJoin(equipos, eq(equipos.id, usuariosEquipos.equipoId))
+        .innerJoin(academias, eq(academias.id, equipos.academiaId))
+        .where(eq(usuariosEquipos.usuarioId, usuarioId)),
 
-    const porHijo = await this.db.db
-      .selectDistinct({
-        equipoId: equipos.id,
-        equipoNombre: equipos.nombre,
-        academiaId: academias.id,
-        academiaNombre: academias.nombre,
-      })
-      .from(usuariosJugadores)
-      .innerJoin(jugadores, eq(jugadores.id, usuariosJugadores.jugadorId))
-      .innerJoin(equipos, eq(equipos.id, jugadores.equipoId))
-      .innerJoin(academias, eq(academias.id, equipos.academiaId))
-      .where(eq(usuariosJugadores.usuarioId, usuarioId));
+      this.db.db
+        .selectDistinct({
+          equipoId: equipos.id,
+          equipoNombre: equipos.nombre,
+          academiaId: academias.id,
+          academiaNombre: academias.nombre,
+        })
+        .from(usuariosJugadores)
+        .innerJoin(jugadores, eq(jugadores.id, usuariosJugadores.jugadorId))
+        .innerJoin(equipos, eq(equipos.id, jugadores.equipoId))
+        .innerJoin(academias, eq(academias.id, equipos.academiaId))
+        .where(and(eq(usuariosJugadores.usuarioId, usuarioId), eq(jugadores.activo, true))),
+    ]);
 
     const yaDirectos = new Set(directos.map((d) => d.equipoId));
     const combinados: EquipoDelUsuario[] = [
@@ -95,12 +100,19 @@ export class MembresiasService {
 
     if (fila) return fila.rol;
 
-    // Sin fila directa: ¿es papá/tutor de algún jugador de este equipo?
+    // Sin fila directa: ¿es papá/tutor de algún jugador ACTIVO de este equipo?
+    // Si dieron de baja al hijo, el vínculo sigue existiendo pero ya no da acceso.
     const [vinculo] = await ejecutor
       .select({ jugadorId: usuariosJugadores.jugadorId })
       .from(usuariosJugadores)
       .innerJoin(jugadores, eq(jugadores.id, usuariosJugadores.jugadorId))
-      .where(and(eq(usuariosJugadores.usuarioId, usuarioId), eq(jugadores.equipoId, equipoId)))
+      .where(
+        and(
+          eq(usuariosJugadores.usuarioId, usuarioId),
+          eq(jugadores.equipoId, equipoId),
+          eq(jugadores.activo, true),
+        ),
+      )
       .limit(1);
 
     return vinculo ? 'viewer' : null;
@@ -178,7 +190,11 @@ export class MembresiasService {
       .onConflictDoNothing();
   }
 
-  /** Jugadores a los que el usuario está vinculado como papá/tutor, para `/mishijos`. */
+  /**
+   * Jugadores a los que el usuario está vinculado como papá/tutor, para
+   * `/mishijos`. Solo los activos: uno dado de baja ya no le da acceso al
+   * equipo (ver `equiposDe`), así que tampoco tiene sentido listarlo acá.
+   */
   async hijosDe(
     usuarioId: string,
   ): Promise<{ jugadorId: string; jugadorNombre: string; equipoNombre: string }[]> {
@@ -191,7 +207,7 @@ export class MembresiasService {
       .from(usuariosJugadores)
       .innerJoin(jugadores, eq(jugadores.id, usuariosJugadores.jugadorId))
       .innerJoin(equipos, eq(equipos.id, jugadores.equipoId))
-      .where(eq(usuariosJugadores.usuarioId, usuarioId))
+      .where(and(eq(usuariosJugadores.usuarioId, usuarioId), eq(jugadores.activo, true)))
       .orderBy(asc(jugadores.nombre));
   }
 

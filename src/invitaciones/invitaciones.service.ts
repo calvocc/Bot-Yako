@@ -285,21 +285,6 @@ export class InvitacionesService {
     return filas.length > 0;
   }
 
-  async revocarJugador(codigo: string, jugadorId: string): Promise<boolean> {
-    const filas = await this.db.db
-      .update(invitacionesJugador)
-      .set({ revocadaEn: new Date() })
-      .where(
-        and(
-          eq(invitacionesJugador.codigo, normalizarCodigo(codigo)),
-          eq(invitacionesJugador.jugadorId, jugadorId),
-        ),
-      )
-      .returning({ id: invitacionesJugador.id });
-
-    return filas.length > 0;
-  }
-
   /** Único código en las dos tablas: `/unirme` no sabe de antemano cuál es hasta buscarlo. */
   private async codigoLibre(): Promise<string> {
     for (let intento = 0; intento < 10; intento++) {

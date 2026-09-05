@@ -166,6 +166,24 @@ describe('Padres vinculados a jugadores (e2e)', () => {
     expect(suyos[0].rol).toBe('editor');
   });
 
+  it('dar de baja al hijo revoca el acceso derivado del papá', async () => {
+    const { equipo, jacob } = await escenario('Baja revoca acceso');
+    const papa = await usuario();
+
+    await membresias.vincularAJugador(papa.usuarioId, jacob.id);
+    expect(await membresias.rolEn(papa.usuarioId, equipo.id)).toBe('viewer');
+    expect(await membresias.equiposDe(papa.usuarioId)).toHaveLength(1);
+
+    await jugadores.desactivar(equipo.id, jacob.id);
+
+    // El vínculo (usuarios_jugadores) sigue existiendo, pero el jugador ya
+    // no está activo: no debería seguir dando acceso al equipo.
+    expect(await membresias.rolEn(papa.usuarioId, equipo.id)).toBeNull();
+    expect(await membresias.puede(papa.usuarioId, equipo.id, 'viewer')).toBe(false);
+    expect(await membresias.equiposDe(papa.usuarioId)).toHaveLength(0);
+    expect(await membresias.hijosDe(papa.usuarioId)).toHaveLength(0);
+  });
+
   it('/mishijos lista a los jugadores vinculados, o dice que no hay ninguno', async () => {
     const { jacob } = await escenario('Mis hijos');
     const papa = await usuario();
