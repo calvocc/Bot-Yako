@@ -1,4 +1,5 @@
 import type { EventoCargado } from '../eventos/eventos.service';
+import type { Bono, JugadorParticipante } from '../eventos/puntaje';
 import type { Partido } from '../partidos/partido.mapper';
 import { componerResumen } from './resumen.service';
 
@@ -34,6 +35,7 @@ const gol = (nombre: string, minuto: number): EventoCargado => ({
   jugadorId: nombre,
   jugadorNombre: nombre,
   jugadorDorsal: 10,
+  jugadorPosicion: null,
   jugadorEntraId: null,
   jugadorEntraNombre: null,
   jugadorEntraDorsal: null,
@@ -106,7 +108,8 @@ describe('componerResumen', () => {
       eventos: [gol('Jacob', 23), gol('Jacob', 41)],
     });
 
-    expect(texto).toContain('MVP del partido: Jacob (6 pts — 2 goles)');
+    // 2 goles sin posición (3 c/u) = 6 puntos brutos; nota = 6 + (6/8)×4 = 9.0.
+    expect(texto).toContain('MVP del partido: Jacob (9.0) — 2 goles');
   });
 
   it('no muestra MVP si solo hubo tarjetas (sin evento positivo)', () => {
@@ -148,5 +151,60 @@ describe('componerResumen', () => {
     });
 
     expect(texto).not.toContain('MVP del partido');
+  });
+
+  it('lista la nota de todos los que jugaron, de mayor a menor', () => {
+    const participantes: JugadorParticipante[] = [
+      { jugadorId: 'Jacob', nombre: 'Jacob', dorsal: 10, posicion: null },
+      { jugadorId: 'Andrés', nombre: 'Andrés', dorsal: 7, posicion: null },
+    ];
+
+    const texto = componerResumen({
+      partido: partido(),
+      equipoNombre: 'Ringo Amaya',
+      eventos: [gol('Jacob', 23)],
+      participantes,
+    });
+
+    const posNotas = texto.indexOf('📊 Notas:');
+
+    expect(posNotas).toBeGreaterThan(-1);
+    // Jacob (con un gol) queda antes que Andrés (sin eventos, nota base).
+    expect(texto.indexOf('Jacob #10', posNotas)).toBeLessThan(texto.indexOf('Andrés #7', posNotas));
+  });
+
+  it('muestra con nota base (6.0) a quien jugó sin tener ningún evento', () => {
+    const participantes: JugadorParticipante[] = [
+      { jugadorId: 'Andrés', nombre: 'Andrés', dorsal: 7, posicion: null },
+    ];
+
+    const texto = componerResumen({
+      partido: partido(),
+      equipoNombre: 'Ringo Amaya',
+      eventos: [],
+      participantes,
+    });
+
+    expect(texto).toContain('Andrés #7: 6.0');
+    // Sí hay a quién listar, aunque nadie tuvo eventos: no es "sin eventos".
+    expect(texto).not.toContain('Sin eventos cargados.');
+  });
+
+  it('suma el bono de cierre a la nota del jugador', () => {
+    const participantes: JugadorParticipante[] = [
+      { jugadorId: 'Andrés', nombre: 'Andrés', dorsal: 7, posicion: 'defensa' },
+    ];
+    const bonos: Bono[] = [{ jugadorId: 'Andrés', puntos: 3 }];
+
+    const texto = componerResumen({
+      partido: partido(),
+      equipoNombre: 'Ringo Amaya',
+      eventos: [],
+      participantes,
+      bonos,
+    });
+
+    // nota = 6 + (3/8)×4 = 7.5.
+    expect(texto).toContain('Andrés #7: 7.5');
   });
 });

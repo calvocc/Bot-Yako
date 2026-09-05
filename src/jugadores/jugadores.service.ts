@@ -3,12 +3,37 @@ import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import { DbService, type EjecutorDb } from '../db/db.service';
 import { equipos, jugadores, personas } from '../db/schema';
 import type { EquiposService } from '../equipos/equipos.service';
+import type { Posicion } from './posicion';
 
 export interface Jugador {
   id: string;
   nombre: string;
   dorsal: number | null;
   activo: boolean;
+  /** Cargados por /editarjugador. Solo `posicion` afecta el puntaje (ver `puntaje.ts`). */
+  posicion: Posicion | null;
+  fechaNacimiento: string | null;
+  pesoKg: number | null;
+  estaturaCm: number | null;
+}
+
+/** Fila cruda de la tabla `jugadores` -- lo que hace falta para `mapearJugador`. */
+type FilaJugador = Pick<
+  typeof jugadores.$inferSelect,
+  'id' | 'nombre' | 'dorsal' | 'activo' | 'posicion' | 'fechaNacimiento' | 'pesoKg' | 'estaturaCm'
+>;
+
+function mapearJugador(fila: FilaJugador): Jugador {
+  return {
+    id: fila.id,
+    nombre: fila.nombre,
+    dorsal: fila.dorsal,
+    activo: fila.activo,
+    posicion: fila.posicion,
+    fechaNacimiento: fila.fechaNacimiento,
+    pesoKg: fila.pesoKg,
+    estaturaCm: fila.estaturaCm,
+  };
 }
 
 /** Un jugador con el mismo nombre, en otro equipo de la misma academia. */
@@ -40,9 +65,7 @@ export class JugadoresService {
       .where(eq(jugadores.equipoId, equipoId))
       .orderBy(asc(jugadores.dorsal), asc(jugadores.nombre));
 
-    return filas
-      .filter((f) => incluirInactivos || f.activo)
-      .map((f) => ({ id: f.id, nombre: f.nombre, dorsal: f.dorsal, activo: f.activo }));
+    return filas.filter((f) => incluirInactivos || f.activo).map(mapearJugador);
   }
 
   /**
@@ -74,7 +97,7 @@ export class JugadoresService {
       .values({ equipoId, nombre, dorsal: dorsal ?? null, personaId })
       .returning();
 
-    return { id: fila.id, nombre: fila.nombre, dorsal: fila.dorsal, activo: fila.activo };
+    return mapearJugador(fila);
   }
 
   /**
@@ -285,12 +308,7 @@ export class JugadoresService {
         .limit(1);
 
       if (yaVinculado) {
-        return {
-          id: yaVinculado.id,
-          nombre: yaVinculado.nombre,
-          dorsal: yaVinculado.dorsal,
-          activo: yaVinculado.activo,
-        };
+        return mapearJugador(yaVinculado);
       }
 
       return this.crearConDorsalSiLibre(equipoId, parseado, personaId, tx);
@@ -321,6 +339,42 @@ export class JugadoresService {
       personaId,
       tx,
     );
+  }
+
+  /** Cargado por /editarjugador. Mismo patrón `update ... where jugadorId and equipoId` que `desactivar`. */
+  async actualizarPosicion(
+    equipoId: string,
+    jugadorId: string,
+    posicion: Posicion,
+  ): Promise<boolean> {
+    const filas = await this.db.db
+      .update(jugadores)
+      .set({ posicion })
+      .where(and(eq(jugadores.id, jugadorId), eq(jugadores.equipoId, equipoId)))
+      .returning({ id: jugadores.id });
+
+    return filas.length > 0;
+  }
+
+  /**
+   * Cargado por /editarjugador, uno a la vez (cada botón del menú pide un
+   * solo dato). Los rangos ya los valida la base (`jugadores_peso_check`/
+   * `jugadores_estatura_check`); acá se confía en que `datos-fisicos.ts` ya
+   * validó antes de llegar, así que un error acá es un dato inconsistente,
+   * no una entrada de usuario mal formada.
+   */
+  async actualizarDatosFisicos(
+    equipoId: string,
+    jugadorId: string,
+    datos: { fechaNacimiento?: string; pesoKg?: number; estaturaCm?: number },
+  ): Promise<boolean> {
+    const filas = await this.db.db
+      .update(jugadores)
+      .set(datos)
+      .where(and(eq(jugadores.id, jugadorId), eq(jugadores.equipoId, equipoId)))
+      .returning({ id: jugadores.id });
+
+    return filas.length > 0;
   }
 }
 

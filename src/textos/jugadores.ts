@@ -45,6 +45,42 @@ export const textos = {
     dadoDeBaja: () => 'Jugador dado de baja ✅',
   },
 
+  editar: {
+    preguntaEquipo: '¿De cuál equipo es el jugador?',
+    elegirJugador: () => '¿A quién editas?',
+    ningunoEncontrado: () => 'No encontré a ese jugador.',
+
+    menu: (jugador: string) => `✏️ Editando a ${jugador}. ¿Qué quieres cargar?`,
+    botonPosicion: 'Posición',
+    botonFechaNacimiento: 'Fecha de nacimiento',
+    botonPeso: 'Peso',
+    botonEstatura: 'Estatura',
+    botonListo: 'Listo',
+    listo: () => 'Listo 👍',
+
+    posicion: {
+      pregunta: () => '¿En qué posición juega?',
+    },
+
+    fechaNacimiento: {
+      pregunta: () => 'Fecha de nacimiento (dd/mm/aaaa):',
+      invalida: () =>
+        'No entendí esa fecha. Escríbela como dd/mm/aaaa, con el año -- y que dé una edad entre 4 y 20 años.',
+    },
+
+    peso: {
+      pregunta: () => 'Peso en kilos (por ejemplo: 35):',
+      invalido: () => 'Ese peso no me cuadra. Escribe un número entre 10 y 120 (kilos).',
+    },
+
+    estatura: {
+      pregunta: () => 'Estatura en centímetros (por ejemplo: 135):',
+      invalida: () => 'Esa estatura no me cuadra. Escribe un número entero entre 80 y 210 (cm).',
+    },
+
+    guardado: () => 'Guardado ✅',
+  },
+
   cargarPlantilla: {
     instrucciones: (comandoListo: string) =>
       [

@@ -1,6 +1,7 @@
 import type { Partido } from '../partidos/partido.mapper';
+import { EVENTOS } from './evento.tipos';
 import type { EventoCargado } from './eventos.service';
-import { lineaDeBitacora, panelEnVivo, protagonista } from './mensajes';
+import { botonesDeEvento, lineaDeBitacora, panelEnVivo, protagonista } from './mensajes';
 
 const partido = (parcial: Partial<Partido> = {}): Partido => ({
   id: 'p1',
@@ -34,6 +35,7 @@ const evento = (parcial: Partial<EventoCargado> = {}): EventoCargado => ({
   jugadorId: 'j1',
   jugadorNombre: 'Jacob',
   jugadorDorsal: 10,
+  jugadorPosicion: null,
   jugadorEntraId: null,
   jugadorEntraNombre: null,
   jugadorEntraDorsal: null,
@@ -93,6 +95,7 @@ describe('panelEnVivo', () => {
       partido: partido(),
       equipoNombre: 'Ringo Amaya',
       minuto: { minuto: 23, adicion: 0, baseMostrada: 23 },
+      paginaEventos: 0,
     });
 
     expect(panel.texto).toContain('Tiempo 1 · min 23 · 1-0');
@@ -105,6 +108,7 @@ describe('panelEnVivo', () => {
       partido: partido({ tiempoEstado: 'finalizado' }),
       equipoNombre: 'Ringo Amaya',
       minuto: { minuto: 26, adicion: 1, baseMostrada: 25 },
+      paginaEventos: 0,
     });
 
     expect(panel.texto).toContain('Tiempo 1 finalizado');
@@ -116,6 +120,7 @@ describe('panelEnVivo', () => {
       partido: partido({ tiempoActual: 2, tiempoEstado: 'finalizado' }),
       equipoNombre: 'Ringo Amaya',
       minuto: { minuto: 52, adicion: 0, baseMostrada: 52 },
+      paginaEventos: 0,
     });
 
     expect(panel.texto).toContain('era el último');
@@ -127,10 +132,76 @@ describe('panelEnVivo', () => {
       partido: partido(),
       equipoNombre: 'Ringo Amaya',
       minuto: { minuto: 0, adicion: 0, baseMostrada: 0 },
+      paginaEventos: 0,
     });
 
     for (const boton of panel.botones) {
       expect(boton.texto.length).toBeLessThanOrEqual(20);
     }
+  });
+
+  it('nunca manda más de 10 botones en total, con reloj corriendo (3 controles)', () => {
+    const panel = panelEnVivo({
+      partido: partido(),
+      equipoNombre: 'Ringo Amaya',
+      minuto: { minuto: 23, adicion: 0, baseMostrada: 23 },
+      paginaEventos: 0,
+    });
+
+    expect(panel.botones.length).toBeLessThanOrEqual(10);
+    expect(panel.botones.map((b) => b.id)).toContain('pag:mas');
+  });
+
+  it('nunca manda más de 10 botones en total, con tiempo por arrancar (4 controles)', () => {
+    const panel = panelEnVivo({
+      partido: partido({ tiempoEstado: 'finalizado' }),
+      equipoNombre: 'Ringo Amaya',
+      minuto: { minuto: 26, adicion: 1, baseMostrada: 25 },
+      paginaEventos: 0,
+    });
+
+    expect(panel.botones.length).toBeLessThanOrEqual(10);
+    expect(panel.botones.map((b) => b.id)).toContain('pag:mas');
+  });
+
+  it('la última página no repite "Ver más"', () => {
+    const panel = panelEnVivo({
+      partido: partido(),
+      equipoNombre: 'Ringo Amaya',
+      minuto: { minuto: 23, adicion: 0, baseMostrada: 23 },
+      paginaEventos: 2,
+    });
+
+    expect(panel.botones.map((b) => b.id)).not.toContain('pag:mas');
+    expect(panel.botones.length).toBeLessThanOrEqual(10);
+  });
+});
+
+describe('botonesDeEvento', () => {
+  it('pagina los 13 tipos de evento en 3 páginas con 3 controles reservados', () => {
+    const pagina0 = botonesDeEvento(0, 3);
+    const pagina1 = botonesDeEvento(1, 3);
+    const pagina2 = botonesDeEvento(2, 3);
+
+    // 6 eventos + "Ver más" = 7, más los 3 controles reservados = 10 exacto.
+    expect(pagina0).toHaveLength(7);
+    expect(pagina0.at(-1)?.id).toBe('pag:mas');
+    expect(pagina1).toHaveLength(7);
+    expect(pagina1.at(-1)?.id).toBe('pag:mas');
+    // Quedan 13 - 6 - 6 = 1 evento en la última página, sin "Ver más".
+    expect(pagina2).toHaveLength(1);
+    expect(pagina2.at(-1)?.id).not.toBe('pag:mas');
+  });
+
+  it('nunca deja un tipo de evento sin poder tocarse', () => {
+    const idsVistos = new Set<string>();
+
+    for (let pagina = 0; pagina < 3; pagina++) {
+      for (const boton of botonesDeEvento(pagina, 3)) {
+        if (boton.id !== 'pag:mas') idsVistos.add(boton.id);
+      }
+    }
+
+    expect(idsVistos.size).toBe(EVENTOS.length);
   });
 });

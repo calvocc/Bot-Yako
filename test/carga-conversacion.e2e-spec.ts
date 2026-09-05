@@ -587,8 +587,9 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
       expect(textos).toContain('3 - 1');
       expect(textos).toContain('⚽ Gol: Jacob, Jacob, Andrés');
       expect(textos).toContain('🟨 Amarilla: Andrés');
-      // Jacob: 2 goles = 6 pts. Andrés: 1 gol - 1 amarilla = 2 pts.
-      expect(textos).toContain('MVP del partido: Jacob (6 pts — 2 goles)');
+      // Jacob: 2 goles sin posición (3 c/u) = 6 puntos brutos → nota 9.0.
+      // Andrés: 1 gol - 1 amarilla = 2 puntos brutos → nota 7.0.
+      expect(textos).toContain('MVP del partido: Jacob (9.0) — 2 goles');
 
       const partido = (await partidos.recientesDe(equipo.id))[0];
       expect(partido.modoCarga).toBe('post_partido');

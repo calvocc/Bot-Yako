@@ -12,6 +12,7 @@ import { FLUJO_INVITAR_JUGADOR, InvitarJugadorFlujo } from './invitaciones/invit
 import { InvitacionesService } from './invitaciones/invitaciones.service';
 import { MisHijosHandler } from './invitaciones/mis-hijos.handler';
 import { FLUJO_UNIRME, UnirmeFlujo } from './invitaciones/unirme.flujo';
+import { FLUJO_EDITAR_JUGADOR, EditarJugadorFlujo } from './jugadores/editar-jugador.flujo';
 import { JugadoresService } from './jugadores/jugadores.service';
 import { FLUJO_PLANTILLA, PlantillaFlujo } from './jugadores/plantilla.flujo';
 import { FLUJO_ONBOARDING, OnboardingFlujo } from './onboarding/onboarding.flujo';
@@ -35,6 +36,7 @@ import { codigoDesdeDeepLink } from './invitaciones/invitaciones.service';
     OnboardingFlujo,
     NuevoEquipoFlujo,
     PlantillaFlujo,
+    EditarJugadorFlujo,
     InvitarFlujo,
     InvitarJugadorFlujo,
     MisHijosHandler,
@@ -49,6 +51,7 @@ export class OrganizacionModule implements OnModuleInit {
     private readonly onboarding: OnboardingFlujo,
     private readonly nuevoEquipo: NuevoEquipoFlujo,
     private readonly plantilla: PlantillaFlujo,
+    private readonly editarJugador: EditarJugadorFlujo,
     private readonly invitar: InvitarFlujo,
     private readonly invitarJugador: InvitarJugadorFlujo,
     private readonly misHijosHandler: MisHijosHandler,
@@ -61,6 +64,7 @@ export class OrganizacionModule implements OnModuleInit {
     this.registro.registrar(this.onboarding.construir());
     this.registro.registrar(this.nuevoEquipo.construir());
     this.registro.registrar(this.plantilla.construir());
+    this.registro.registrar(this.editarJugador.construir());
     this.registro.registrar(this.invitar.construir());
     this.registro.registrar(this.invitarJugador.construir());
     this.registro.registrar(this.unirme.construir());
@@ -79,6 +83,10 @@ export class OrganizacionModule implements OnModuleInit {
 
     this.router.registrarComando('nuevoequipo', { tipo: 'flujo', flujoId: FLUJO_NUEVO_EQUIPO });
     this.router.registrarComando('plantilla', { tipo: 'flujo', flujoId: FLUJO_PLANTILLA });
+    this.router.registrarComando('editarjugador', {
+      tipo: 'flujo',
+      flujoId: FLUJO_EDITAR_JUGADOR,
+    });
     this.router.registrarComando('invitar', { tipo: 'flujo', flujoId: FLUJO_INVITAR });
     this.router.registrarComando('invitarjugador', {
       tipo: 'flujo',

@@ -1,4 +1,5 @@
 import type { Boton } from '../channels/channel.types';
+import { botonesPaginados } from '../conversacion/pasos-comunes/paginacion';
 import { describirMinuto, type Minuto } from '../partidos/minuto';
 import type { Partido } from '../partidos/partido.mapper';
 import { describirMarcador } from '../partidos/partido.mapper';
@@ -26,6 +27,12 @@ export interface EstadoPanel {
   minuto: Minuto;
   /** Nota efímera arriba del panel: "▶️ Se inició el Tiempo 2 automáticamente." */
   aviso?: string;
+  /**
+   * Página del panel de eventos que se está mostrando. 13 tipos de evento +
+   * 3 o 4 controles se pasa del límite de 10 filas de WhatsApp, así que se
+   * pagina con el mismo mecanismo que ya pagina jugadores (`paginacion.ts`).
+   */
+  paginaEventos: number;
 }
 
 /**
@@ -36,7 +43,7 @@ export interface EstadoPanel {
  * encuentre el de arriba.
  */
 export function panelEnVivo(estado: EstadoPanel): { texto: string; botones: Boton[] } {
-  const { partido, equipoNombre, minuto, aviso } = estado;
+  const { partido, equipoNombre, minuto, aviso, paginaEventos } = estado;
 
   const encabezado = `⚡ ${equipoNombre} vs ${partido.rival}`;
   const reloj =
@@ -45,10 +52,11 @@ export function panelEnVivo(estado: EstadoPanel): { texto: string; botones: Boto
       : descripcionSinReloj(partido);
 
   const lineas = [aviso, encabezado, `${reloj} · ${describirMarcador(partido)}`].filter(Boolean);
+  const controles = botonesDeControl(partido);
 
   return {
     texto: lineas.join('\n'),
-    botones: [...botonesDeEvento(), ...botonesDeControl(partido)],
+    botones: [...botonesDeEvento(paginaEventos, controles.length), ...controles],
   };
 }
 
@@ -60,11 +68,25 @@ function descripcionSinReloj(partido: Partido): string {
     : `Tiempo ${partido.tiempoActual} finalizado`;
 }
 
-export function botonesDeEvento(): Boton[] {
-  return EVENTOS.map((e) => ({ id: `${PREFIJO_EVENTO}${e.tipo}`, texto: e.boton }));
+/**
+ * Los botones de evento de una página, con "Ver más" si sobran.
+ *
+ * `reservar` son los botones que `panelEnVivo` agrega aparte (los de
+ * control, 3 o 4 según el estado del partido): sin descontarlos acá, una
+ * página llena de eventos más los controles se pasa de las 10 filas que
+ * admite WhatsApp.
+ */
+export function botonesDeEvento(pagina: number, reservar: number): Boton[] {
+  const { botones } = botonesPaginados(
+    EVENTOS.map((e) => ({ id: `${PREFIJO_EVENTO}${e.tipo}`, texto: e.boton })),
+    pagina,
+    reservar,
+  );
+
+  return botones;
 }
 
-function botonesDeControl(partido: Partido): Boton[] {
+export function botonesDeControl(partido: Partido): Boton[] {
   const botones: Boton[] = [];
 
   if (partido.tiempoEstado === 'en_curso') {

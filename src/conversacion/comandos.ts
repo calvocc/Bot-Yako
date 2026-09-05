@@ -39,6 +39,11 @@ export const COMANDOS: readonly DefinicionComando[] = [
   },
   { nombre: 'nuevoequipo', descripcion: '🏷️ Crear un equipo o categoría', rolMinimo: 'admin' },
   { nombre: 'plantilla', descripcion: '📋 Ver o editar los jugadores', rolMinimo: 'viewer' },
+  {
+    nombre: 'editarjugador',
+    descripcion: '✏️ Cargar posición y datos de un jugador',
+    rolMinimo: 'editor',
+  },
   { nombre: 'invitar', descripcion: '🔑 Generar un código de invitación', rolMinimo: 'admin' },
   {
     nombre: 'invitarjugador',
