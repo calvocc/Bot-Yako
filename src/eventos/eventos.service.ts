@@ -3,6 +3,7 @@ import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { DbService, type EjecutorDb } from '../db/db.service';
 import { eventos, jugadores, partidos, usuarios } from '../db/schema';
+import type { Posicion } from '../jugadores/posicion';
 import { mapearPartido, type Partido } from '../partidos/partido.mapper';
 import { TiemposService } from '../partidos/tiempos.service';
 import { puedeSerDuplicado, VENTANA_DEDUP_MS, type EventoComparable } from './dedup';
@@ -33,6 +34,8 @@ export interface EventoCargado {
   jugadorId: string | null;
   jugadorNombre: string | null;
   jugadorDorsal: number | null;
+  /** Pesa el valor del gol en `puntaje.ts`; `null` si no se cargó con /editarjugador. */
+  jugadorPosicion: Posicion | null;
   /** Solo para `tipo: 'cambio'`: el jugador que entra. */
   jugadorEntraId: string | null;
   jugadorEntraNombre: string | null;
@@ -310,6 +313,7 @@ export class EventosService {
         jugadorId: eventos.jugadorId,
         jugadorNombre: jugadores.nombre,
         jugadorDorsal: jugadores.dorsal,
+        jugadorPosicion: jugadores.posicion,
         jugadorEntraId: eventos.jugadorEntraId,
         jugadorEntraNombre: jugadoresEntra.nombre,
         jugadorEntraDorsal: jugadoresEntra.dorsal,

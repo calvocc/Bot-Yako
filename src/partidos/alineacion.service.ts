@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import { DbService, type EjecutorDb } from '../db/db.service';
 import { eventos, partidoTitulares } from '../db/schema';
-import { type CambioJugado, derivarEnCancha } from './alineacion';
+import { calcularMinutosJugados, type CambioJugado, derivarEnCancha } from './alineacion';
 
 @Injectable()
 export class AlineacionService {
@@ -36,6 +36,47 @@ export class AlineacionService {
   }
 
   /**
+   * Todos los que jugaron en algún momento del partido: titulares más quien
+   * entró por cambio. A diferencia de `enCanchaDe` (quién sigue en cancha
+   * ahora mismo), esto no descuenta a quien ya salió -- es la base para
+   * mostrar la nota de todos en el resumen, no solo de quien terminó el
+   * partido.
+   */
+  async participantesDe(partidoId: string, tx?: EjecutorDb): Promise<string[]> {
+    const [titulares, cambios] = await Promise.all([
+      this.titularesDe(partidoId, tx),
+      this.cambiosDe(partidoId, tx),
+    ]);
+
+    return [...new Set([...titulares, ...cambios.map((c) => c.entra)])];
+  }
+
+  /**
+   * Minutos jugados por cada jugador, para el bono de cierre (valla invicta
+   * / goles recibidos) de `puntaje.ts`.
+   *
+   * Sin titulares registrados (partido legado, o uno cargado enteramente
+   * post partido) devuelve un `Map` vacío: no hay forma honesta de saber
+   * minutos ahí, y por lo tanto tampoco se disparan los bonos de cierre
+   * para ese partido — pero sí puede seguir habiendo notas de quien tuvo
+   * algún evento.
+   */
+  async minutosJugadosDe(
+    partidoId: string,
+    minutoFinal: number,
+    tx?: EjecutorDb,
+  ): Promise<Map<string, number>> {
+    const [titulares, cambios] = await Promise.all([
+      this.titularesDe(partidoId, tx),
+      this.cambiosDe(partidoId, tx),
+    ]);
+
+    if (titulares.length === 0) return new Map();
+
+    return calcularMinutosJugados(minutoFinal, titulares, cambios);
+  }
+
+  /**
    * Suma un jugador a la cancha si todavía no estaba.
    *
    * Para cuando alguien que nadie había titularizado ni hecho entrar por
@@ -58,7 +99,11 @@ export class AlineacionService {
 
   private async cambiosDe(partidoId: string, tx?: EjecutorDb): Promise<CambioJugado[]> {
     const filas = await (tx ?? this.db.db)
-      .select({ sale: eventos.jugadorId, entra: eventos.jugadorEntraId })
+      .select({
+        sale: eventos.jugadorId,
+        entra: eventos.jugadorEntraId,
+        minuto: eventos.minutoCalculado,
+      })
       .from(eventos)
       .where(
         and(

@@ -39,7 +39,7 @@ import { PartidosService } from '../partidos/partidos.service';
 import { TiemposService, type ResultadoFinTiempo } from '../partidos/tiempos.service';
 import { ResumenService } from '../resumen/resumen.service';
 import { segundosDesde } from './dedup';
-import { admiteEquipoRival, esTipoDeEvento } from './evento.tipos';
+import { admiteEquipoRival, esTipoDeEvento, EVENTOS } from './evento.tipos';
 import { EventosService, type SolicitudEvento } from './eventos.service';
 import {
   type GanchosPostPartido,
@@ -48,6 +48,7 @@ import {
 } from './post-partido.flujo';
 import {
   avisoDeDuplicado,
+  botonesDeControl,
   botonesDeOrigen,
   ID_DESHACER,
   ID_ES_OTRO,
@@ -111,6 +112,8 @@ const CLAVE_PENDIENTE_DORSAL = 'jugadorDorsalPendiente';
 const CLAVE_CANDIDATO_ID = 'candidatoJugadorId';
 const CLAVE_CANDIDATO_EQUIPO = 'candidatoEquipoNombre';
 const CLAVE_PAGINA = 'paginaJugadores';
+/** Página del panel de eventos (13 tipos no entran en una sola pantalla). */
+const CLAVE_PAGINA_EVENTOS = 'paginaEventos';
 /** Nota efímera que el panel muestra una vez y descarta. */
 const CLAVE_AVISO = 'aviso';
 /** Líneas de bitácora todavía sin enviar, en camino al panel. */
@@ -487,6 +490,21 @@ export class CargarFlujo {
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
         const seleccion = ctx.mensaje.seleccionId ?? '';
+
+        if (seleccion === ID_VER_MAS) {
+          const partido = await this.partidoDe(ctx);
+
+          if (!partido) return this.partidoPerdido();
+
+          const reservar = botonesDeControl(partido).length;
+          const pagina = leerNumero(ctx.datos, CLAVE_PAGINA_EVENTOS, 0);
+
+          ctx.datos[CLAVE_PAGINA_EVENTOS] = paginaSiguiente(pagina, EVENTOS.length, reservar);
+
+          const respuesta = await this.dibujarPanel(ctx);
+
+          return respuesta ? { tipo: 'repetir', respuesta } : this.partidoPerdido();
+        }
 
         if (seleccion.startsWith(PREFIJO_EVENTO)) {
           return this.arrancarEvento(ctx, seleccion.slice(PREFIJO_EVENTO.length));
@@ -1438,6 +1456,7 @@ export class CargarFlujo {
       equipoNombre: leerTexto(ctx.datos, CLAVE_EQUIPO_NOMBRE, 'Tu equipo'),
       minuto: contexto.minuto,
       aviso: aviso || undefined,
+      paginaEventos: leerNumero(ctx.datos, CLAVE_PAGINA_EVENTOS, 0),
     });
 
     const texto = bitacora.length > 0 ? [...bitacora, '', panel.texto].join('\n') : panel.texto;
@@ -1474,7 +1493,9 @@ export class CargarFlujo {
   }
 
   private datosPanel(ctx: ContextoFlujo): DatosFlujo {
-    return { [CLAVE_PANEL]: this.panelId(ctx) };
+    // Vuelve siempre a la primera página de eventos: si alguien navegó a la
+    // segunda para tocar "Atajada", lo normal después es volver a ver el gol.
+    return { [CLAVE_PANEL]: this.panelId(ctx), [CLAVE_PAGINA_EVENTOS]: 0 };
   }
 
   private conAviso(ctx: ContextoFlujo, texto: string): string {

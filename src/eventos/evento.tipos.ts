@@ -45,6 +45,40 @@ export const EVENTOS: readonly DefinicionEvento[] = [
   },
   { tipo: 'autogol', emoji: '🙃', boton: '🙃 Autogol', sustantivo: 'Autogol', admiteRival: true },
   { tipo: 'cambio', emoji: '🔄', boton: '🔄 Cambio', sustantivo: 'Cambio', admiteRival: false },
+  // Eventos ampliados para calificar a defensores y arquero (nota por
+  // partido, ver puntaje.ts). Siempre requieren jugador propio identificado:
+  // ninguno tiene sentido atribuido al rival.
+  {
+    tipo: 'recuperacion',
+    emoji: '🛡️',
+    boton: '🛡️ Recuperación',
+    sustantivo: 'Recuperación',
+    admiteRival: false,
+  },
+  { tipo: 'rechazo', emoji: '🧹', boton: '🧹 Rechazo', sustantivo: 'Rechazo', admiteRival: false },
+  { tipo: 'regate', emoji: '🤹', boton: '🤹 Regate', sustantivo: 'Regate', admiteRival: false },
+  {
+    tipo: 'tiro_al_arco',
+    emoji: '🎯',
+    boton: '🎯 Tiro al arco',
+    sustantivo: 'Tiro al arco',
+    admiteRival: false,
+  },
+  {
+    tipo: 'falta_recibida',
+    emoji: '🤕',
+    boton: '🤕 Falta recibida',
+    sustantivo: 'Falta recibida',
+    admiteRival: false,
+  },
+  { tipo: 'atajada', emoji: '🧤', boton: '🧤 Atajada', sustantivo: 'Atajada', admiteRival: false },
+  {
+    tipo: 'penal_atajado',
+    emoji: '🥅',
+    boton: '🥅 Penal atajado',
+    sustantivo: 'Penal atajado',
+    admiteRival: false,
+  },
 ];
 
 export function definicionDe(tipo: TipoEvento): DefinicionEvento {

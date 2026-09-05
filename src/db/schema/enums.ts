@@ -15,6 +15,25 @@ export const tipoEventoEnum = pgEnum('tipo_evento', [
   'tarjeta_amarilla',
   'tarjeta_roja',
   'cambio',
+  'recuperacion',
+  'rechazo',
+  'regate',
+  'tiro_al_arco',
+  'falta_recibida',
+  'atajada',
+  'penal_atajado',
+]);
+
+/**
+ * Posicion del jugador en cancha. Informativa (fecha de nacimiento, peso,
+ * estatura) salvo esta: pesa el valor del gol en `puntaje.ts` (un gol de
+ * arquero o defensa vale mas que uno de delantero).
+ */
+export const posicionJugadorEnum = pgEnum('posicion_jugador', [
+  'arquero',
+  'defensa',
+  'mediocampista',
+  'delantero',
 ]);
 
 export const equipoOrigenEventoEnum = pgEnum('equipo_origen_evento', ['propio', 'rival']);

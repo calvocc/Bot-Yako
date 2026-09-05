@@ -2,7 +2,9 @@ import { relations, sql } from 'drizzle-orm';
 import {
   boolean,
   check,
+  date,
   index,
+  numeric,
   pgTable,
   smallint,
   text,
@@ -11,6 +13,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { posicionJugadorEnum } from './enums';
 
 export const academias = pgTable('academias', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -59,6 +62,12 @@ export const jugadores = pgTable(
     nombre: text('nombre').notNull(),
     dorsal: smallint('dorsal'),
     activo: boolean('activo').notNull().default(true),
+    // Cargados por /editarjugador. Informativos salvo `posicion`, que pesa
+    // el valor del gol en `puntaje.ts`.
+    posicion: posicionJugadorEnum('posicion'),
+    fechaNacimiento: date('fecha_nacimiento'),
+    pesoKg: numeric('peso_kg', { precision: 5, scale: 2, mode: 'number' }),
+    estaturaCm: smallint('estatura_cm'),
     creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -70,6 +79,13 @@ export const jugadores = pgTable(
       .on(t.equipoId, t.dorsal)
       .where(sql`activo and dorsal is not null`),
     check('jugadores_dorsal_check', sql`${t.dorsal} is null or ${t.dorsal} between 0 and 99`),
+    // Rangos holgados para descartar errores de tipeo, no para validar
+    // edad exacta — eso lo hace el flujo de /editarjugador.
+    check('jugadores_peso_check', sql`${t.pesoKg} is null or ${t.pesoKg} between 10 and 120`),
+    check(
+      'jugadores_estatura_check',
+      sql`${t.estaturaCm} is null or ${t.estaturaCm} between 80 and 210`,
+    ),
   ],
 );
 

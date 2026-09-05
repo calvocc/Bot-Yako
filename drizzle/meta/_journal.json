@@ -85,6 +85,20 @@
       "when": 1788561600000,
       "tag": "0011_estadisticas_por_competencia",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788613313105,
+      "tag": "0012_dry_ben_grimm",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788613400000,
+      "tag": "0013_estadisticas_jugador_eventos_extra",
+      "breakpoints": true
     }
   ]
 }
