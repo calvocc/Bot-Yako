@@ -273,6 +273,35 @@ describe('Estadísticas (e2e)', () => {
       });
       expect(await estadisticas.goleadorDeCompetencia(equipo.id, null, 2026)).toBeNull();
     });
+
+    it('goleadorDeCompetencia y porCompetencia ignoran goles de un partido no cerrado', async () => {
+      const { academia, equipo, admin } = await escenario('Sin cerrar');
+      const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
+      const liga = await competencias.obtenerOCrear(academia.id, 'Liga', admin);
+
+      // Mismo gol que en el resto de estos tests, pero el partido se queda
+      // en_progreso: no se llama a partidos.cerrar().
+      const partido = await partidos.crear({
+        equipoId: equipo.id,
+        rival: 'Rival',
+        fecha: '2026-04-15',
+        competenciaId: liga.id,
+        formato: { cantidadTiempos: 2, minutosPorTiempo: 25 },
+        creadoPor: admin,
+      });
+
+      await tiempos.iniciarEnVivo(partido.id, admin, [jacob.id]);
+      await eventos.registrar({
+        partidoId: partido.id,
+        tipo: 'gol',
+        equipoOrigen: 'propio',
+        jugadorId: jacob.id,
+        reportadoPor: admin,
+      });
+
+      expect(await estadisticas.goleadorDeCompetencia(equipo.id, liga.id, 2026)).toBeNull();
+      expect(await estadisticas.porCompetencia(equipo.id, 2026)).toEqual([]);
+    });
   });
 
   describe('EstadisticasHandler', () => {
@@ -394,6 +423,13 @@ describe('Estadísticas (e2e)', () => {
 
       adaptador.limpiar();
       await procesador.procesar(textoDePrueba('/tabla', canal));
+      expect(adaptador.ultimoTexto).toContain('Todavía no perteneces a ningún equipo');
+
+      // /stats SIN nombre reordenó el chequeo de equipos antes que el de
+      // argumento (antes, sin argumento, ni se llegaba a mirar los equipos):
+      // este caso quedaba sin cubrir por los otros dos.
+      adaptador.limpiar();
+      await procesador.procesar(textoDePrueba('/stats', canal));
       expect(adaptador.ultimoTexto).toContain('Todavía no perteneces a ningún equipo');
     });
   });

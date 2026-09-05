@@ -33,17 +33,11 @@ export interface Goleador {
   goles: number;
 }
 
-export interface EstadisticaEquipoCompetencia {
-  equipoId: string;
-  temporada: number;
+export interface EstadisticaEquipoCompetencia extends EstadisticaEquipo {
   competenciaId: string | null;
   competenciaNombre: string | null;
-  partidosJugados: number;
-  ganados: number;
-  empatados: number;
-  perdidos: number;
-  golesFavor: number;
-  golesContra: number;
+  /** Ya viene resuelto en la misma consulta (join lateral), sin ida y vuelta aparte. */
+  goleador: Goleador | null;
 }
 
 /** El año de la fecha de un partido es la temporada (mismo criterio de las vistas). */
@@ -117,13 +111,7 @@ export class EstadisticasService {
       limit 1
     `);
 
-    if (!fila) return null;
-
-    return {
-      nombre: String(fila.nombre),
-      dorsal: fila.dorsal === null ? null : Number(fila.dorsal),
-      goles: Number(fila.goles),
-    };
+    return mapearGoleador(fila);
   }
 
   /**
@@ -131,16 +119,38 @@ export class EstadisticasService {
    * (migración 0009), aditiva y separada de `estadisticas_equipo`: esta última
    * sigue siendo la fuente del acumulado de toda la temporada. Un partido sin
    * competencia elegida cae en un único grupo con `competenciaId: null`.
+   *
+   * El goleador de cada campeonato se resuelve en la misma consulta con un
+   * `left join lateral` contra `estadisticas_jugador_competencia` (top 1 por
+   * goles, con el mismo criterio de `goleadorDeCompetencia`) en vez de una
+   * ida y vuelta aparte por fila: evita el N+1 de pedirlo campeonato por
+   * campeonato para un equipo con varios.
    */
   async porCompetencia(
     equipoId: string,
     temporada: number = temporadaActual(),
   ): Promise<EstadisticaEquipoCompetencia[]> {
     const filas = await this.db.db.execute<Record<string, unknown>>(sql`
-      select *
-      from estadisticas_equipo_competencia
-      where equipo_id = ${equipoId} and temporada = ${temporada}
-      order by partidos_jugados desc
+      select
+        eq.equipo_id, eq.temporada, eq.competencia_id, eq.competencia_nombre,
+        eq.partidos_jugados, eq.ganados, eq.empatados, eq.perdidos,
+        eq.goles_favor, eq.goles_contra,
+        goleador.nombre as goleador_nombre,
+        goleador.dorsal as goleador_dorsal,
+        goleador.goles as goleador_goles
+      from estadisticas_equipo_competencia eq
+      left join lateral (
+        select ej.nombre, ej.dorsal, ej.goles
+        from estadisticas_jugador_competencia ej
+        where ej.equipo_id = eq.equipo_id
+          and ej.temporada = eq.temporada
+          and ej.competencia_id is not distinct from eq.competencia_id
+          and ej.goles > 0
+        order by ej.goles desc, ej.dorsal asc nulls last
+        limit 1
+      ) goleador on true
+      where eq.equipo_id = ${equipoId} and eq.temporada = ${temporada}
+      order by eq.partidos_jugados desc
     `);
 
     return filas.map(mapearEstadisticaEquipoCompetencia);
@@ -148,9 +158,11 @@ export class EstadisticasService {
 
   /**
    * El goleador de un campeonato puntual (o del grupo "sin competencia" si
-   * `competenciaId` es `null`), para cada línea del desglose de `/tabla`.
-   * `is not distinct from` en vez de `=`: con `=` un `competenciaId: null`
-   * nunca matchea nada, ni siquiera las filas con `competencia_id` NULL.
+   * `competenciaId` es `null`). No la usa `porCompetencia` (que ya trae el
+   * goleador de cada fila con un join), pero queda como consulta directa
+   * reutilizable. `is not distinct from` en vez de `=`: con `=` un
+   * `competenciaId: null` nunca matchea nada, ni siquiera las filas con
+   * `competencia_id` NULL.
    */
   async goleadorDeCompetencia(
     equipoId: string,
@@ -168,14 +180,21 @@ export class EstadisticasService {
       limit 1
     `);
 
-    if (!fila) return null;
-
-    return {
-      nombre: String(fila.nombre),
-      dorsal: fila.dorsal === null ? null : Number(fila.dorsal),
-      goles: Number(fila.goles),
-    };
+    return mapearGoleador(fila);
   }
+}
+
+/** Común a `goleadorDe`, `goleadorDeCompetencia` y la fila unida de `porCompetencia`. */
+function mapearGoleador(datos: Record<string, unknown> | undefined): Goleador | null {
+  const nombre = datos?.nombre as string | null | undefined;
+
+  if (nombre === null || nombre === undefined) return null;
+
+  return {
+    nombre,
+    dorsal: datos?.dorsal === null || datos?.dorsal === undefined ? null : Number(datos.dorsal),
+    goles: Number(datos?.goles),
+  };
 }
 
 function mapearEstadisticaJugador(fila: Record<string, unknown>): EstadisticaJugador {
@@ -217,15 +236,13 @@ function mapearEstadisticaEquipoCompetencia(
   const competenciaNombre = fila.competencia_nombre as string | null;
 
   return {
-    equipoId: String(fila.equipo_id),
-    temporada: Number(fila.temporada),
+    ...mapearEstadisticaEquipo(fila),
     competenciaId,
     competenciaNombre,
-    partidosJugados: Number(fila.partidos_jugados),
-    ganados: Number(fila.ganados),
-    empatados: Number(fila.empatados),
-    perdidos: Number(fila.perdidos),
-    golesFavor: Number(fila.goles_favor),
-    golesContra: Number(fila.goles_contra),
+    goleador: mapearGoleador({
+      nombre: fila.goleador_nombre,
+      dorsal: fila.goleador_dorsal,
+      goles: fila.goleador_goles,
+    }),
   };
 }

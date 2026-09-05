@@ -15,7 +15,7 @@ import { MembresiasService } from '../identidad/membresias.service';
 import { textos as textosComunes } from '../textos/comunes';
 import { textos } from '../textos/jugadores';
 import { CLAVE_ALTAS, pasoCargarPlantilla } from './pasos-plantilla';
-import { describirJugador, JugadoresService } from './jugadores.service';
+import { describirJugador, formatearListaJugadores, JugadoresService } from './jugadores.service';
 
 export const FLUJO_PLANTILLA = 'plantilla';
 
@@ -88,10 +88,7 @@ export class PlantillaFlujo {
           ? await this.membresias.puede(ctx.usuarioId, equipoId, 'editor')
           : false;
 
-        const cuerpo =
-          lista.length === 0
-            ? textos.ver.plantillaVacia()
-            : lista.map((j) => `• ${describirJugador(j)}`).join('\n');
+        const cuerpo = formatearListaJugadores(lista, textos.ver.plantillaVacia());
 
         return {
           respuesta: {

@@ -38,6 +38,12 @@ group by pr.equipo_id, pr.temporada, pr.competencia_id, c.nombre;
 -- Mismo criterio que estadisticas_jugador (migracion 0001), con
 -- competencia_id sumado a la agrupacion. Solo trae goles: es lo unico que
 -- necesita el goleador del desglose por campeonato.
+--
+-- A diferencia de estadisticas_jugador, esta SI filtra partidos cerrados:
+-- el goleador de un campeonato se muestra junto al "partidos jugados" de
+-- estadisticas_equipo_competencia (que ya cuenta solo cerrados), y sin este
+-- filtro un gol de un partido todavia abierto podria aparecer sin que el
+-- conteo de partidos de al lado lo respalde.
 create view estadisticas_jugador_competencia with (security_invoker = true) as
 select
   j.id as jugador_id,
@@ -49,5 +55,5 @@ select
   count(*) filter (where e.tipo = 'gol') as goles
 from jugadores j
 join eventos e on e.jugador_id = j.id and e.eliminado_en is null
-join partidos p on p.id = e.partido_id
+join partidos p on p.id = e.partido_id and p.estado = 'cerrado'
 group by j.id, j.equipo_id, j.nombre, j.dorsal, extract(year from p.fecha), p.competencia_id;
