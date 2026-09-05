@@ -18,34 +18,58 @@ describe('parsearMarcador', () => {
 });
 
 describe('idsPorDorsalONombre', () => {
-  const lista = [
-    { id: 'jg:jacob', texto: 'Jacob #10' },
-    { id: 'jg:andres', texto: 'Andrés #7' },
-    { id: 'jg:sin-dorsal', texto: 'Samuel' },
+  // Dato estructurado real, no la etiqueta ya renderizada del botón: es
+  // justo lo que este fix cambia (antes se parseaba "Jacob #10" de vuelta).
+  const jugadores = [
+    { id: 'jg:jacob', nombre: 'Jacob', dorsal: 10 },
+    { id: 'jg:andres', nombre: 'Andrés', dorsal: 7 },
+    { id: 'jg:sin-dorsal', nombre: 'Samuel', dorsal: null },
   ];
 
   it('resuelve por dorsal, separados por coma', () => {
-    expect(idsPorDorsalONombre('10, 7', lista)).toEqual(['jg:jacob', 'jg:andres']);
+    expect(idsPorDorsalONombre('10, 7', jugadores)).toEqual({
+      ids: ['jg:jacob', 'jg:andres'],
+      sinReconocer: [],
+    });
   });
 
   it('resuelve por nombre exacto (sin mayúsculas) como respaldo', () => {
-    expect(idsPorDorsalONombre('jacob, ANDRÉS', lista)).toEqual(['jg:jacob', 'jg:andres']);
+    expect(idsPorDorsalONombre('jacob, ANDRÉS', jugadores)).toEqual({
+      ids: ['jg:jacob', 'jg:andres'],
+      sinReconocer: [],
+    });
   });
 
   it('resuelve a alguien sin dorsal por nombre', () => {
-    expect(idsPorDorsalONombre('samuel', lista)).toEqual(['jg:sin-dorsal']);
+    expect(idsPorDorsalONombre('samuel', jugadores)).toEqual({
+      ids: ['jg:sin-dorsal'],
+      sinReconocer: [],
+    });
   });
 
-  it('ignora tokens que no matchean a nadie, sin descartar los que sí', () => {
-    expect(idsPorDorsalONombre('10, 99, jacob', lista)).toEqual(['jg:jacob']);
+  it('un cero a la izquierda igual matchea el dorsal (compara números, no el texto renderizado)', () => {
+    expect(idsPorDorsalONombre('07', jugadores)).toEqual({
+      ids: ['jg:andres'],
+      sinReconocer: [],
+    });
+  });
+
+  it('marca los tokens que no matchean a nadie en sinReconocer, sin descartar los que sí', () => {
+    expect(idsPorDorsalONombre('10, 99, jacob', jugadores)).toEqual({
+      ids: ['jg:jacob'],
+      sinReconocer: ['99'],
+    });
   });
 
   it('no repite un id ya resuelto por otro token', () => {
-    expect(idsPorDorsalONombre('10, jacob', lista)).toEqual(['jg:jacob']);
+    expect(idsPorDorsalONombre('10, jacob', jugadores)).toEqual({
+      ids: ['jg:jacob'],
+      sinReconocer: [],
+    });
   });
 
   it('devuelve null si no reconoce a nadie', () => {
-    expect(idsPorDorsalONombre('99, nadie', lista)).toBeNull();
-    expect(idsPorDorsalONombre('', lista)).toBeNull();
+    expect(idsPorDorsalONombre('99, nadie', jugadores)).toBeNull();
+    expect(idsPorDorsalONombre('', jugadores)).toBeNull();
   });
 });
