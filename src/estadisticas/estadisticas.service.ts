@@ -5,6 +5,8 @@ import { DbService } from '../db/db.service';
 export interface EstadisticaJugador {
   jugadorId: string;
   equipoId: string;
+  /** Fichas de la misma persona en otros equipos comparten este id. `null` si nunca se vinculó. */
+  personaId: string | null;
   nombre: string;
   dorsal: number | null;
   temporada: number;
@@ -116,6 +118,7 @@ function mapearEstadisticaJugador(fila: Record<string, unknown>): EstadisticaJug
   return {
     jugadorId: String(fila.jugador_id),
     equipoId: String(fila.equipo_id),
+    personaId: fila.persona_id as string | null,
     nombre: String(fila.nombre),
     dorsal: fila.dorsal === null ? null : Number(fila.dorsal),
     temporada: Number(fila.temporada),

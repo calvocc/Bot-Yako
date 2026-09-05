@@ -1,5 +1,12 @@
 import type { RespuestaBot } from '../channel.types';
-import { MAX_FILAS_LISTA, renderizarParaWhatsApp } from './whatsapp.render';
+import { textos as comunes } from '../../textos/comunes';
+import { textos as equipos } from '../../textos/equipos';
+import { textos as invitaciones } from '../../textos/invitaciones';
+import { textos as jugadores } from '../../textos/jugadores';
+import { textos as onboarding } from '../../textos/onboarding';
+import { textos as partidos } from '../../textos/partidos';
+import { textos as pasosComunes } from '../../textos/pasos-comunes';
+import { MAX_FILAS_LISTA, renderizarParaWhatsApp, rotulosDemasiadoLargos } from './whatsapp.render';
 
 const botones = (cantidad: number) =>
   Array.from({ length: cantidad }, (_, i) => ({ id: `b${i}`, texto: `Opción ${i}` }));
@@ -67,5 +74,49 @@ describe('renderizarParaWhatsApp', () => {
     expect(() =>
       renderizarParaWhatsApp({ texto: '¿Cuál?', botones: botones(MAX_FILAS_LISTA + 1) }),
     ).toThrow(/paginar/);
+  });
+});
+
+/**
+ * `rotulosDemasiadoLargos` existía sin que nada lo llamara: un rótulo del
+ * catálogo podía acercarse al límite (o pasarlo) y nadie se enteraba hasta
+ * verlo truncado en WhatsApp. Acá se corre contra los rótulos reales del
+ * catálogo, no contra ejemplos inventados, así que una edición futura que
+ * alargue uno de estos textos lo nota en vez de pasar en verde.
+ */
+describe('rotulosDemasiadoLargos', () => {
+  it('ningún rótulo de botón del catálogo excede el límite de WhatsApp', () => {
+    const rotulos: string[] = [
+      onboarding.botonTengoInvitacion,
+      onboarding.botonCrearAcademia,
+      onboarding.botonFormatoOtro,
+      equipos.botonFormatoOtro,
+      invitaciones.invitar.botonSoloConsultar,
+      invitaciones.invitar.botonCargarEventos,
+      invitaciones.invitar.botonUnaPersona,
+      invitaciones.invitar.botonTodoElGrupo,
+      invitaciones.canje.botonYaEraMiembro(),
+      jugadores.ver.botonAgregar,
+      jugadores.ver.botonBaja,
+      jugadores.ver.botonCerrar,
+      jugadores.agregar.elegirModo.botonLista,
+      jugadores.agregar.elegirModo.botonDeAcademia,
+      partidos.nuevoPartido.botonHoy,
+      partidos.nuevoPartido.botonAyer,
+      partidos.nuevoPartido.botonManana,
+      partidos.nuevoPartido.botonNuevaCompetencia,
+      partidos.nuevoPartido.botonSinCompetencia,
+      partidos.nuevoPartido.botonFormatoHabitual,
+      partidos.nuevoPartido.botonFormatoOtro,
+      partidos.listar.botonCrearPartido,
+      pasosComunes.verMas,
+      pasosComunes.confirmarListo,
+      comunes.botonEmpezar(),
+      comunes.botonAyuda(),
+    ];
+
+    const botones = rotulos.map((texto, i) => ({ id: `b${i}`, texto }));
+
+    expect(rotulosDemasiadoLargos(botones)).toEqual([]);
   });
 });

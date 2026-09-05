@@ -20,13 +20,17 @@ import type {
   Transicion,
 } from '../conversacion/flow.types';
 import { leerNumero, leerTexto } from '../conversacion/flow.types';
+import { EquiposService } from '../equipos/equipos.service';
 import { MembresiasService } from '../identidad/membresias.service';
 import {
+  candidatosDeEquipo,
   describirJugador,
   type Jugador,
+  type JugadorParseado,
   JugadoresService,
   parsearJugador,
 } from '../jugadores/jugadores.service';
+import { textos as textosJugadores } from '../textos/jugadores';
 import { AlineacionService } from '../partidos/alineacion.service';
 import { describirFecha } from '../partidos/fechas';
 import { describirMinuto } from '../partidos/minuto';
@@ -80,6 +84,7 @@ const PASOS = {
   jugadorLibre: 'jugador-libre',
   cambioSale: 'cambio-sale',
   cambioEntra: 'cambio-entra',
+  confirmarJugadorAcademia: 'confirmar-jugador-academia',
   duplicado: 'duplicado',
   finTiempo: 'fin-tiempo',
   finPartido: 'fin-partido',
@@ -99,6 +104,12 @@ const CLAVE_JUGADOR_ENTRA_PENDIENTE = 'jugadorEntraPendiente';
 /** El "➕ ... quedó agregado a la plantilla" que un alta deja pendiente de
  * mostrar si el evento resulta un posible duplicado. */
 const CLAVE_NOTA_PENDIENTE = 'notaPendiente';
+/** Mientras se confirma si un nombre nuevo es la misma persona que ya juega
+ * en otro equipo de la academia: el nombre/dorsal escritos y el candidato. */
+const CLAVE_PENDIENTE_NOMBRE = 'jugadorNombrePendiente';
+const CLAVE_PENDIENTE_DORSAL = 'jugadorDorsalPendiente';
+const CLAVE_CANDIDATO_ID = 'candidatoJugadorId';
+const CLAVE_CANDIDATO_EQUIPO = 'candidatoEquipoNombre';
 const CLAVE_PAGINA = 'paginaJugadores';
 /** Nota efímera que el panel muestra una vez y descarta. */
 const CLAVE_AVISO = 'aviso';
@@ -142,6 +153,7 @@ export class CargarFlujo {
     private readonly tiempos: TiemposService,
     private readonly eventos: EventosService,
     private readonly jugadores: JugadoresService,
+    private readonly equipos: EquiposService,
     private readonly alineacion: AlineacionService,
     private readonly membresias: MembresiasService,
     private readonly resumen: ResumenService,
@@ -166,6 +178,7 @@ export class CargarFlujo {
         this.pasoJugadorLibre(),
         this.pasoCambioSale(),
         this.pasoCambioEntra(),
+        this.pasoConfirmarJugadorAcademia(),
         this.pasoDuplicado(),
         this.pasoFinTiempo(),
         this.pasoFinPartido(),
@@ -810,9 +823,7 @@ export class CargarFlujo {
    * Busca al jugador por nombre y, si no está en la plantilla, lo da de alta.
    *
    * Es lo que hace falta al borde de la cancha: aparece un chico que nadie
-   * cargó y el evento no puede esperar a que alguien edite la plantilla. Se
-   * busca también entre los inactivos, para no crear un duplicado de alguien
-   * que estaba dado de baja.
+   * cargó y el evento no puede esperar a que alguien edite la plantilla.
    *
    * Con un cambio a medio cargar (`CLAVE_JUGADOR_SALE` puesto), lo que se
    * resuelve es quien entra, no un jugador cualquiera — y ahí "en cancha" se
@@ -851,12 +862,8 @@ export class CargarFlujo {
         };
       }
 
-      const { jugador, creado } = await this.jugadores.resolverOCrear(equipoId, parseado);
-
-      return this.registrarCambio(
-        ctx,
-        jugador.id,
-        creado ? `➕ ${describirJugador(jugador)} quedó agregado a la plantilla.` : undefined,
+      return this.resolverJugadorNuevo(ctx, equipoId, parseado, (jugador, nota) =>
+        this.registrarCambio(ctx, jugador.id, nota),
       );
     }
 
@@ -874,23 +881,143 @@ export class CargarFlujo {
 
     if (yaEnCancha) return this.registrar(ctx, { jugadorId: yaEnCancha.id });
 
-    const { jugador, creado } = await this.jugadores.resolverOCrear(equipoId, parseado);
+    return this.resolverJugadorNuevo(ctx, equipoId, parseado, async (jugador, nota) => {
+      // Recién creado (o vinculado): si el partido ya tiene titular, se suma
+      // a la cancha ahí mismo — si puede anotar, tiene que poder aparecer en
+      // los próximos eventos también.
+      if (hayTitular) {
+        await this.alineacion.agregarSiHaceFalta(
+          leerTexto(ctx.datos, CLAVE_PARTIDO_ID),
+          jugador.id,
+          ctx.usuarioId ?? '',
+        );
+      }
 
-    // Recién creado (o encontrado fuera de la titular/banca conocidas): si el
-    // partido ya tiene titular, se suma a la cancha ahí mismo — si puede
-    // anotar, tiene que poder aparecer en los próximos eventos también.
-    if (hayTitular) {
-      await this.alineacion.agregarSiHaceFalta(
-        leerTexto(ctx.datos, CLAVE_PARTIDO_ID),
-        jugador.id,
-        ctx.usuarioId ?? '',
-      );
+      return this.registrar(ctx, { jugadorId: jugador.id, nota });
+    });
+  }
+
+  /**
+   * Un nombre que no está en la plantilla de este equipo: busca primero entre
+   * los inactivos del mismo equipo (para no duplicar a alguien dado de baja,
+   * igual que siempre), y si tampoco está ahí, busca en el resto de la
+   * academia antes de crear una ficha sin relación.
+   *
+   * Encontrar un candidato en otro equipo no fusiona nada en silencio — dos
+   * chicos distintos pueden llamarse igual — así que pasa por una
+   * confirmación (`pasoConfirmarJugadorAcademia`) antes de decidir. `continuar`
+   * es lo que sigue una vez resuelto el jugador (registrar el evento o el
+   * cambio), y es la misma función tanto si se resuelve acá de una como si
+   * se resuelve después de confirmar.
+   *
+   * Con más de un candidato del mismo nombre en la academia no hay forma
+   * segura de elegir uno solo sin preguntar por los dos a la vez —y este
+   * flujo en vivo solo pregunta por uno—, así que se trata como si no
+   * hubiera ninguno: se crea sin vínculo, y queda para vincular a mano
+   * después con `/plantilla` → "Ya juega en otro equipo", que sí lista a
+   * todos los candidatos para elegir.
+   */
+  private async resolverJugadorNuevo(
+    ctx: ContextoFlujo,
+    equipoId: string,
+    parseado: JugadorParseado,
+    continuar: (jugador: Jugador, nota?: string) => Promise<Transicion>,
+  ): Promise<Transicion> {
+    const existente = await this.jugadores.buscarEnEquipo(equipoId, parseado);
+
+    if (existente) return continuar(existente);
+
+    const candidatos = await candidatosDeEquipo(
+      this.equipos,
+      this.jugadores,
+      equipoId,
+      parseado.nombre,
+    );
+
+    if (candidatos.length === 1) {
+      const candidato = candidatos[0];
+
+      return {
+        tipo: 'ir',
+        pasoId: PASOS.confirmarJugadorAcademia,
+        datos: {
+          ...this.datosPanel(ctx),
+          [CLAVE_PENDIENTE_NOMBRE]: parseado.nombre,
+          [CLAVE_PENDIENTE_DORSAL]: parseado.dorsal !== undefined ? String(parseado.dorsal) : '',
+          [CLAVE_CANDIDATO_ID]: candidato.jugadorId,
+          [CLAVE_CANDIDATO_EQUIPO]: candidato.equipoNombre,
+        },
+      };
     }
 
-    return this.registrar(ctx, {
-      jugadorId: jugador.id,
-      nota: creado ? `➕ ${describirJugador(jugador)} quedó agregado a la plantilla.` : undefined,
+    const jugador = await this.jugadores.crearConDorsalSiLibre(equipoId, parseado);
+
+    return continuar(jugador, `➕ ${describirJugador(jugador)} quedó agregado a la plantilla.`);
+  }
+
+  /** ¿Es la misma persona que ya juega en otro equipo de la academia? */
+  private pasoConfirmarJugadorAcademia(): Paso {
+    const preguntar = (ctx: ContextoFlujo): RespuestaBot => ({
+      texto: `¿Es el mismo ${leerTexto(ctx.datos, CLAVE_PENDIENTE_NOMBRE)} que ya juega en ${leerTexto(ctx.datos, CLAVE_CANDIDATO_EQUIPO)}?`,
+      botones: [
+        { id: ID_SI, texto: 'Sí, es él' },
+        { id: ID_NO, texto: 'No, es otro' },
+      ],
     });
+
+    return {
+      id: PASOS.confirmarJugadorAcademia,
+
+      entrar: (ctx: ContextoFlujo) => Promise.resolve({ respuesta: preguntar(ctx) }),
+
+      recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
+        const seleccion = ctx.mensaje.seleccionId ?? '';
+
+        if (seleccion !== ID_SI && seleccion !== ID_NO) {
+          return { tipo: 'repetir', respuesta: preguntar(ctx) };
+        }
+
+        if (!(await this.siguePudiendoCargar(ctx))) return this.sinPermiso();
+
+        const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
+        const dorsalTexto = leerTexto(ctx.datos, CLAVE_PENDIENTE_DORSAL);
+        const parseado: JugadorParseado = {
+          nombre: leerTexto(ctx.datos, CLAVE_PENDIENTE_NOMBRE),
+          dorsal: dorsalTexto ? Number(dorsalTexto) : undefined,
+        };
+
+        let jugador: Jugador;
+        let nota: string;
+
+        if (seleccion === ID_SI) {
+          jugador = await this.jugadores.vincularNuevoEquipo(
+            equipoId,
+            parseado,
+            leerTexto(ctx.datos, CLAVE_CANDIDATO_ID),
+          );
+          nota = textosJugadores.agregar.vinculado(
+            jugador.nombre,
+            leerTexto(ctx.datos, CLAVE_CANDIDATO_EQUIPO),
+          );
+        } else {
+          jugador = await this.jugadores.crearConDorsalSiLibre(equipoId, parseado);
+          nota = `➕ ${describirJugador(jugador)} quedó agregado a la plantilla.`;
+        }
+
+        const saleId = leerTexto(ctx.datos, CLAVE_JUGADOR_SALE);
+
+        if (saleId) return this.registrarCambio(ctx, jugador.id, nota);
+
+        const partidoId = leerTexto(ctx.datos, CLAVE_PARTIDO_ID);
+        const idsEnCancha = await this.alineacion.enCanchaDe(partidoId);
+
+        if (idsEnCancha.size > 0) {
+          await this.alineacion.agregarSiHaceFalta(partidoId, jugador.id, ctx.usuarioId ?? '');
+        }
+
+        return this.registrar(ctx, { jugadorId: jugador.id, nota });
+      },
+    };
   }
 
   /**

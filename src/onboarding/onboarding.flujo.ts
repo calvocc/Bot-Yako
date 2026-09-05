@@ -70,7 +70,7 @@ export class OnboardingFlujo {
         this.pasoNombreEquipo(),
         this.pasoFormato(),
         this.pasoFormatoCustom(),
-        pasoCargarPlantilla(PASOS.plantilla, this.jugadores, {
+        pasoCargarPlantilla(PASOS.plantilla, this.jugadores, this.equipos, {
           claveEquipoId: CLAVE_EQUIPO_ID,
           alTerminar: (_ctx, cargados) => ({
             tipo: 'finalizar',
@@ -116,7 +116,7 @@ export class OnboardingFlujo {
               tipo: 'finalizar',
               respuesta: {
                 texto: textos.holaDeNuevo(lista, CIERRE),
-                botones: [botonComando('ayuda', 'Ver qué puedo hacer')],
+                botones: [botonComando('ayuda', textosComunes.botonAyuda())],
               },
             },
           };

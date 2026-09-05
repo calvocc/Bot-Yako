@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { MensajeEntrante, RespuestaBot } from '../channels/channel.types';
 import { textos as textosComunes } from '../textos/comunes';
 import { textos } from '../textos/router';
-import { esComandoDeFlujo, parsearComando, PREFIJO_BOTON_COMANDO } from './comandos';
+import { botonComando, esComandoDeFlujo, parsearComando, PREFIJO_BOTON_COMANDO } from './comandos';
 import { FlowEngine } from './flow-engine.service';
 import type { DatosFlujo } from './flow.types';
 
@@ -158,7 +158,7 @@ export class Router {
 
     return {
       texto: textos.comandoDesconocido(nombre),
-      botones: [textosComunes.botonAyuda()],
+      botones: [botonComando('ayuda', textosComunes.botonAyuda())],
     };
   }
 
@@ -166,10 +166,16 @@ export class Router {
     // Llegó un botón de un mensaje viejo, o texto suelto sin conversación
     // abierta. Se orienta al usuario en vez de ignorarlo en silencio.
     if (mensaje.seleccionId) {
-      return { texto: textos.botonViejo(), botones: [textosComunes.botonAyuda()] };
+      return {
+        texto: textos.botonViejo(),
+        botones: [botonComando('ayuda', textosComunes.botonAyuda())],
+      };
     }
 
-    return { texto: textos.sinContexto(), botones: [textosComunes.botonAyuda()] };
+    return {
+      texto: textos.sinContexto(),
+      botones: [botonComando('ayuda', textosComunes.botonAyuda())],
+    };
   }
 }
 

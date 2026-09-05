@@ -1,6 +1,3 @@
-import { botonComando } from '../conversacion/comandos';
-import type { Boton } from '../channels/channel.types';
-
 /** Textos de `/invitar`, `/unirme` y el mensaje compartido de resultado del canje. */
 export const textos = {
   invitar: {
@@ -50,11 +47,11 @@ export const textos = {
   canje: {
     ok: (rol: string, equipoNombre: string): string =>
       `¡Listo! Quedaste como ${rol} en "${equipoNombre}" ✅\n\nSi más adelante quieres sumarte a otro equipo, usa /unirme con el código.`,
-    botonOk: (): Boton => botonComando('ayuda', 'Ver qué puedo hacer'),
 
     yaEraMiembro: (rol: string, equipoNombre: string) =>
       `Ya eras ${rol} en "${equipoNombre}", así que no cambié nada.`,
-    botonYaEraMiembro: (): Boton => botonComando('equipos', 'Ver mis equipos'),
+    /** El id de ruteo (`cmd:equipos`) lo arma `mensajes-canje.ts` con `botonComando`. */
+    botonYaEraMiembro: () => 'Ver mis equipos',
 
     noExiste: () => '❌ Ese código no existe. Revísalo y vuelve a intentar — se ve así: YAKO-X7F2A',
     expirada: () => '❌ Ese código ya expiró. Pídele al admin que te genere uno nuevo.',
