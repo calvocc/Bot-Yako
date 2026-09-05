@@ -11,31 +11,47 @@ import {
   ID_VER_MAS,
   paginaSiguiente,
 } from '../conversacion/pasos-comunes/paginacion';
+import { EquiposService } from '../equipos/equipos.service';
 import { MembresiasService } from '../identidad/membresias.service';
 import { textos as textosComunes } from '../textos/comunes';
 import { textos } from '../textos/jugadores';
 import { CLAVE_ALTAS, pasoCargarPlantilla } from './pasos-plantilla';
-import { describirJugador, formatearListaJugadores, JugadoresService } from './jugadores.service';
+import {
+  candidatosDeEquipo,
+  describirJugador,
+  formatearListaJugadores,
+  JugadoresService,
+  type CandidatoAcademia,
+} from './jugadores.service';
 
 export const FLUJO_PLANTILLA = 'plantilla';
 
 const PASOS = {
   equipo: 'equipo',
   ver: 'ver',
+  agregarModo: 'agregar-modo',
   agregar: 'agregar',
+  agregarBuscarNombre: 'agregar-buscar-nombre',
+  agregarElegirCandidato: 'agregar-elegir-candidato',
   bajaElegir: 'baja-elegir',
 } as const;
 
 const OPCION_AGREGAR = 'pl:agregar';
 const OPCION_BAJA = 'pl:baja';
 const OPCION_CERRAR = 'pl:cerrar';
+const OPCION_MODO_LISTA = 'pl:m:lista';
+const OPCION_MODO_ACADEMIA = 'pl:m:academia';
 const PREFIJO_BAJA = 'pl:b:';
+const PREFIJO_CANDIDATO = 'pl:c:';
 const CLAVE_PAGINA = 'paginaBaja';
+const CLAVE_BUSQUEDA = 'busquedaAcademia';
+const CLAVE_PAGINA_CANDIDATOS = 'paginaCandidatos';
 
 @Injectable()
 export class PlantillaFlujo {
   constructor(
     private readonly jugadores: JugadoresService,
+    private readonly equipos: EquiposService,
     private readonly membresias: MembresiasService,
   ) {}
 
@@ -49,7 +65,8 @@ export class PlantillaFlujo {
           pregunta: textos.preguntaEquipo,
         }),
         this.pasoVer(),
-        pasoCargarPlantilla(PASOS.agregar, this.jugadores, {
+        this.pasoAgregarModo(),
+        pasoCargarPlantilla(PASOS.agregar, this.jugadores, this.equipos, {
           claveEquipoId: CLAVE_EQUIPO_ID,
           // A diferencia del onboarding, acá el equipo ya existía: el rol pudo
           // cambiar entre que se abrió el flujo y se escribe.
@@ -71,6 +88,8 @@ export class PlantillaFlujo {
             },
           }),
         }),
+        this.pasoAgregarBuscarNombre(),
+        this.pasoAgregarElegirCandidato(),
         this.pasoBajaElegir(),
       ],
     };
@@ -112,11 +131,7 @@ export class PlantillaFlujo {
         const seleccion = ctx.mensaje.seleccionId;
 
         if (seleccion === OPCION_AGREGAR) {
-          return Promise.resolve({
-            tipo: 'ir',
-            pasoId: PASOS.agregar,
-            datos: { [CLAVE_ALTAS]: 0 },
-          });
+          return Promise.resolve({ tipo: 'ir', pasoId: PASOS.agregarModo });
         }
 
         if (seleccion === OPCION_BAJA) {
@@ -135,6 +150,172 @@ export class PlantillaFlujo {
         });
       },
     };
+  }
+
+  /**
+   * "Agregar" ahora tiene dos caminos: pegar una lista (lo de siempre) o
+   * buscar a alguien que ya juega en otro equipo de la academia, para
+   * vincularlo en vez de crear una ficha nueva sin relación (Frente A).
+   */
+  private pasoAgregarModo(): Paso {
+    return {
+      id: PASOS.agregarModo,
+
+      entrar: () =>
+        Promise.resolve({
+          respuesta: {
+            texto: textos.agregar.elegirModo.pregunta(),
+            botones: [
+              { id: OPCION_MODO_LISTA, texto: textos.agregar.elegirModo.botonLista },
+              { id: OPCION_MODO_ACADEMIA, texto: textos.agregar.elegirModo.botonDeAcademia },
+            ],
+          },
+        }),
+
+      recibir: (ctx: ContextoFlujo): Promise<Transicion> => {
+        const seleccion = ctx.mensaje.seleccionId;
+
+        if (seleccion === OPCION_MODO_ACADEMIA) {
+          return Promise.resolve({ tipo: 'ir', pasoId: PASOS.agregarBuscarNombre });
+        }
+
+        // Cualquier otra cosa (incluido tocar "Pegar lista") va al camino de
+        // siempre, que ya sabe interpretar texto libre.
+        return Promise.resolve({
+          tipo: 'ir',
+          pasoId: PASOS.agregar,
+          datos: { [CLAVE_ALTAS]: 0 },
+        });
+      },
+    };
+  }
+
+  private pasoAgregarBuscarNombre(): Paso {
+    return {
+      id: PASOS.agregarBuscarNombre,
+
+      entrar: () =>
+        Promise.resolve({
+          respuesta: { texto: textos.agregar.buscarNombre.pregunta() },
+        }),
+
+      recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
+        const nombre = ctx.mensaje.texto?.trim();
+
+        if (!nombre) {
+          return { tipo: 'repetir', respuesta: { texto: textos.agregar.buscarNombre.pregunta() } };
+        }
+
+        const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
+        const candidatos = await candidatosDeEquipo(this.equipos, this.jugadores, equipoId, nombre);
+
+        if (candidatos.length === 0) {
+          return {
+            tipo: 'repetir',
+            respuesta: { texto: textos.agregar.buscarNombre.sinCandidatos(nombre) },
+          };
+        }
+
+        return {
+          tipo: 'ir',
+          pasoId: PASOS.agregarElegirCandidato,
+          datos: { [CLAVE_BUSQUEDA]: nombre, [CLAVE_PAGINA_CANDIDATOS]: 0 },
+        };
+      },
+    };
+  }
+
+  private pasoAgregarElegirCandidato(): Paso {
+    return {
+      id: PASOS.agregarElegirCandidato,
+
+      entrar: async (ctx: ContextoFlujo): Promise<Entrada> => {
+        const candidatos = await this.candidatosDe(ctx);
+        const pagina = leerNumero(ctx.datos, CLAVE_PAGINA_CANDIDATOS);
+        const { botones } = botonesPaginados(
+          candidatos.map((c) => ({
+            id: `${PREFIJO_CANDIDATO}${c.jugadorId}`,
+            // El equipo va primero: el botón se recorta a 20 caracteres
+            // (`botonesPaginados`) y es lo que de verdad distingue entre
+            // candidatos — el nombre ya lo escribió el usuario recién.
+            texto: `${c.equipoNombre} — ${describirJugador({ nombre: c.nombre, dorsal: c.dorsal ?? undefined })}`,
+          })),
+          pagina,
+        );
+
+        return { respuesta: { texto: textos.agregar.elegirCandidato.pregunta(), botones } };
+      },
+
+      recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
+        const seleccion = ctx.mensaje.seleccionId ?? '';
+
+        // La búsqueda por academia no hace falta para descartar un botón
+        // viejo o un texto suelto: se pide solo en las dos ramas que sí la
+        // usan, no antes de saber cuál es.
+        if (seleccion !== ID_VER_MAS && !seleccion.startsWith(PREFIJO_CANDIDATO)) {
+          return { tipo: 'finalizar', respuesta: { texto: textos.agregar.ningunoAgregado() } };
+        }
+
+        const candidatos = await this.candidatosDe(ctx);
+
+        if (seleccion === ID_VER_MAS) {
+          return {
+            tipo: 'ir',
+            pasoId: PASOS.agregarElegirCandidato,
+            datos: {
+              [CLAVE_PAGINA_CANDIDATOS]: paginaSiguiente(
+                leerNumero(ctx.datos, CLAVE_PAGINA_CANDIDATOS),
+                candidatos.length,
+              ),
+            },
+          };
+        }
+
+        const jugadorOrigenId = seleccion.slice(PREFIJO_CANDIDATO.length);
+        const candidato = candidatos.find((c) => c.jugadorId === jugadorOrigenId);
+
+        if (!candidato) {
+          return {
+            tipo: 'finalizar',
+            respuesta: { texto: textosComunes.noEncontre('a esa persona') },
+          };
+        }
+
+        const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
+
+        // Se relee el permiso en el momento de escribir: el rol pudo cambiar
+        // entre que se mostró el botón y se pulsó.
+        const puede = ctx.usuarioId
+          ? await this.membresias.puede(ctx.usuarioId, equipoId, 'editor')
+          : false;
+
+        if (!puede) {
+          return {
+            tipo: 'finalizar',
+            respuesta: { texto: textosComunes.sinPermisoPara('editar la plantilla') },
+          };
+        }
+
+        const vinculado = await this.jugadores.vincularNuevoEquipo(
+          equipoId,
+          { nombre: candidato.nombre, dorsal: candidato.dorsal ?? undefined },
+          jugadorOrigenId,
+        );
+
+        return {
+          tipo: 'finalizar',
+          respuesta: { texto: textos.agregar.vinculado(vinculado.nombre, candidato.equipoNombre) },
+        };
+      },
+    };
+  }
+
+  /** Repite la misma búsqueda que armó la lista, para no cargar candidatos completos en `datos`. */
+  private candidatosDe(ctx: ContextoFlujo): Promise<CandidatoAcademia[]> {
+    const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
+    const nombre = leerTexto(ctx.datos, CLAVE_BUSQUEDA);
+
+    return candidatosDeEquipo(this.equipos, this.jugadores, equipoId, nombre);
   }
 
   private pasoBajaElegir(): Paso {

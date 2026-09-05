@@ -377,6 +377,48 @@ describe('Estadísticas (e2e)', () => {
         '🏆 Sin competencia: 1 partidos · 1G 0E 0P · Goleador: Andrés (5)',
       );
     });
+
+    it('/stats de una persona vinculada a dos equipos suma un bloque "Total"', async () => {
+      const { equipo, admin, academia } = await escenario('Total persona');
+      const jacobSub11 = await jugadores.crear(equipo.id, 'Jacob Restrepo', 10);
+
+      const equiposSvc = app.get(EquiposService);
+      const sub13 = await equiposSvc.crear(
+        academia.id,
+        'Sub-13',
+        { cantidadTiempos: 2, minutosPorTiempo: 25 },
+        admin,
+      );
+      const jacobSub13 = await jugadores.vincularNuevoEquipo(
+        sub13.id,
+        { nombre: 'Jacob Restrepo', dorsal: 9 },
+        jacobSub11.id,
+      );
+
+      await partidoConGoles(equipo.id, admin, '2026-09-01', jacobSub11.id, 2);
+      await partidoConGoles(sub13.id, admin, '2026-09-02', jacobSub13.id, 1);
+
+      const respuesta = await handler.stats('Jacob Restrepo', admin);
+
+      // Un bloque por equipo, sin sumar nada entre ellos...
+      expect(respuesta.texto).toContain('Sub-11');
+      expect(respuesta.texto).toContain('Sub-13');
+      // ...más el bloque de total, que sí suma entre los dos.
+      expect(respuesta.texto).toContain('🧮 Total en la academia');
+      expect(respuesta.texto).toContain('(2 equipos)');
+      expect(respuesta.texto).toContain('Goles: 3');
+    });
+
+    it('/stats de un jugador sin ficha en otro equipo no muestra bloque "Total"', async () => {
+      const { equipo, admin } = await escenario('Sin total');
+      const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
+
+      await partidoConGoles(equipo.id, admin, '2026-09-03', jacob.id, 1);
+
+      const respuesta = await handler.stats('Jacob', admin);
+
+      expect(respuesta.texto).not.toContain('Total en la academia');
+    });
   });
 
   /**

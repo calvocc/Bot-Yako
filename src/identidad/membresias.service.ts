@@ -1,7 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { and, asc, eq } from 'drizzle-orm';
 import { DbService, type EjecutorDb } from '../db/db.service';
-import { academias, equipos, usuarios, usuariosEquipos } from '../db/schema';
+import {
+  academias,
+  equipos,
+  jugadores,
+  usuarios,
+  usuariosEquipos,
+  usuariosJugadores,
+} from '../db/schema';
 import { cumpleRol, type Rol } from './roles';
 
 export interface EquipoDelUsuario {
@@ -29,33 +36,86 @@ export class MembresiasService {
    * Filtrar acá es lo que hace que un Viewer no vea siquiera como opción un
    * equipo donde no puede cargar eventos, en vez de dejarlo elegir y negarle
    * el permiso un paso más tarde.
+   *
+   * Incluye los equipos alcanzables solo por ser papá/tutor de un jugador ahí
+   * (Frente B: `usuarios_jugadores`), con rol `'viewer'` — un papá ve todo el
+   * equipo de su hijo, igual que un Viewer normal. Si además tiene una fila
+   * directa en `usuarios_equipos` para ese mismo equipo, esa es la que manda
+   * (puede ser un rol mayor, nunca uno menor a viewer). El join con `jugadores`
+   * exige `activo`: si dan de baja al hijo, el vínculo (`usuarios_jugadores`)
+   * sigue existiendo pero deja de dar acceso — no hay otro punto donde
+   * revocarlo, así que el filtro tiene que vivir acá.
    */
   async equiposDe(usuarioId: string, rolMinimo?: Rol): Promise<EquipoDelUsuario[]> {
-    const filas = await this.db.db
-      .select({
-        equipoId: equipos.id,
-        equipoNombre: equipos.nombre,
-        academiaId: academias.id,
-        academiaNombre: academias.nombre,
-        rol: usuariosEquipos.rol,
-      })
-      .from(usuariosEquipos)
-      .innerJoin(equipos, eq(equipos.id, usuariosEquipos.equipoId))
-      .innerJoin(academias, eq(academias.id, equipos.academiaId))
-      .where(eq(usuariosEquipos.usuarioId, usuarioId))
-      .orderBy(asc(academias.nombre), asc(equipos.nombre));
+    const [directos, porHijo] = await Promise.all([
+      this.db.db
+        .select({
+          equipoId: equipos.id,
+          equipoNombre: equipos.nombre,
+          academiaId: academias.id,
+          academiaNombre: academias.nombre,
+          rol: usuariosEquipos.rol,
+        })
+        .from(usuariosEquipos)
+        .innerJoin(equipos, eq(equipos.id, usuariosEquipos.equipoId))
+        .innerJoin(academias, eq(academias.id, equipos.academiaId))
+        .where(eq(usuariosEquipos.usuarioId, usuarioId)),
 
-    return rolMinimo ? filas.filter((f) => cumpleRol(f.rol, rolMinimo)) : filas;
+      this.db.db
+        .selectDistinct({
+          equipoId: equipos.id,
+          equipoNombre: equipos.nombre,
+          academiaId: academias.id,
+          academiaNombre: academias.nombre,
+        })
+        .from(usuariosJugadores)
+        .innerJoin(jugadores, eq(jugadores.id, usuariosJugadores.jugadorId))
+        .innerJoin(equipos, eq(equipos.id, jugadores.equipoId))
+        .innerJoin(academias, eq(academias.id, equipos.academiaId))
+        .where(and(eq(usuariosJugadores.usuarioId, usuarioId), eq(jugadores.activo, true))),
+    ]);
+
+    const yaDirectos = new Set(directos.map((d) => d.equipoId));
+    const combinados: EquipoDelUsuario[] = [
+      ...directos,
+      ...porHijo
+        .filter((e) => !yaDirectos.has(e.equipoId))
+        .map((e) => ({ ...e, rol: 'viewer' as const })),
+    ].sort(
+      (a, b) =>
+        a.academiaNombre.localeCompare(b.academiaNombre) ||
+        a.equipoNombre.localeCompare(b.equipoNombre),
+    );
+
+    return rolMinimo ? combinados.filter((f) => cumpleRol(f.rol, rolMinimo)) : combinados;
   }
 
   async rolEn(usuarioId: string, equipoId: string, tx?: EjecutorDb): Promise<Rol | null> {
-    const [fila] = await (tx ?? this.db.db)
+    const ejecutor = tx ?? this.db.db;
+    const [fila] = await ejecutor
       .select({ rol: usuariosEquipos.rol })
       .from(usuariosEquipos)
       .where(and(eq(usuariosEquipos.usuarioId, usuarioId), eq(usuariosEquipos.equipoId, equipoId)))
       .limit(1);
 
-    return fila?.rol ?? null;
+    if (fila) return fila.rol;
+
+    // Sin fila directa: ¿es papá/tutor de algún jugador ACTIVO de este equipo?
+    // Si dieron de baja al hijo, el vínculo sigue existiendo pero ya no da acceso.
+    const [vinculo] = await ejecutor
+      .select({ jugadorId: usuariosJugadores.jugadorId })
+      .from(usuariosJugadores)
+      .innerJoin(jugadores, eq(jugadores.id, usuariosJugadores.jugadorId))
+      .where(
+        and(
+          eq(usuariosJugadores.usuarioId, usuarioId),
+          eq(jugadores.equipoId, equipoId),
+          eq(jugadores.activo, true),
+        ),
+      )
+      .limit(1);
+
+    return vinculo ? 'viewer' : null;
   }
 
   async puede(usuarioId: string, equipoId: string, rolMinimo: Rol): Promise<boolean> {
@@ -116,6 +176,39 @@ export class MembresiasService {
         target: [usuariosEquipos.usuarioId, usuariosEquipos.equipoId],
         set: { rol },
       });
+  }
+
+  /**
+   * Vincula a un usuario como papá/tutor de un jugador (Frente B). Sin rol
+   * que actualizar —a diferencia de `asignarRol`— así que un segundo vínculo
+   * al mismo jugador simplemente no hace nada.
+   */
+  async vincularAJugador(usuarioId: string, jugadorId: string, tx?: EjecutorDb): Promise<void> {
+    await (tx ?? this.db.db)
+      .insert(usuariosJugadores)
+      .values({ usuarioId, jugadorId })
+      .onConflictDoNothing();
+  }
+
+  /**
+   * Jugadores a los que el usuario está vinculado como papá/tutor, para
+   * `/mishijos`. Solo los activos: uno dado de baja ya no le da acceso al
+   * equipo (ver `equiposDe`), así que tampoco tiene sentido listarlo acá.
+   */
+  async hijosDe(
+    usuarioId: string,
+  ): Promise<{ jugadorId: string; jugadorNombre: string; equipoNombre: string }[]> {
+    return this.db.db
+      .select({
+        jugadorId: jugadores.id,
+        jugadorNombre: jugadores.nombre,
+        equipoNombre: equipos.nombre,
+      })
+      .from(usuariosJugadores)
+      .innerJoin(jugadores, eq(jugadores.id, usuariosJugadores.jugadorId))
+      .innerJoin(equipos, eq(equipos.id, jugadores.equipoId))
+      .where(and(eq(usuariosJugadores.usuarioId, usuarioId), eq(jugadores.activo, true)))
+      .orderBy(asc(jugadores.nombre));
   }
 
   /**

@@ -2,10 +2,11 @@ import type { MensajeEntrante, RespuestaBot } from '../channels/channel.types';
 import { parsearComando } from '../conversacion/comandos';
 import type { ContextoFlujo, Entrada, Paso, Transicion } from '../conversacion/flow.types';
 import { leerNumero, leerTexto } from '../conversacion/flow.types';
+import type { EquiposService } from '../equipos/equipos.service';
 import { textos as textosComunes } from '../textos/comunes';
 import { textos } from '../textos/jugadores';
 import { DorsalOcupadoError, describirJugador, parsearPlantilla } from './jugadores.service';
-import type { JugadoresService } from './jugadores.service';
+import type { CandidatoAcademia, Jugador, JugadoresService } from './jugadores.service';
 
 export const CLAVE_ALTAS = 'jugadoresCargados';
 
@@ -46,6 +47,7 @@ export interface OpcionesPasoPlantilla {
 export function pasoCargarPlantilla(
   id: string,
   jugadores: JugadoresService,
+  equipos: EquiposService,
   opciones: OpcionesPasoPlantilla,
 ): Paso {
   const { claveEquipoId, alTerminar, puedeEscribir } = opciones;
@@ -94,12 +96,20 @@ export function pasoCargarPlantilla(
         };
       }
 
-      const { agregados, problemas } = await altaEnLote(jugadores, equipoId, parseados);
+      // Se busca la academia una vez por lote, no por jugador: es la misma
+      // para todos los nombres de este mensaje.
+      const equipo = await equipos.obtener(equipoId);
+      const { agregados, problemas, avisos } = await altaEnLote(
+        jugadores,
+        equipoId,
+        equipo?.academiaId,
+        parseados,
+      );
       const total = yaCargados + agregados.length;
 
       return {
         tipo: 'repetir',
-        respuesta: { texto: resumenDeAlta(agregados, problemas, total) },
+        respuesta: { texto: resumenDeAlta(agregados, problemas, avisos, total) },
         datos: { [CLAVE_ALTAS]: total },
       };
     },
@@ -109,15 +119,19 @@ export function pasoCargarPlantilla(
 async function altaEnLote(
   jugadores: JugadoresService,
   equipoId: string,
+  academiaId: string | undefined,
   parseados: ReturnType<typeof parsearPlantilla>,
-): Promise<{ agregados: string[]; problemas: string[] }> {
+): Promise<{ agregados: string[]; problemas: string[]; avisos: string[] }> {
   const agregados: string[] = [];
   const problemas: string[] = [];
+  const creados: Jugador[] = [];
 
   for (const jugador of parseados) {
     try {
       const creado = await jugadores.crear(equipoId, jugador.nombre, jugador.dorsal);
+
       agregados.push(describirJugador(creado));
+      creados.push(creado);
     } catch (error) {
       // Un dorsal repetido no debe abortar el resto del lote: se informa y se
       // sigue, que es lo que espera quien pegó una lista de veinte.
@@ -129,10 +143,63 @@ async function altaEnLote(
     }
   }
 
-  return { agregados, problemas };
+  const avisos = academiaId
+    ? await avisosDeDuplicado(jugadores, academiaId, equipoId, creados)
+    : [];
+
+  return { agregados, problemas, avisos };
 }
 
-function resumenDeAlta(agregados: string[], problemas: string[], total: number): string {
+/**
+ * Aviso, no bloqueo: quien pega una lista de veinte no puede confirmar uno
+ * por uno si son la misma persona. Se avisa y se deja para arreglar a mano
+ * con "Agregar" → "Ya en otro equipo", que sí pregunta antes de vincular.
+ *
+ * Una sola consulta para todo el lote (`buscarVariosEnAcademia`), no una por
+ * jugador: pegar veinte nombres no puede costar veinte consultas aparte de
+ * las veinte altas.
+ */
+async function avisosDeDuplicado(
+  jugadores: JugadoresService,
+  academiaId: string,
+  equipoId: string,
+  creados: readonly Jugador[],
+): Promise<string[]> {
+  if (creados.length === 0) return [];
+
+  const candidatos = await jugadores.buscarVariosEnAcademia(
+    academiaId,
+    creados.map((j) => j.nombre),
+    equipoId,
+  );
+
+  const porNombre = new Map<string, CandidatoAcademia>();
+
+  for (const candidato of candidatos) {
+    const clave = candidato.nombre.trim().toLowerCase();
+
+    if (!porNombre.has(clave)) porNombre.set(clave, candidato);
+  }
+
+  const avisos: string[] = [];
+
+  for (const creado of creados) {
+    const candidato = porNombre.get(creado.nombre.trim().toLowerCase());
+
+    if (candidato) {
+      avisos.push(textos.cargarPlantilla.posibleDuplicado(creado.nombre, candidato.equipoNombre));
+    }
+  }
+
+  return avisos;
+}
+
+function resumenDeAlta(
+  agregados: string[],
+  problemas: string[],
+  avisos: string[],
+  total: number,
+): string {
   const lineas: string[] = [];
 
   if (agregados.length > 0) {
@@ -141,6 +208,10 @@ function resumenDeAlta(agregados: string[], problemas: string[], total: number):
 
   if (problemas.length > 0) {
     lineas.push(`⚠️ ${problemas.join(' · ')}`);
+  }
+
+  if (avisos.length > 0) {
+    lineas.push(...avisos.map((aviso) => `❓ ${aviso}`));
   }
 
   lineas.push('', textos.cargarPlantilla.resumenAlta(total, COMANDO_LISTO));

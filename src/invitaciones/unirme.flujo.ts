@@ -62,9 +62,12 @@ export class UnirmeFlujo {
     // El canje ya deja la membresía aplicada, en su misma transacción.
     const resultado = await this.invitaciones.canjear(codigo, usuarioId);
 
-    return {
-      exitoso: resultado.estado === 'ok' || resultado.estado === 'ya_eras_miembro',
-      respuesta: mensajeDeCanje(resultado),
-    };
+    const exitoso =
+      resultado.estado === 'ok' ||
+      resultado.estado === 'ya_eras_miembro' ||
+      resultado.estado === 'ok_jugador' ||
+      resultado.estado === 'ya_vinculado_jugador';
+
+    return { exitoso, respuesta: mensajeDeCanje(resultado) };
   }
 }

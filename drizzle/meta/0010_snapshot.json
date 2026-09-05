@@ -1,6 +1,6 @@
 {
-  "id": "a2078c72-e354-401b-94fe-70aae36adb5f",
-  "prevId": "74e91943-4224-482a-9bfa-37e1fd8ec89e",
+  "id": "2d65d41c-5389-4797-9502-b942dbd1c02c",
+  "prevId": "a2078c72-e354-401b-94fe-70aae36adb5f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -94,35 +94,35 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "equipos_academia_id_academias_id_fk": {
           "name": "equipos_academia_id_academias_id_fk",
           "tableFrom": "equipos",
+          "tableTo": "academias",
           "columnsFrom": [
             "academia_id"
           ],
-          "tableTo": "academias",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "equipos_academia_nombre_key": {
           "name": "equipos_academia_nombre_key",
+          "nullsNotDistinct": false,
           "columns": [
             "academia_id",
             "nombre"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -200,10 +200,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "activo",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "jugadores_equipo_dorsal_key": {
           "name": "jugadores_equipo_dorsal_key",
@@ -222,38 +222,38 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "activo and dorsal is not null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "jugadores_equipo_id_equipos_id_fk": {
           "name": "jugadores_equipo_id_equipos_id_fk",
           "tableFrom": "jugadores",
+          "tableTo": "equipos",
           "columnsFrom": [
             "equipo_id"
           ],
-          "tableTo": "equipos",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "jugadores_persona_id_personas_id_fk": {
           "name": "jugadores_persona_id_personas_id_fk",
           "tableFrom": "jugadores",
+          "tableTo": "personas",
           "columnsFrom": [
             "persona_id"
           ],
-          "tableTo": "personas",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -349,24 +349,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "identidades_usuario_usuario_id_usuarios_id_fk": {
           "name": "identidades_usuario_usuario_id_usuarios_id_fk",
           "tableFrom": "identidades_usuario",
+          "tableTo": "usuarios",
           "columnsFrom": [
             "usuario_id"
           ],
-          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -465,37 +465,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "usuarios_equipos_usuario_id_usuarios_id_fk": {
           "name": "usuarios_equipos_usuario_id_usuarios_id_fk",
           "tableFrom": "usuarios_equipos",
+          "tableTo": "usuarios",
           "columnsFrom": [
             "usuario_id"
           ],
-          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "usuarios_equipos_equipo_id_equipos_id_fk": {
           "name": "usuarios_equipos_equipo_id_equipos_id_fk",
           "tableFrom": "usuarios_equipos",
+          "tableTo": "equipos",
           "columnsFrom": [
             "equipo_id"
           ],
-          "tableTo": "equipos",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -504,6 +504,89 @@
           "columns": [
             "usuario_id",
             "equipo_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.usuarios_jugadores": {
+      "name": "usuarios_jugadores",
+      "schema": "",
+      "columns": {
+        "usuario_id": {
+          "name": "usuario_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "jugador_id": {
+          "name": "jugador_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_usuarios_jugadores_jugador": {
+          "name": "idx_usuarios_jugadores_jugador",
+          "columns": [
+            {
+              "expression": "jugador_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "usuarios_jugadores_usuario_id_usuarios_id_fk": {
+          "name": "usuarios_jugadores_usuario_id_usuarios_id_fk",
+          "tableFrom": "usuarios_jugadores",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "usuario_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "usuarios_jugadores_jugador_id_jugadores_id_fk": {
+          "name": "usuarios_jugadores_jugador_id_jugadores_id_fk",
+          "tableFrom": "usuarios_jugadores",
+          "tableTo": "jugadores",
+          "columnsFrom": [
+            "jugador_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "usuarios_jugadores_usuario_id_jugador_id_pk": {
+          "name": "usuarios_jugadores_usuario_id_jugador_id_pk",
+          "columns": [
+            "usuario_id",
+            "jugador_id"
           ]
         }
       },
@@ -587,9 +670,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_invitaciones_equipo": {
           "name": "idx_invitaciones_equipo",
@@ -602,47 +685,47 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "invitaciones_equipo_id_equipos_id_fk": {
           "name": "invitaciones_equipo_id_equipos_id_fk",
           "tableFrom": "invitaciones",
+          "tableTo": "equipos",
           "columnsFrom": [
             "equipo_id"
           ],
-          "tableTo": "equipos",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "invitaciones_creado_por_usuarios_id_fk": {
           "name": "invitaciones_creado_por_usuarios_id_fk",
           "tableFrom": "invitaciones",
+          "tableTo": "usuarios",
           "columnsFrom": [
             "creado_por"
           ],
-          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "invitaciones_codigo_unique": {
           "name": "invitaciones_codigo_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "codigo"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -683,33 +766,235 @@
         "invitaciones_canjes_invitacion_id_invitaciones_id_fk": {
           "name": "invitaciones_canjes_invitacion_id_invitaciones_id_fk",
           "tableFrom": "invitaciones_canjes",
+          "tableTo": "invitaciones",
           "columnsFrom": [
             "invitacion_id"
           ],
-          "tableTo": "invitaciones",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "invitaciones_canjes_usuario_id_usuarios_id_fk": {
           "name": "invitaciones_canjes_usuario_id_usuarios_id_fk",
           "tableFrom": "invitaciones_canjes",
+          "tableTo": "usuarios",
           "columnsFrom": [
             "usuario_id"
           ],
-          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
         "invitaciones_canjes_invitacion_id_usuario_id_pk": {
           "name": "invitaciones_canjes_invitacion_id_usuario_id_pk",
+          "columns": [
+            "invitacion_id",
+            "usuario_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.invitaciones_jugador": {
+      "name": "invitaciones_jugador",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "jugador_id": {
+          "name": "jugador_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "codigo": {
+          "name": "codigo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "usos_maximos": {
+          "name": "usos_maximos",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "creado_por": {
+          "name": "creado_por",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expira_en": {
+          "name": "expira_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revocada_en": {
+          "name": "revocada_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_invitaciones_jugador_codigo": {
+          "name": "idx_invitaciones_jugador_codigo",
+          "columns": [
+            {
+              "expression": "codigo",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_invitaciones_jugador_jugador": {
+          "name": "idx_invitaciones_jugador_jugador",
+          "columns": [
+            {
+              "expression": "jugador_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "invitaciones_jugador_jugador_id_jugadores_id_fk": {
+          "name": "invitaciones_jugador_jugador_id_jugadores_id_fk",
+          "tableFrom": "invitaciones_jugador",
+          "tableTo": "jugadores",
+          "columnsFrom": [
+            "jugador_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "invitaciones_jugador_creado_por_usuarios_id_fk": {
+          "name": "invitaciones_jugador_creado_por_usuarios_id_fk",
+          "tableFrom": "invitaciones_jugador",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "creado_por"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "invitaciones_jugador_codigo_unique": {
+          "name": "invitaciones_jugador_codigo_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "codigo"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "invitaciones_jugador_usos_maximos_check": {
+          "name": "invitaciones_jugador_usos_maximos_check",
+          "value": "\"invitaciones_jugador\".\"usos_maximos\" between 1 and 100"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.invitaciones_jugador_canjes": {
+      "name": "invitaciones_jugador_canjes",
+      "schema": "",
+      "columns": {
+        "invitacion_id": {
+          "name": "invitacion_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "usuario_id": {
+          "name": "usuario_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "canjeado_en": {
+          "name": "canjeado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "invitaciones_jugador_canjes_invitacion_id_invitaciones_jugador_id_fk": {
+          "name": "invitaciones_jugador_canjes_invitacion_id_invitaciones_jugador_id_fk",
+          "tableFrom": "invitaciones_jugador_canjes",
+          "tableTo": "invitaciones_jugador",
+          "columnsFrom": [
+            "invitacion_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "invitaciones_jugador_canjes_usuario_id_usuarios_id_fk": {
+          "name": "invitaciones_jugador_canjes_usuario_id_usuarios_id_fk",
+          "tableFrom": "invitaciones_jugador_canjes",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "usuario_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "invitaciones_jugador_canjes_invitacion_id_usuario_id_pk": {
+          "name": "invitaciones_jugador_canjes_invitacion_id_usuario_id_pk",
           "columns": [
             "invitacion_id",
             "usuario_id"
@@ -770,43 +1055,43 @@
             },
             {
               "expression": "lower(trim(\"nombre\"))",
-              "isExpression": true,
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "competencias_academia_id_academias_id_fk": {
           "name": "competencias_academia_id_academias_id_fk",
           "tableFrom": "competencias",
+          "tableTo": "academias",
           "columnsFrom": [
             "academia_id"
           ],
-          "tableTo": "academias",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "competencias_creado_por_usuarios_id_fk": {
           "name": "competencias_creado_por_usuarios_id_fk",
           "tableFrom": "competencias",
+          "tableTo": "usuarios",
           "columnsFrom": [
             "creado_por"
           ],
-          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -868,52 +1153,52 @@
         "partido_tiempos_partido_id_partidos_id_fk": {
           "name": "partido_tiempos_partido_id_partidos_id_fk",
           "tableFrom": "partido_tiempos",
+          "tableTo": "partidos",
           "columnsFrom": [
             "partido_id"
           ],
-          "tableTo": "partidos",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "partido_tiempos_iniciado_por_usuarios_id_fk": {
           "name": "partido_tiempos_iniciado_por_usuarios_id_fk",
           "tableFrom": "partido_tiempos",
+          "tableTo": "usuarios",
           "columnsFrom": [
             "iniciado_por"
           ],
-          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "partido_tiempos_finalizado_por_usuarios_id_fk": {
           "name": "partido_tiempos_finalizado_por_usuarios_id_fk",
           "tableFrom": "partido_tiempos",
+          "tableTo": "usuarios",
           "columnsFrom": [
             "finalizado_por"
           ],
-          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "partido_tiempos_partido_numero_key": {
           "name": "partido_tiempos_partido_numero_key",
+          "nullsNotDistinct": false,
           "columns": [
             "partido_id",
             "numero"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -967,52 +1252,52 @@
         "partido_titulares_partido_id_partidos_id_fk": {
           "name": "partido_titulares_partido_id_partidos_id_fk",
           "tableFrom": "partido_titulares",
+          "tableTo": "partidos",
           "columnsFrom": [
             "partido_id"
           ],
-          "tableTo": "partidos",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "partido_titulares_jugador_id_jugadores_id_fk": {
           "name": "partido_titulares_jugador_id_jugadores_id_fk",
           "tableFrom": "partido_titulares",
+          "tableTo": "jugadores",
           "columnsFrom": [
             "jugador_id"
           ],
-          "tableTo": "jugadores",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "partido_titulares_creado_por_usuarios_id_fk": {
           "name": "partido_titulares_creado_por_usuarios_id_fk",
           "tableFrom": "partido_titulares",
+          "tableTo": "usuarios",
           "columnsFrom": [
             "creado_por"
           ],
-          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "partido_titulares_partido_jugador_key": {
           "name": "partido_titulares_partido_jugador_key",
+          "nullsNotDistinct": false,
           "columns": [
             "partido_id",
             "jugador_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -1178,9 +1463,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_partidos_equipo_fecha": {
           "name": "idx_partidos_equipo_fecha",
@@ -1199,76 +1484,76 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "partidos_equipo_id_equipos_id_fk": {
           "name": "partidos_equipo_id_equipos_id_fk",
           "tableFrom": "partidos",
+          "tableTo": "equipos",
           "columnsFrom": [
             "equipo_id"
           ],
-          "tableTo": "equipos",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "partidos_competencia_id_competencias_id_fk": {
           "name": "partidos_competencia_id_competencias_id_fk",
           "tableFrom": "partidos",
+          "tableTo": "competencias",
           "columnsFrom": [
             "competencia_id"
           ],
-          "tableTo": "competencias",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "partidos_iniciado_por_usuarios_id_fk": {
           "name": "partidos_iniciado_por_usuarios_id_fk",
           "tableFrom": "partidos",
+          "tableTo": "usuarios",
           "columnsFrom": [
             "iniciado_por"
           ],
-          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "partidos_creado_por_usuarios_id_fk": {
           "name": "partidos_creado_por_usuarios_id_fk",
           "tableFrom": "partidos",
+          "tableTo": "usuarios",
           "columnsFrom": [
             "creado_por"
           ],
-          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "partidos_cerrado_por_usuarios_id_fk": {
           "name": "partidos_cerrado_por_usuarios_id_fk",
           "tableFrom": "partidos",
+          "tableTo": "usuarios",
           "columnsFrom": [
             "cerrado_por"
           ],
-          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1417,10 +1702,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "eliminado_en is null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "idx_eventos_partido": {
           "name": "idx_eventos_partido",
@@ -1433,10 +1718,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "eliminado_en is null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "idx_eventos_jugador": {
           "name": "idx_eventos_jugador",
@@ -1449,10 +1734,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "eliminado_en is null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "idx_eventos_partido_origen": {
           "name": "idx_eventos_partido_origen",
@@ -1471,77 +1756,77 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "eliminado_en is null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "eventos_partido_id_partidos_id_fk": {
           "name": "eventos_partido_id_partidos_id_fk",
           "tableFrom": "eventos",
+          "tableTo": "partidos",
           "columnsFrom": [
             "partido_id"
           ],
-          "tableTo": "partidos",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "eventos_jugador_id_jugadores_id_fk": {
           "name": "eventos_jugador_id_jugadores_id_fk",
           "tableFrom": "eventos",
+          "tableTo": "jugadores",
           "columnsFrom": [
             "jugador_id"
           ],
-          "tableTo": "jugadores",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "eventos_jugador_entra_id_jugadores_id_fk": {
           "name": "eventos_jugador_entra_id_jugadores_id_fk",
           "tableFrom": "eventos",
+          "tableTo": "jugadores",
           "columnsFrom": [
             "jugador_entra_id"
           ],
-          "tableTo": "jugadores",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "eventos_reportado_por_usuarios_id_fk": {
           "name": "eventos_reportado_por_usuarios_id_fk",
           "tableFrom": "eventos",
+          "tableTo": "usuarios",
           "columnsFrom": [
             "reportado_por"
           ],
-          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "eventos_eliminado_por_usuarios_id_fk": {
           "name": "eventos_eliminado_por_usuarios_id_fk",
           "tableFrom": "eventos",
+          "tableTo": "usuarios",
           "columnsFrom": [
             "eliminado_por"
           ],
-          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1633,9 +1918,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -1728,10 +2013,10 @@
     }
   },
   "schemas": {},
-  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
+  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},

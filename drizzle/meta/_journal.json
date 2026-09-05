@@ -68,8 +68,22 @@
     {
       "idx": 9,
       "version": "7",
-      "when": 1788556800000,
-      "tag": "0009_estadisticas_por_competencia",
+      "when": 1788559169817,
+      "tag": "0009_estadisticas_persona",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788560866923,
+      "tag": "0010_padres_vinculados_a_jugadores",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788561600000,
+      "tag": "0011_estadisticas_por_competencia",
       "breakpoints": true
     }
   ]

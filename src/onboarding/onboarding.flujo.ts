@@ -70,7 +70,7 @@ export class OnboardingFlujo {
         this.pasoNombreEquipo(),
         this.pasoFormato(),
         this.pasoFormatoCustom(),
-        pasoCargarPlantilla(PASOS.plantilla, this.jugadores, {
+        pasoCargarPlantilla(PASOS.plantilla, this.jugadores, this.equipos, {
           claveEquipoId: CLAVE_EQUIPO_ID,
           alTerminar: (_ctx, cargados) => ({
             tipo: 'finalizar',
@@ -361,7 +361,12 @@ export class OnboardingFlujo {
     const resultado = await this.invitaciones.canjear(codigo, usuarioId);
     const respuesta = mensajeDeCanje(resultado);
 
-    if (resultado.estado === 'ok' || resultado.estado === 'ya_eras_miembro') {
+    if (
+      resultado.estado === 'ok' ||
+      resultado.estado === 'ya_eras_miembro' ||
+      resultado.estado === 'ok_jugador' ||
+      resultado.estado === 'ya_vinculado_jugador'
+    ) {
       return { tipo: 'finalizar', respuesta };
     }
 

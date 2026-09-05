@@ -5,6 +5,8 @@ import { DbService } from '../db/db.service';
 export interface EstadisticaJugador {
   jugadorId: string;
   equipoId: string;
+  /** Fichas de la misma persona en otros equipos comparten este id. `null` si nunca se vinculó. */
+  personaId: string | null;
   nombre: string;
   dorsal: number | null;
   temporada: number;
@@ -48,7 +50,7 @@ export function temporadaActual(ahora: Date = new Date()): number {
 /**
  * `/stats` y `/tabla` (RF-6), contra las vistas `estadisticas_jugador` y
  * `estadisticas_equipo` (migración de Fase 3), más `estadisticas_equipo_competencia`
- * y `estadisticas_jugador_competencia` (migración 0009) para el desglose por
+ * y `estadisticas_jugador_competencia` (migración 0011) para el desglose por
  * campeonato de `/tabla` — aditivas, las dos primeras no se tocan.
  *
  * No hay `pgView()` de Drizzle para vistas que no definió el propio schema
@@ -116,7 +118,7 @@ export class EstadisticasService {
 
   /**
    * Desglose por campeonato para `/tabla` — `estadisticas_equipo_competencia`
-   * (migración 0009), aditiva y separada de `estadisticas_equipo`: esta última
+   * (migración 0011), aditiva y separada de `estadisticas_equipo`: esta última
    * sigue siendo la fuente del acumulado de toda la temporada. Un partido sin
    * competencia elegida cae en un único grupo con `competenciaId: null`.
    *
@@ -201,6 +203,7 @@ function mapearEstadisticaJugador(fila: Record<string, unknown>): EstadisticaJug
   return {
     jugadorId: String(fila.jugador_id),
     equipoId: String(fila.equipo_id),
+    personaId: fila.persona_id as string | null,
     nombre: String(fila.nombre),
     dorsal: fila.dorsal === null ? null : Number(fila.dorsal),
     temporada: Number(fila.temporada),
