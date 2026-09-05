@@ -1,3 +1,5 @@
+import type { DefinicionComando } from '../conversacion/comandos';
+
 /** Textos del router (`/cancelar`, comando desconocido, botón caduco) y de `/ayuda`. */
 export const textos = {
   canceladoConFlujo: () =>
@@ -10,11 +12,14 @@ export const textos = {
   ayuda: {
     intro: () => 'Soy Yako ⚽, llevo las estadísticas de tu academia.',
     cierre: () => 'Si te pierdes en algún paso, escribe /cancelar.',
+    // Validado contra el union real de `rolMinimo` sin perder el tipo
+    // literal: un quinto rol nuevo o un renombre de `viewer` en comandos.ts
+    // ahora falla en compilación en vez de imprimir "undefined" en /ayuda.
     etiquetaRol: {
       cualquiera: '',
       viewer: '',
       editor: ' · Editor',
       admin: ' · Admin',
-    } as Record<string, string>,
+    } satisfies Record<DefinicionComando['rolMinimo'], string>,
   },
 };

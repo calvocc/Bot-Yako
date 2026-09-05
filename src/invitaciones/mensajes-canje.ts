@@ -1,5 +1,7 @@
 import type { RespuestaBot } from '../channels/channel.types';
+import { botonComando } from '../conversacion/comandos';
 import { ETIQUETA_ROL_CORTA, type Rol } from '../identidad/roles';
+import { textos as textosComunes } from '../textos/comunes';
 import { textos } from '../textos/invitaciones';
 import type { ResultadoCanje } from './invitaciones.service';
 
@@ -16,13 +18,13 @@ export function mensajeDeCanje(resultado: ResultadoCanje | CanjeConRol): Respues
     case 'ok':
       return {
         texto: textos.canje.ok(ETIQUETA_ROL_CORTA[resultado.rol], resultado.equipoNombre),
-        botones: [textos.canje.botonOk()],
+        botones: [botonComando('ayuda', textosComunes.botonAyuda())],
       };
 
     case 'ya_eras_miembro':
       return {
         texto: textos.canje.yaEraMiembro(ETIQUETA_ROL_CORTA[resultado.rol], resultado.equipoNombre),
-        botones: [textos.canje.botonYaEraMiembro()],
+        botones: [botonComando('equipos', textos.canje.botonYaEraMiembro())],
       };
 
     case 'no_existe':

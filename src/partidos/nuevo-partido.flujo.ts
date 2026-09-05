@@ -408,7 +408,7 @@ export class NuevoPartidoFlujo {
     if (!puede) {
       return {
         tipo: 'finalizar',
-        respuesta: { texto: textosComunes.permisoRevocado('no creé nada') },
+        respuesta: { texto: textosComunes.permisoRevocado('editor', 'no creé nada') },
       };
     }
 

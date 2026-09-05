@@ -3,7 +3,6 @@ import type { RespuestaBot } from '../channels/channel.types';
 import {
   botonesPaginados,
   ID_VER_MAS,
-  type OpcionPaginable,
   paginaSiguiente,
 } from '../conversacion/pasos-comunes/paginacion';
 import { pasoSeleccionMultiple } from '../conversacion/pasos-comunes/seleccion-multiple';
@@ -398,8 +397,21 @@ export class CargarFlujo {
       },
       // Escribir "10, 7, 4" en vez de tocar quince botones — mismo criterio
       // que `resolverPorNombre` usa en el resto del bot: dorsal primero,
-      // nombre exacto (sin mayúsculas) como respaldo.
-      interpretarTexto: (texto, lista) => idsPorDorsalONombre(texto, lista),
+      // nombre exacto (sin mayúsculas) como respaldo. Se vuelve a pedir la
+      // plantilla acá (mismo patrón que `candidatosDe` en `plantilla.flujo.ts`:
+      // recalcular en vez de guardar estado extra) porque hace falta el dato
+      // real de cada jugador, no la etiqueta ya renderizada del botón.
+      interpretarTexto: async (ctx, texto) => {
+        const plantilla = await this.jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
+        const resultado = idsPorDorsalONombre(texto, plantilla);
+
+        if (!resultado) return null;
+
+        return {
+          ids: resultado.ids.map((id) => `${PREFIJO_JUGADOR}${id}`),
+          sinReconocer: resultado.sinReconocer,
+        };
+      },
       avisoTextoNoReconocido:
         'No reconocí a nadie ahí. Escribe los dorsales separados por coma (10, 7, 4) o toca los botones.',
       alConfirmar: async (ctx, elegidos) => {
@@ -1561,17 +1573,23 @@ function leerLista(datos: DatosFlujo, clave: string): string[] {
 }
 
 /**
- * Resuelve una lista escrita ("10, 7, 4" o "Jacob, Andrés") contra las
- * opciones de un `pasoSeleccionMultiple`, por dorsal primero y por nombre
- * exacto como respaldo — mismo criterio que `resolverPorNombre` usa en el
- * resto del bot. Cada opción llega como `"Nombre #10"` o `"Nombre"`
- * (`describirJugador`), así que el dorsal se separa del nombre por el " #"
- * final en vez de parsearlo con una expresión regular.
+ * Resuelve una lista escrita ("10, 7, 4" o "Jacob, Andrés") contra la
+ * plantilla real, por dorsal primero y por nombre exacto como respaldo —
+ * mismo criterio que `resolverPorNombre` usa en el resto del bot.
+ *
+ * Compara contra el dato estructurado del jugador (`nombre`/`dorsal`), no
+ * contra la etiqueta ya renderizada del botón: parsear `"Nombre #10"` de
+ * vuelta era frágil (un nombre con " #" adentro, o que `describirJugador`
+ * cambiara de formato, rompía el corte en silencio).
+ *
+ * Los tokens que no matchean a nadie no se descartan sin más: viajan en
+ * `sinReconocer` para que el llamador pueda avisar de una coincidencia
+ * parcial en vez de aplicar la selección como si hubiera salido perfecta.
  */
 export function idsPorDorsalONombre(
   texto: string,
-  lista: readonly OpcionPaginable[],
-): string[] | null {
+  jugadores: readonly { id: string; nombre: string; dorsal: number | null }[],
+): { ids: string[]; sinReconocer: string[] } | null {
   const tokens = texto
     .split(',')
     .map((t) => t.trim())
@@ -1580,20 +1598,24 @@ export function idsPorDorsalONombre(
   if (tokens.length === 0) return null;
 
   const ids: string[] = [];
+  const sinReconocer: string[] = [];
 
   for (const token of tokens) {
     const buscado = token.toLowerCase();
+    const dorsalBuscado = Number(token);
 
-    const encontrado = lista.find((o) => {
-      const separador = o.texto.lastIndexOf(' #');
-      const nombre = (separador >= 0 ? o.texto.slice(0, separador) : o.texto).toLowerCase();
-      const dorsal = separador >= 0 ? o.texto.slice(separador + 2) : null;
+    const encontrado = jugadores.find(
+      (j) =>
+        (Number.isFinite(dorsalBuscado) && j.dorsal === dorsalBuscado) ||
+        j.nombre.toLowerCase() === buscado,
+    );
 
-      return token === dorsal || buscado === nombre;
-    });
-
-    if (encontrado && !ids.includes(encontrado.id)) ids.push(encontrado.id);
+    if (encontrado) {
+      if (!ids.includes(encontrado.id)) ids.push(encontrado.id);
+    } else {
+      sinReconocer.push(token);
+    }
   }
 
-  return ids.length > 0 ? ids : null;
+  return ids.length > 0 ? { ids, sinReconocer } : null;
 }

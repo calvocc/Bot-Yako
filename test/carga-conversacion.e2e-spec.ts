@@ -422,6 +422,23 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     expect(adaptador.ultimoTexto).toContain('Arrancó el Tiempo 1');
   });
 
+  it('un dorsal que no existe se marca aparte, sin descartar los que sí matchean', async () => {
+    const { equipo, decir, tocar } = await escenario('Titular dorsal parcial');
+    await crearPartido(equipo.id);
+
+    await decir('/cargar');
+    await tocar('md:vivo');
+
+    // 14 no es dorsal de nadie en esta plantilla: solo Jacob (10) debe quedar
+    // marcado, con un aviso de que "14" no se reconoció — no en silencio.
+    await decir('10, 14');
+    expect(adaptador.ultimoTexto).toContain('No reconocí: 14');
+    expect(adaptador.ultimosBotones.find((b) => b.id === 'sm:listo')?.texto).toBe('Listo (1)');
+
+    await tocar('sm:listo');
+    expect(adaptador.ultimoTexto).toContain('Arrancó el Tiempo 1');
+  });
+
   it('cambio: sale de la cancha, entra del resto, y el siguiente evento ya no ofrece a quien salió', async () => {
     const { equipo, decir, tocar } = await escenario('Cambio');
     await crearPartido(equipo.id);

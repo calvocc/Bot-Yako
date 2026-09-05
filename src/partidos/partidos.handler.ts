@@ -21,7 +21,12 @@ export class PartidosHandler {
 
     const equipos = await this.membresias.equiposDe(usuarioId);
 
-    if (equipos.length === 0) return textosComunes.sinEquipos();
+    if (equipos.length === 0) {
+      return {
+        texto: textosComunes.sinEquipos(),
+        botones: [botonComando('start', textosComunes.botonEmpezar())],
+      };
+    }
 
     const bloques: string[] = [];
 

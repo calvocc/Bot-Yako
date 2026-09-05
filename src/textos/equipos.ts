@@ -1,7 +1,8 @@
+import { textos as comunes } from './comunes';
+
 /** Textos de `/nuevoequipo` y `/equipos`. */
 export const textos = {
-  soloAdmins: () =>
-    '🔒 Crear equipos es cosa de administradores, y no eres admin de ninguna academia.',
+  soloAdmins: () => `${comunes.soloAdmin('crear equipos')} No eres admin de ninguna academia.`,
   preguntaAcademia: () => '¿En cuál academia?',
   tocaUnaAcademia: () => 'Toca una de las academias:',
 
