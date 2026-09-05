@@ -99,6 +99,8 @@ describe('rotulosDemasiadoLargos', () => {
       jugadores.ver.botonAgregar,
       jugadores.ver.botonBaja,
       jugadores.ver.botonCerrar,
+      jugadores.agregar.elegirModo.botonLista,
+      jugadores.agregar.elegirModo.botonDeAcademia,
       partidos.nuevoPartido.botonHoy,
       partidos.nuevoPartido.botonAyer,
       partidos.nuevoPartido.botonManana,

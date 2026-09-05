@@ -16,6 +16,27 @@ export const textos = {
     ningunoAgregado: () => 'No agregué a nadie.',
     agregados: (cantidad: number) =>
       `Listo, agregué ${cantidad} jugador${cantidad === 1 ? '' : 'es'}. ✅`,
+
+    elegirModo: {
+      pregunta: () => '¿Cómo lo agregas?',
+      botonLista: '📋 Pegar lista',
+      // Máximo 20 caracteres: es el límite de un botón en WhatsApp
+      // (MAX_CARACTERES_ROTULO_BOTON) — uno más largo se ve truncado ahí.
+      botonDeAcademia: '🔗 Ya en otro equipo',
+    },
+
+    buscarNombre: {
+      pregunta: () => '¿Cómo se llama? Lo busco en los otros equipos de la academia.',
+      sinCandidatos: (nombre: string) =>
+        `No encontré a nadie llamado "${nombre}" en otro equipo de la academia. Usa "Pegar lista" para agregarlo como jugador nuevo.`,
+    },
+
+    elegirCandidato: {
+      pregunta: () => 'Elige quién es:',
+    },
+
+    vinculado: (nombre: string, equipoOrigenNombre: string) =>
+      `🔗 ${nombre} quedó vinculado a esta plantilla — ya jugaba en ${equipoOrigenNombre}. Sus estadísticas de los dos equipos se suman en el total de la academia.`,
   },
 
   baja: {
@@ -38,6 +59,8 @@ export const textos = {
       `Para terminar escribe ${comandoListo}. Para agregar a alguien, "Jacob, 10".`,
     noEntendido: (comandoListo: string) =>
       `No entendí eso. Escribe algo como "Jacob, 10", o ${comandoListo} para terminar.`,
+    posibleDuplicado: (nombre: string, equipoNombre: string) =>
+      `${nombre} también está en la plantilla de ${equipoNombre}. Si es la misma persona, la próxima vez usa "Agregar" → "Ya en otro equipo" para unir sus estadísticas.`,
     resumenAlta: (van: number, comandoListo: string) =>
       `Van ${van} jugador${van === 1 ? '' : 'es'}. Sigue o escribe ${comandoListo}.`,
     listaLista: (cargados: number, siguiente: string) =>
