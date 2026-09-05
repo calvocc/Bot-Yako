@@ -1,13 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import type { RespuestaBot } from '../channels/channel.types';
 import { respuestaSinEquipos } from '../conversacion/comandos';
+import type { EquipoDelUsuario } from '../identidad/membresias.service';
 import { MembresiasService } from '../identidad/membresias.service';
+import { formatearListaJugadores, JugadoresService } from '../jugadores/jugadores.service';
 import { textos as textosComunes } from '../textos/comunes';
 import { textos } from '../textos/estadisticas';
 import {
   EstadisticasService,
   temporadaActual,
   type EstadisticaEquipo,
+  type EstadisticaEquipoCompetencia,
   type EstadisticaJugador,
   type Goleador,
 } from './estadisticas.service';
@@ -22,22 +25,24 @@ import {
 export class EstadisticasHandler {
   constructor(
     private readonly membresias: MembresiasService,
+    private readonly jugadores: JugadoresService,
     private readonly estadisticas: EstadisticasService,
   ) {}
 
   async stats(argumento: string | undefined, usuarioId?: string): Promise<RespuestaBot> {
     if (!usuarioId) return { texto: textosComunes.primeroUsaStart() };
 
-    const nombre = argumento?.trim();
-
-    if (!nombre) {
-      return { texto: textos.preguntaJugador() };
-    }
-
     const equipos = await this.membresias.equiposDe(usuarioId);
 
     if (equipos.length === 0) return respuestaSinEquipos();
 
+    const nombre = argumento?.trim();
+
+    return nombre ? this.buscarJugador(equipos, nombre) : this.listarJugadores(equipos);
+  }
+
+  /** `/stats <nombre>`: búsqueda directa de estadísticas, sin cambios de comportamiento. */
+  private async buscarJugador(equipos: EquipoDelUsuario[], nombre: string): Promise<RespuestaBot> {
     // Las consultas de cada equipo son independientes entre sí: en paralelo
     // en vez de una por una, sin cambiar el orden de los bloques resultantes
     // (`Promise.all` conserva el orden de `equipos`).
@@ -108,6 +113,20 @@ export class EstadisticasHandler {
     return bloques;
   }
 
+  /** `/stats` sin argumento: plantilla de cada equipo, para saber a quién pedirle el detalle. */
+  private async listarJugadores(equipos: EquipoDelUsuario[]): Promise<RespuestaBot> {
+    const bloques = await Promise.all(
+      equipos.map(async (equipo) => {
+        const plantilla = await this.jugadores.listar(equipo.equipoId);
+        const cuerpo = formatearListaJugadores(plantilla, textos.sinJugadores());
+
+        return textos.listadoJugadores(equipo.equipoNombre, cuerpo);
+      }),
+    );
+
+    return { texto: bloques.join('\n\n') };
+  }
+
   async tabla(usuarioId?: string): Promise<RespuestaBot> {
     if (!usuarioId) return { texto: textosComunes.primeroUsaStart() };
 
@@ -115,14 +134,21 @@ export class EstadisticasHandler {
 
     if (equipos.length === 0) return respuestaSinEquipos();
 
-    const bloques: string[] = [];
+    const bloques = await Promise.all(
+      equipos.map(async (equipo) => {
+        const [stat, goleador] = await Promise.all([
+          this.estadisticas.deEquipo(equipo.equipoId),
+          this.estadisticas.goleadorDe(equipo.equipoId),
+        ]);
 
-    for (const equipo of equipos) {
-      const stat = await this.estadisticas.deEquipo(equipo.equipoId);
-      const goleador = stat ? await this.estadisticas.goleadorDe(equipo.equipoId) : null;
-
-      bloques.push(this.bloqueEquipo(equipo.equipoNombre, stat, goleador));
-    }
+        return this.bloqueEquipoConCampeonatos(
+          equipo.equipoId,
+          equipo.equipoNombre,
+          stat,
+          goleador,
+        );
+      }),
+    );
 
     return { texto: bloques.join('\n\n') };
   }
@@ -158,6 +184,44 @@ export class EstadisticasHandler {
       perdidos: stat.perdidos,
       golesFavor: stat.golesFavor,
       goleador,
+    });
+  }
+
+  /**
+   * Agrega el desglose por campeonato al bloque agregado de un equipo, solo
+   * cuando aporta algo: si todo el historial cae en un único campeonato (o
+   * todo "sin competencia"), el desglose repetiría el bloque agregado que ya
+   * se muestra, así que no se pide ni se agrega nada.
+   */
+  private async bloqueEquipoConCampeonatos(
+    equipoId: string,
+    equipoNombre: string,
+    stat: EstadisticaEquipo | null,
+    goleador: Goleador | null,
+  ): Promise<string> {
+    const bloque = this.bloqueEquipo(equipoNombre, stat, goleador);
+
+    if (!stat) return bloque;
+
+    // `porCompetencia` ya trae el goleador de cada campeonato resuelto en la
+    // misma consulta (join lateral): nada que pedir por fila acá.
+    const porCompetencia = await this.estadisticas.porCompetencia(equipoId);
+
+    if (porCompetencia.length <= 1) return bloque;
+
+    const lineas = porCompetencia.map((fila) => this.lineaCompetencia(fila));
+
+    return [bloque, [textos.porCampeonato(), ...lineas].join('\n')].join('\n\n');
+  }
+
+  private lineaCompetencia(fila: EstadisticaEquipoCompetencia): string {
+    return textos.lineaCompetencia({
+      nombre: fila.competenciaNombre ?? 'Sin competencia',
+      partidosJugados: fila.partidosJugados,
+      ganados: fila.ganados,
+      empatados: fila.empatados,
+      perdidos: fila.perdidos,
+      goleador: fila.goleador,
     });
   }
 }

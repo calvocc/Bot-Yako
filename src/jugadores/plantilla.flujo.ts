@@ -19,6 +19,7 @@ import { CLAVE_ALTAS, pasoCargarPlantilla } from './pasos-plantilla';
 import {
   candidatosDeEquipo,
   describirJugador,
+  formatearListaJugadores,
   JugadoresService,
   type CandidatoAcademia,
 } from './jugadores.service';
@@ -106,10 +107,7 @@ export class PlantillaFlujo {
           ? await this.membresias.puede(ctx.usuarioId, equipoId, 'editor')
           : false;
 
-        const cuerpo =
-          lista.length === 0
-            ? textos.ver.plantillaVacia()
-            : lista.map((j) => `• ${describirJugador(j)}`).join('\n');
+        const cuerpo = formatearListaJugadores(lista, textos.ver.plantillaVacia());
 
         return {
           respuesta: {

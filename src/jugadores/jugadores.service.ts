@@ -468,3 +468,17 @@ export function describirJugador(jugador: Jugador | JugadorParseado): string {
     ? `${jugador.nombre} #${jugador.dorsal}`
     : jugador.nombre;
 }
+
+/**
+ * El cuerpo de una plantilla como lista de viñetas ("• Nombre #dorsal"), o
+ * el texto que corresponda cuando está vacía. Common a `/plantilla` y a
+ * `/stats` sin argumento — cada uno arma su propio encabezado alrededor.
+ */
+export function formatearListaJugadores(
+  lista: (Jugador | JugadorParseado)[],
+  textoVacio: string,
+): string {
+  return lista.length === 0
+    ? textoVacio
+    : lista.map((jugador) => `• ${describirJugador(jugador)}`).join('\n');
+}

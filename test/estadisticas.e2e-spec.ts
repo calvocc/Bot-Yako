@@ -4,6 +4,7 @@ import { AcademiasService } from '../src/academias/academias.service';
 import { ChannelRegistry } from '../src/channels/channel.registry';
 import { ProcesadorMensajes } from '../src/channels/procesador-mensajes.service';
 import { FakeChannelAdapter, textoDePrueba } from '../src/channels/testing/fake.adapter';
+import { CompetenciasService } from '../src/competencias/competencias.service';
 import { ConfigModule } from '../src/config/config.module';
 import { ConversacionModule } from '../src/conversacion/conversacion.module';
 import { RedisModule } from '../src/core/redis/redis.module';
@@ -37,6 +38,7 @@ describe('Estadísticas (e2e)', () => {
   let identidad: IdentidadService;
   let membresias: MembresiasService;
   let partidos: PartidosService;
+  let competencias: CompetenciasService;
   let tiempos: TiemposService;
   let eventos: EventosService;
   let estadisticas: EstadisticasService;
@@ -75,6 +77,7 @@ describe('Estadísticas (e2e)', () => {
     identidad = app.get(IdentidadService);
     membresias = app.get(MembresiasService);
     partidos = app.get(PartidosService);
+    competencias = app.get(CompetenciasService);
     tiempos = app.get(TiemposService);
     eventos = app.get(EventosService);
     estadisticas = app.get(EstadisticasService);
@@ -122,11 +125,13 @@ describe('Estadísticas (e2e)', () => {
     jugadorId: string,
     cantidad: number,
     confirmado?: { propio: number; rival: number },
+    competenciaId?: string,
   ) => {
     const partido = await partidos.crear({
       equipoId,
       rival: 'Rival',
       fecha,
+      competenciaId,
       formato: { cantidadTiempos: 2, minutosPorTiempo: 25 },
       creadoPor: admin,
     });
@@ -217,15 +222,108 @@ describe('Estadísticas (e2e)', () => {
 
       expect(goleador).toMatchObject({ nombre: 'Andrés', dorsal: 7, goles: 2 });
     });
+
+    it('porCompetencia desglosa por campeonato, agrupando lo sin competencia aparte', async () => {
+      const { academia, equipo, admin } = await escenario('Por competencia');
+      const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
+      const liga = await competencias.obtenerOCrear(academia.id, 'Liga del Atlántico', admin);
+
+      await partidoConGoles(equipo.id, admin, '2026-03-01', jacob.id, 2, undefined, liga.id);
+      await partidoConGoles(equipo.id, admin, '2026-03-08', jacob.id, 1, undefined, liga.id);
+      await partidoConGoles(equipo.id, admin, '2026-03-15', jacob.id, 0, { propio: 0, rival: 1 });
+
+      const desglose = await estadisticas.porCompetencia(equipo.id, 2026);
+
+      expect(desglose).toHaveLength(2);
+      expect(desglose).toContainEqual(
+        expect.objectContaining({
+          competenciaId: liga.id,
+          competenciaNombre: 'Liga del Atlántico',
+          partidosJugados: 2,
+          ganados: 2,
+        }),
+      );
+      expect(desglose).toContainEqual(
+        expect.objectContaining({
+          competenciaId: null,
+          competenciaNombre: null,
+          partidosJugados: 1,
+          perdidos: 1,
+        }),
+      );
+    });
+
+    it('goleadorDeCompetencia trae el goleador de ese campeonato puntual', async () => {
+      const { academia, equipo, admin } = await escenario('Goleador por competencia');
+      const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
+      const andres = await jugadores.crear(equipo.id, 'Andrés', 7);
+      const liga = await competencias.obtenerOCrear(academia.id, 'Liga', admin);
+      const copa = await competencias.obtenerOCrear(academia.id, 'Copa', admin);
+
+      await partidoConGoles(equipo.id, admin, '2026-04-01', jacob.id, 3, undefined, liga.id);
+      await partidoConGoles(equipo.id, admin, '2026-04-08', andres.id, 5, undefined, copa.id);
+
+      expect(await estadisticas.goleadorDeCompetencia(equipo.id, liga.id, 2026)).toMatchObject({
+        nombre: 'Jacob',
+        goles: 3,
+      });
+      expect(await estadisticas.goleadorDeCompetencia(equipo.id, copa.id, 2026)).toMatchObject({
+        nombre: 'Andrés',
+        goles: 5,
+      });
+      expect(await estadisticas.goleadorDeCompetencia(equipo.id, null, 2026)).toBeNull();
+    });
+
+    it('goleadorDeCompetencia y porCompetencia ignoran goles de un partido no cerrado', async () => {
+      const { academia, equipo, admin } = await escenario('Sin cerrar');
+      const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
+      const liga = await competencias.obtenerOCrear(academia.id, 'Liga', admin);
+
+      // Mismo gol que en el resto de estos tests, pero el partido se queda
+      // en_progreso: no se llama a partidos.cerrar().
+      const partido = await partidos.crear({
+        equipoId: equipo.id,
+        rival: 'Rival',
+        fecha: '2026-04-15',
+        competenciaId: liga.id,
+        formato: { cantidadTiempos: 2, minutosPorTiempo: 25 },
+        creadoPor: admin,
+      });
+
+      await tiempos.iniciarEnVivo(partido.id, admin, [jacob.id]);
+      await eventos.registrar({
+        partidoId: partido.id,
+        tipo: 'gol',
+        equipoOrigen: 'propio',
+        jugadorId: jacob.id,
+        reportadoPor: admin,
+      });
+
+      expect(await estadisticas.goleadorDeCompetencia(equipo.id, liga.id, 2026)).toBeNull();
+      expect(await estadisticas.porCompetencia(equipo.id, 2026)).toEqual([]);
+    });
   });
 
   describe('EstadisticasHandler', () => {
-    it('/stats sin nombre pide que se lo escriban', async () => {
-      const { admin } = await escenario('Sin nombre');
+    it('/stats sin nombre lista la plantilla de cada equipo', async () => {
+      const { equipo, admin } = await escenario('Sin nombre');
+      await jugadores.crear(equipo.id, 'Jacob', 10);
+      await jugadores.crear(equipo.id, 'Andrés', 7);
 
       const respuesta = await handler.stats(undefined, admin);
 
-      expect(respuesta.texto).toContain('¿De qué jugador?');
+      expect(respuesta.texto).toContain('📋 Sub-11:');
+      expect(respuesta.texto).toContain('• Jacob #10');
+      expect(respuesta.texto).toContain('• Andrés #7');
+      expect(respuesta.texto).toContain('/stats seguido de un nombre');
+    });
+
+    it('/stats sin nombre y sin plantilla cargada lo dice, sin romper', async () => {
+      const { admin } = await escenario('Sin nombre sin plantilla');
+
+      const respuesta = await handler.stats(undefined, admin);
+
+      expect(respuesta.texto).toContain('Sin jugadores en este equipo todavía.');
     });
 
     it('/stats de alguien sin estadísticas lo dice', async () => {
@@ -247,6 +345,37 @@ describe('Estadísticas (e2e)', () => {
       expect(respuesta.texto).toContain('1 partidos');
       expect(respuesta.texto).toContain('1 ganados');
       expect(respuesta.texto).toContain('Goleador: Jacob (4)');
+    });
+
+    it('/tabla con partidos en un solo campeonato no agrega el desglose', async () => {
+      const { academia, equipo, admin } = await escenario('Tabla un campeonato');
+      const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
+      const liga = await competencias.obtenerOCrear(academia.id, 'Liga', admin);
+
+      await partidoConGoles(equipo.id, admin, '2026-07-08', jacob.id, 2, undefined, liga.id);
+      await partidoConGoles(equipo.id, admin, '2026-07-15', jacob.id, 1, undefined, liga.id);
+
+      const respuesta = await handler.tabla(admin);
+
+      expect(respuesta.texto).not.toContain('Por campeonato:');
+    });
+
+    it('/tabla con 2+ campeonatos agrega el desglose con goleador por campeonato', async () => {
+      const { academia, equipo, admin } = await escenario('Tabla desglose');
+      const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
+      const andres = await jugadores.crear(equipo.id, 'Andrés', 7);
+      const liga = await competencias.obtenerOCrear(academia.id, 'Liga', admin);
+
+      await partidoConGoles(equipo.id, admin, '2026-07-01', jacob.id, 3, undefined, liga.id);
+      await partidoConGoles(equipo.id, admin, '2026-07-08', andres.id, 5);
+
+      const respuesta = await handler.tabla(admin);
+
+      expect(respuesta.texto).toContain('Por campeonato:');
+      expect(respuesta.texto).toContain('🏆 Liga: 1 partidos · 1G 0E 0P · Goleador: Jacob (3)');
+      expect(respuesta.texto).toContain(
+        '🏆 Sin competencia: 1 partidos · 1G 0E 0P · Goleador: Andrés (5)',
+      );
     });
 
     it('/stats de una persona vinculada a dos equipos suma un bloque "Total"', async () => {
@@ -336,6 +465,13 @@ describe('Estadísticas (e2e)', () => {
 
       adaptador.limpiar();
       await procesador.procesar(textoDePrueba('/tabla', canal));
+      expect(adaptador.ultimoTexto).toContain('Todavía no perteneces a ningún equipo');
+
+      // /stats SIN nombre reordenó el chequeo de equipos antes que el de
+      // argumento (antes, sin argumento, ni se llegaba a mirar los equipos):
+      // este caso quedaba sin cubrir por los otros dos.
+      adaptador.limpiar();
+      await procesador.procesar(textoDePrueba('/stats', canal));
       expect(adaptador.ultimoTexto).toContain('Todavía no perteneces a ningún equipo');
     });
   });
