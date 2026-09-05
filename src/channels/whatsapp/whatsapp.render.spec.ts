@@ -96,6 +96,7 @@ describe('rotulosDemasiadoLargos', () => {
       invitaciones.invitar.botonUnaPersona,
       invitaciones.invitar.botonTodoElGrupo,
       invitaciones.canje.botonYaEraMiembro(),
+      invitaciones.canje.botonYaVinculadoJugador(),
       jugadores.ver.botonAgregar,
       jugadores.ver.botonBaja,
       jugadores.ver.botonCerrar,

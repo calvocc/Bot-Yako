@@ -1,7 +1,7 @@
 import { relations } from 'drizzle-orm';
 import { index, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { canalMensajeriaEnum, rolEquipoEnum } from './enums';
-import { equipos } from './organizacion';
+import { equipos, jugadores } from './organizacion';
 
 /**
  * Persona con cuenta en el bot. No guarda ningun identificador de canal:
@@ -51,9 +51,34 @@ export const usuariosEquipos = pgTable(
   ],
 );
 
+/**
+ * Un papá/tutor vinculado a un jugador (no a un equipo): puede tener varios
+ * hijos, en equipos distintos. Sin columna de rol —a diferencia de
+ * `usuarios_equipos`— porque solo hay un tipo de vínculo posible acá. El
+ * acceso que da (ver todo el equipo del jugador, como Viewer) se deriva en
+ * `MembresiasService`, no se guarda por separado.
+ */
+export const usuariosJugadores = pgTable(
+  'usuarios_jugadores',
+  {
+    usuarioId: uuid('usuario_id')
+      .notNull()
+      .references(() => usuarios.id, { onDelete: 'cascade' }),
+    jugadorId: uuid('jugador_id')
+      .notNull()
+      .references(() => jugadores.id, { onDelete: 'cascade' }),
+    creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.usuarioId, t.jugadorId] }),
+    index('idx_usuarios_jugadores_jugador').on(t.jugadorId),
+  ],
+);
+
 export const usuariosRelations = relations(usuarios, ({ many }) => ({
   identidades: many(identidadesUsuario),
   membresias: many(usuariosEquipos),
+  hijos: many(usuariosJugadores),
 }));
 
 export const identidadesUsuarioRelations = relations(identidadesUsuario, ({ one }) => ({
@@ -63,4 +88,9 @@ export const identidadesUsuarioRelations = relations(identidadesUsuario, ({ one 
 export const usuariosEquiposRelations = relations(usuariosEquipos, ({ one }) => ({
   usuario: one(usuarios, { fields: [usuariosEquipos.usuarioId], references: [usuarios.id] }),
   equipo: one(equipos, { fields: [usuariosEquipos.equipoId], references: [equipos.id] }),
+}));
+
+export const usuariosJugadoresRelations = relations(usuariosJugadores, ({ one }) => ({
+  usuario: one(usuarios, { fields: [usuariosJugadores.usuarioId], references: [usuarios.id] }),
+  jugador: one(jugadores, { fields: [usuariosJugadores.jugadorId], references: [jugadores.id] }),
 }));

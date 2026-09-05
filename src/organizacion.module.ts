@@ -8,7 +8,9 @@ import { FlowRegistry } from './conversacion/flow-registry.service';
 import { Router } from './conversacion/router.service';
 import { PermisosFlujo, FLUJO_PERMISOS } from './identidad/permisos.flujo';
 import { FLUJO_INVITAR, InvitarFlujo } from './invitaciones/invitar.flujo';
+import { FLUJO_INVITAR_JUGADOR, InvitarJugadorFlujo } from './invitaciones/invitar-jugador.flujo';
 import { InvitacionesService } from './invitaciones/invitaciones.service';
+import { MisHijosHandler } from './invitaciones/mis-hijos.handler';
 import { FLUJO_UNIRME, UnirmeFlujo } from './invitaciones/unirme.flujo';
 import { JugadoresService } from './jugadores/jugadores.service';
 import { FLUJO_PLANTILLA, PlantillaFlujo } from './jugadores/plantilla.flujo';
@@ -34,6 +36,8 @@ import { codigoDesdeDeepLink } from './invitaciones/invitaciones.service';
     NuevoEquipoFlujo,
     PlantillaFlujo,
     InvitarFlujo,
+    InvitarJugadorFlujo,
+    MisHijosHandler,
     UnirmeFlujo,
   ],
   exports: [AcademiasService, EquiposService, JugadoresService, InvitacionesService],
@@ -46,6 +50,8 @@ export class OrganizacionModule implements OnModuleInit {
     private readonly nuevoEquipo: NuevoEquipoFlujo,
     private readonly plantilla: PlantillaFlujo,
     private readonly invitar: InvitarFlujo,
+    private readonly invitarJugador: InvitarJugadorFlujo,
+    private readonly misHijosHandler: MisHijosHandler,
     private readonly unirme: UnirmeFlujo,
     private readonly permisos: PermisosFlujo,
     private readonly equiposHandler: EquiposHandler,
@@ -56,6 +62,7 @@ export class OrganizacionModule implements OnModuleInit {
     this.registro.registrar(this.nuevoEquipo.construir());
     this.registro.registrar(this.plantilla.construir());
     this.registro.registrar(this.invitar.construir());
+    this.registro.registrar(this.invitarJugador.construir());
     this.registro.registrar(this.unirme.construir());
     this.registro.registrar(this.permisos.construir());
 
@@ -73,6 +80,10 @@ export class OrganizacionModule implements OnModuleInit {
     this.router.registrarComando('nuevoequipo', { tipo: 'flujo', flujoId: FLUJO_NUEVO_EQUIPO });
     this.router.registrarComando('plantilla', { tipo: 'flujo', flujoId: FLUJO_PLANTILLA });
     this.router.registrarComando('invitar', { tipo: 'flujo', flujoId: FLUJO_INVITAR });
+    this.router.registrarComando('invitarjugador', {
+      tipo: 'flujo',
+      flujoId: FLUJO_INVITAR_JUGADOR,
+    });
     this.router.registrarComando('permisos', { tipo: 'flujo', flujoId: FLUJO_PERMISOS });
 
     // `/unirme CODIGO` responde de una; sin argumento abre el flujo.
@@ -87,6 +98,11 @@ export class OrganizacionModule implements OnModuleInit {
     this.router.registrarComando('equipos', {
       tipo: 'respuesta',
       ejecutar: (_ctx, usuarioId) => this.equiposHandler.listar(usuarioId),
+    });
+
+    this.router.registrarComando('mishijos', {
+      tipo: 'respuesta',
+      ejecutar: (_ctx, usuarioId) => this.misHijosHandler.listar(usuarioId),
     });
   }
 }

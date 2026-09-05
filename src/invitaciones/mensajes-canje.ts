@@ -27,6 +27,18 @@ export function mensajeDeCanje(resultado: ResultadoCanje | CanjeConRol): Respues
         botones: [botonComando('equipos', textos.canje.botonYaEraMiembro())],
       };
 
+    case 'ok_jugador':
+      return {
+        texto: textos.canje.okJugador(resultado.jugadorNombre, resultado.equipoNombre),
+        botones: [botonComando('ayuda', textosComunes.botonAyuda())],
+      };
+
+    case 'ya_vinculado_jugador':
+      return {
+        texto: textos.canje.yaVinculadoJugador(resultado.jugadorNombre, resultado.equipoNombre),
+        botones: [botonComando('mishijos', textos.canje.botonYaVinculadoJugador())],
+      };
+
     case 'no_existe':
       return { texto: textos.canje.noExiste() };
 
