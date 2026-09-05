@@ -3,13 +3,12 @@ import { EventosService, type EventoCargado } from '../eventos/eventos.service';
 import { definicionDe, type TipoEvento } from '../eventos/evento.tipos';
 import { protagonista } from '../eventos/mensajes';
 import {
-  calcularMvp,
   calcularNotas,
   describirMvp,
   type Bono,
   type JugadorParticipante,
 } from '../eventos/puntaje';
-import { JugadoresService } from '../jugadores/jugadores.service';
+import { JugadoresService, type Jugador } from '../jugadores/jugadores.service';
 import { AlineacionService } from '../partidos/alineacion.service';
 import { describirFecha } from '../partidos/fechas';
 import { marcadorDe, type Partido } from '../partidos/partido.mapper';
@@ -62,10 +61,17 @@ export class ResumenService {
   ) {}
 
   async generar(partido: Partido, equipoNombre: string): Promise<string> {
-    const [cargados, participantes, bonos] = await Promise.all([
+    // La plantilla se pide una sola vez acá -- participantesDe y bonosDe la
+    // necesitan las dos, y sin compartirla eran dos SELECT idénticos por
+    // resumen.
+    const [cargados, plantilla] = await Promise.all([
       this.eventos.delPartido(partido.id),
-      this.participantesDe(partido),
-      this.bonosDe(partido),
+      this.jugadores.listar(partido.equipoId, true),
+    ]);
+
+    const [participantes, bonos] = await Promise.all([
+      this.participantesDe(partido, plantilla),
+      this.bonosDe(partido, plantilla),
     ]);
 
     return componerResumen({ partido, equipoNombre, eventos: cargados, participantes, bonos });
@@ -77,12 +83,11 @@ export class ResumenService {
    * partido sin titulares (legado, o cargado enteramente post partido)
    * devuelve una lista vacía: no hay forma honesta de saber quién jugó ahí.
    */
-  private async participantesDe(partido: Partido): Promise<JugadorParticipante[]> {
-    const [ids, plantilla] = await Promise.all([
-      this.alineacion.participantesDe(partido.id),
-      this.jugadores.listar(partido.equipoId, true),
-    ]);
-
+  private async participantesDe(
+    partido: Partido,
+    plantilla: readonly Jugador[],
+  ): Promise<JugadorParticipante[]> {
+    const ids = await this.alineacion.participantesDe(partido.id);
     const porId = new Map(plantilla.map((j) => [j.id, j]));
 
     // Un id sin ficha en la plantilla es un dato inconsistente (la FK lo
@@ -100,16 +105,13 @@ export class ResumenService {
    * dárselo, y sin minutos jugados (partido que no arrancó de verdad)
    * tampoco -- un umbral de 0 haría "elegible" a cualquiera.
    */
-  private async bonosDe(partido: Partido): Promise<Bono[]> {
+  private async bonosDe(partido: Partido, plantilla: readonly Jugador[]): Promise<Bono[]> {
     const contexto = await this.tiempos.contextoDeCarga(partido);
     const minutoFinal = contexto.minuto.minuto;
 
     if (minutoFinal <= 0) return [];
 
-    const [minutos, plantilla] = await Promise.all([
-      this.alineacion.minutosJugadosDe(partido.id, minutoFinal),
-      this.jugadores.listar(partido.equipoId, true),
-    ]);
+    const minutos = await this.alineacion.minutosJugadosDe(partido.id, minutoFinal);
 
     if (minutos.size === 0) return [];
 
@@ -171,8 +173,10 @@ export function componerResumen({
   if (propios.length === 0 && participantes.length === 0) {
     lineas.push(textos.sinEventos());
   } else {
+    // calcularMvp no hace falta acá: es solo notas[0], y llamarlo aparte
+    // recorrería y ordenaría el mismo acumulado dos veces.
     const notas = calcularNotas(eventos, participantes, bonos);
-    const destacado = calcularMvp(eventos, participantes, bonos);
+    const destacado = notas[0] ?? null;
 
     // Se exige puntaje bruto neto positivo, no solo la nota más alta: con
     // la base de 6 puntos, alguien cuyo único evento fue una tarjeta igual
