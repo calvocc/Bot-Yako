@@ -116,7 +116,7 @@ export class OnboardingFlujo {
               tipo: 'finalizar',
               respuesta: {
                 texto: textos.holaDeNuevo(lista, CIERRE),
-                botones: [botonComando('ayuda', 'Ver qué puedo hacer')],
+                botones: [botonComando('ayuda', textosComunes.botonAyuda())],
               },
             },
           };

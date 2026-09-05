@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { RespuestaBot } from '../channels/channel.types';
-import { botonComando } from '../conversacion/comandos';
+import { botonComando, respuestaSinEquipos } from '../conversacion/comandos';
 import { MembresiasService } from '../identidad/membresias.service';
 import { textos as textosComunes } from '../textos/comunes';
 import { textos } from '../textos/partidos';
@@ -21,7 +21,7 @@ export class PartidosHandler {
 
     const equipos = await this.membresias.equiposDe(usuarioId);
 
-    if (equipos.length === 0) return textosComunes.sinEquipos();
+    if (equipos.length === 0) return respuestaSinEquipos();
 
     const bloques: string[] = [];
 

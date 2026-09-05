@@ -134,10 +134,12 @@ describe('pasoSeleccionMultiple', () => {
 
   it('el atajo por texto reemplaza la selección con lo que reconoce', async () => {
     const paso = construir({
-      interpretarTexto: (texto, lista) =>
-        lista
+      interpretarTexto: (_ctx, texto, lista) => ({
+        ids: lista
           .filter((o) => texto.toLowerCase().includes(o.texto.split(' #')[0].toLowerCase()))
           .map((o) => o.id),
+        sinReconocer: [],
+      }),
     });
 
     if (!paso.recibir) throw new Error('el paso no recibe mensajes');
@@ -160,5 +162,21 @@ describe('pasoSeleccionMultiple', () => {
 
     if (resultado.tipo !== 'repetir') throw new Error('esperaba repetir');
     expect(resultado.respuesta.texto).toContain('No entendí esos nombres.');
+  });
+
+  it('una coincidencia parcial aplica lo reconocido y avisa de lo que no', async () => {
+    const paso = construir({
+      interpretarTexto: () => Promise.resolve({ ids: ['jg:jacob'], sinReconocer: ['14'] }),
+    });
+
+    if (!paso.recibir) throw new Error('el paso no recibe mensajes');
+
+    const resultado = await paso.recibir(contexto({ mensaje: textoDePrueba('10, 14') }));
+
+    if (resultado.tipo !== 'repetir') throw new Error('esperaba repetir');
+    // Se aplica la selección reconocida...
+    expect(resultado.datos).toEqual({ seleccionMultiple: ['jg:jacob'] });
+    // ...y se avisa de lo que no, en vez de aplicarla en silencio.
+    expect(resultado.respuesta.texto).toContain('No reconocí: 14');
   });
 });

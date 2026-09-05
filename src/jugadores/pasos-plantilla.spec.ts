@@ -9,9 +9,9 @@ const crear = jest
   .mockImplementation((_equipoId, nombre, dorsal) =>
     Promise.resolve({ id: 'j1', nombre, dorsal: dorsal ?? null, activo: true }),
   );
-const buscarEnAcademia = jest.fn().mockResolvedValue([]);
+const buscarVariosEnAcademia = jest.fn().mockResolvedValue([]);
 
-const jugadoresFalsos = { crear, buscarEnAcademia } as unknown as JugadoresService;
+const jugadoresFalsos = { crear, buscarVariosEnAcademia } as unknown as JugadoresService;
 
 // Sin academia (equipo desconocido en este equipo falso): el paso no debe
 // intentar el aviso de duplicado, solo el alta normal.
@@ -83,12 +83,12 @@ describe('pasoCargarPlantilla', () => {
     const equiposConAcademia = {
       obtener: jest.fn().mockResolvedValue({ academiaId: 'ac1' }),
     } as unknown as EquiposService;
-    const buscarEnAcademiaConMatch = jest
+    const buscarVariosEnAcademiaConMatch = jest
       .fn()
-      .mockResolvedValue([{ jugadorId: 'jOtro', equipoNombre: 'Sub-9' }]);
+      .mockResolvedValue([{ jugadorId: 'jOtro', nombre: 'Jacob', equipoNombre: 'Sub-9' }]);
     const jugadoresConMatch = {
       crear,
-      buscarEnAcademia: buscarEnAcademiaConMatch,
+      buscarVariosEnAcademia: buscarVariosEnAcademiaConMatch,
     } as unknown as JugadoresService;
 
     const paso2 = pasoCargarPlantilla('plantilla', jugadoresConMatch, equiposConAcademia, {
@@ -100,7 +100,7 @@ describe('pasoCargarPlantilla', () => {
     const t = await paso2.recibir(contexto('Jacob, 10'));
 
     expect(crear).toHaveBeenCalledWith('eq1', 'Jacob', 10);
-    expect(buscarEnAcademiaConMatch).toHaveBeenCalledWith('ac1', 'Jacob', 'eq1');
+    expect(buscarVariosEnAcademiaConMatch).toHaveBeenCalledWith('ac1', ['Jacob'], 'eq1');
     if (t.tipo !== 'repetir') throw new Error('esperaba repetir');
     expect(t.respuesta.texto).toContain('❓');
     expect(t.respuesta.texto).toContain('Sub-9');

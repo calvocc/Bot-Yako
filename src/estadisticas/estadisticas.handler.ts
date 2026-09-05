@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { RespuestaBot } from '../channels/channel.types';
+import { respuestaSinEquipos } from '../conversacion/comandos';
 import { MembresiasService } from '../identidad/membresias.service';
 import { textos as textosComunes } from '../textos/comunes';
 import { textos } from '../textos/estadisticas';
@@ -35,15 +36,23 @@ export class EstadisticasHandler {
 
     const equipos = await this.membresias.equiposDe(usuarioId);
 
-    if (equipos.length === 0) return textosComunes.sinEquipos();
+    if (equipos.length === 0) return respuestaSinEquipos();
+
+    // Las consultas de cada equipo son independientes entre sí: en paralelo
+    // en vez de una por una, sin cambiar el orden de los bloques resultantes
+    // (`Promise.all` conserva el orden de `equipos`).
+    const porEquipo = await Promise.all(
+      equipos.map(async (equipo) => ({
+        equipo,
+        stats: await this.estadisticas.deJugador(equipo.equipoId, nombre),
+      })),
+    );
 
     const bloques: string[] = [];
     const encontrados: EstadisticaJugador[] = [];
 
-    for (const equipo of equipos) {
-      const enEsteEquipo = await this.estadisticas.deJugador(equipo.equipoId, nombre);
-
-      for (const stat of enEsteEquipo) {
+    for (const { equipo, stats } of porEquipo) {
+      for (const stat of stats) {
         bloques.push(this.lineaJugador(equipo.equipoNombre, stat));
         encontrados.push(stat);
       }
@@ -104,7 +113,7 @@ export class EstadisticasHandler {
 
     const equipos = await this.membresias.equiposDe(usuarioId);
 
-    if (equipos.length === 0) return textosComunes.sinEquipos();
+    if (equipos.length === 0) return respuestaSinEquipos();
 
     const bloques: string[] = [];
 

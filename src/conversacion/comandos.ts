@@ -1,4 +1,5 @@
-import type { MensajeEntrante } from '../channels/channel.types';
+import type { MensajeEntrante, RespuestaBot } from '../channels/channel.types';
+import { textos as textosComunes } from '../textos/comunes';
 
 /**
  * Catálogo de comandos. Es la fuente de `/ayuda` y del menú que se registra en
@@ -113,6 +114,22 @@ export const PREFIJO_BOTON_COMANDO = 'cmd:';
 
 export function botonComando(nombre: string, texto: string): { id: string; texto: string } {
   return { id: `${PREFIJO_BOTON_COMANDO}${nombre}`, texto };
+}
+
+/**
+ * `/equipos`, `/partidos`, `/stats`, `/tabla`: mismo aviso, mismo botón,
+ * cuando el usuario todavía no pertenece a ningún equipo.
+ *
+ * Vive acá (no en `textos/comunes.ts`) porque ese catálogo no puede traer un
+ * `Boton` con id de ruteo sin abrir un ciclo de imports (`conversacion` →
+ * `textos` → `conversacion`); acá sí se puede armar el texto y el botón
+ * juntos, que es lo que los cuatro handlers necesitaban por separado.
+ */
+export function respuestaSinEquipos(): RespuestaBot {
+  return {
+    texto: textosComunes.sinEquipos(),
+    botones: [botonComando('start', textosComunes.botonEmpezar())],
+  };
 }
 
 /**

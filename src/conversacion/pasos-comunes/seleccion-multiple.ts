@@ -29,11 +29,23 @@ export interface OpcionesSeleccionMultiple {
    * Atajo por texto: escribir en vez de tocar botones uno por uno.
    *
    * Si lo da el paso, un mensaje de texto se prueba acá antes de tratarlo como
-   * "no reconocido". Devuelve los ids que matchean (reemplaza la selección
-   * entera, no la suma a la anterior) o `null` si no reconoció nada — en ese
-   * caso se repite el paso con `avisoTextoNoReconocido`.
+   * "no reconocido". `null` significa que no reconoció nada de nada — ahí se
+   * repite el paso con `avisoTextoNoReconocido`, igual que siempre. Reconocer
+   * *algo* devuelve `ids` (reemplaza la selección entera, no la suma a la
+   * anterior) más `sinReconocer`: los tokens crudos que no matchearon a
+   * nadie, para poder avisar de una coincidencia parcial en vez de aplicarla
+   * en silencio. Recibe `ctx` para que un llamador pueda resolver contra el
+   * dato real (por ejemplo la plantilla completa) en vez de tener que
+   * reparsear `lista`, que solo trae el texto ya renderizado del botón.
    */
-  interpretarTexto?(texto: string, lista: readonly OpcionPaginable[]): string[] | null;
+  interpretarTexto?(
+    ctx: ContextoFlujo,
+    texto: string,
+    lista: readonly OpcionPaginable[],
+  ):
+    | { ids: string[]; sinReconocer: string[] }
+    | null
+    | Promise<{ ids: string[]; sinReconocer: string[] } | null>;
   /** Aviso cuando `interpretarTexto` no reconoció nada del texto escrito. */
   avisoTextoNoReconocido?: string;
 }
@@ -182,13 +194,21 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
       const escrito = ctx.mensaje.texto?.trim();
 
       if (escrito && opciones.interpretarTexto) {
-        const nuevos = opciones.interpretarTexto(escrito, lista);
+        const resultado = await opciones.interpretarTexto(ctx, escrito, lista);
 
-        if (nuevos && nuevos.length > 0) {
+        if (resultado) {
+          // Coincidencia parcial: se aplica lo que sí matcheó, pero se avisa
+          // de lo que no — sin esto, un typo en un dorsal se colaba sin que
+          // nadie se enterara de que faltó alguien.
+          const aviso =
+            resultado.sinReconocer.length > 0
+              ? textos.avisoParcial(resultado.sinReconocer)
+              : undefined;
+
           return {
             tipo: 'repetir',
-            ...repetir(ctx, lista, nuevos, pagina),
-            datos: { [CLAVE_SELECCION]: nuevos },
+            ...repetir(ctx, lista, resultado.ids, pagina, aviso),
+            datos: { [CLAVE_SELECCION]: resultado.ids },
           };
         }
 

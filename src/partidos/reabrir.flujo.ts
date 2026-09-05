@@ -123,7 +123,7 @@ export class ReabrirFlujo {
         if (!sigueSiendoAdmin) {
           return {
             tipo: 'finalizar',
-            respuesta: { texto: textosComunes.permisoRevocado('no reabrí nada') },
+            respuesta: { texto: textosComunes.permisoRevocado('admin', 'no reabrí nada') },
           };
         }
 
