@@ -326,6 +326,76 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     expect(partido.modoCarga).toBeNull();
   });
 
+  it('elegir la titular edita el mismo mensaje en vez de apilar uno por jugador', async () => {
+    const { equipo, decir, tocar } = await escenario('Titular sin apilar');
+    await crearPartido(equipo.id);
+
+    await decir('/cargar');
+    await tocar('md:vivo');
+
+    const jacob = adaptador.ultimosBotones.find((b) => b.texto.startsWith('Jacob'));
+
+    adaptador.limpiar();
+    await tocar(jacob!.id);
+
+    // Un solo mensaje editado, no uno nuevo, por cada jugador marcado.
+    expect(adaptador.enviados).toHaveLength(1);
+    expect(adaptador.enviados[0].fueEdicion).toBe(true);
+
+    const idPanel = adaptador.enviados[0].mensajeId;
+
+    const andres = adaptador.ultimosBotones.find((b) => b.texto.startsWith('Andrés'));
+    await tocar(andres!.id);
+
+    expect(adaptador.enviados.at(-1)?.mensajeId).toBe(idPanel);
+    expect(adaptador.enviados.at(-1)?.fueEdicion).toBe(true);
+  });
+
+  it('"Todos" marca a todo el plantel de una, sin tocar jugador por jugador', async () => {
+    const { equipo, decir, tocar } = await escenario('Titular todos');
+    await crearPartido(equipo.id);
+
+    await decir('/cargar');
+    await tocar('md:vivo');
+
+    await tocar('sm:todos');
+    expect(adaptador.ultimosBotones.find((b) => b.id === 'sm:listo')?.texto).toBe('Listo (2)');
+
+    await tocar('sm:listo');
+    expect(adaptador.ultimoTexto).toContain('Arrancó el Tiempo 1');
+  });
+
+  it('escribir los dorsales elige la titular sin tocar botones', async () => {
+    const { equipo, decir, tocar } = await escenario('Titular por dorsal');
+    await crearPartido(equipo.id);
+
+    await decir('/cargar');
+    await tocar('md:vivo');
+
+    await decir('10, 7');
+    expect(adaptador.ultimosBotones.find((b) => b.id === 'sm:listo')?.texto).toBe('Listo (2)');
+
+    await tocar('sm:listo');
+    expect(adaptador.ultimoTexto).toContain('Arrancó el Tiempo 1');
+  });
+
+  it('un dorsal que no existe se marca aparte, sin descartar los que sí matchean', async () => {
+    const { equipo, decir, tocar } = await escenario('Titular dorsal parcial');
+    await crearPartido(equipo.id);
+
+    await decir('/cargar');
+    await tocar('md:vivo');
+
+    // 14 no es dorsal de nadie en esta plantilla: solo Jacob (10) debe quedar
+    // marcado, con un aviso de que "14" no se reconoció — no en silencio.
+    await decir('10, 14');
+    expect(adaptador.ultimoTexto).toContain('No reconocí: 14');
+    expect(adaptador.ultimosBotones.find((b) => b.id === 'sm:listo')?.texto).toBe('Listo (1)');
+
+    await tocar('sm:listo');
+    expect(adaptador.ultimoTexto).toContain('Arrancó el Tiempo 1');
+  });
+
   it('cambio: sale de la cancha, entra del resto, y el siguiente evento ya no ofrece a quien salió', async () => {
     const { equipo, decir, tocar } = await escenario('Cambio');
     await crearPartido(equipo.id);

@@ -17,6 +17,11 @@ export const textos = {
     minimo === 1 ? 'Elige al menos uno.' : `Elige al menos ${minimo}.`,
   confirmarListo: 'Listo',
   marcaSeleccionado: (texto: string) => `✅ ${texto}`,
+  todos: '✅ Todos',
+  ninguno: 'Ninguno',
+  textoNoReconocido: 'No reconocí nada de eso. Toca uno de los botones.',
+  avisoParcial: (sinReconocer: string[]) =>
+    `No reconocí: ${sinReconocer.join(', ')}. Los demás sí quedaron marcados.`,
 
   selectorEquipo: {
     pregunta: '¿Con cuál equipo?',
