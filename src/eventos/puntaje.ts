@@ -250,13 +250,30 @@ function puntosGol(posicion: Posicion | null): number {
   return posicion === null ? PUNTOS_GOL_SIN_POSICION : PUNTOS_GOL_POR_POSICION[posicion];
 }
 
-/** El destacado del partido: quien terminó con la nota más alta. */
+/**
+ * ¿Corresponde destacar a este jugador? Con la base de 6 puntos cualquiera
+ * queda con una nota "aprobada" así no haya aportado nada bueno -- se exige
+ * puntaje bruto neto positivo, no solo la nota más alta. Sin esto, quien
+ * solo estuvo en cancha (nota base) o cuyo único evento no suma ni resta
+ * (un cambio) terminaría "destacado" sin haber hecho nada.
+ *
+ * Un solo lugar para este criterio: lo usan tanto `calcularMvp` como
+ * `ResumenService` (que ya tiene las notas calculadas para el listado
+ * completo y solo necesita saber si vale la pena anunciar a la primera).
+ */
+export function esDestacable(candidato: NotaJugador | null | undefined): candidato is NotaJugador {
+  return candidato != null && candidato.puntosBrutos > 0;
+}
+
+/** El destacado del partido: quien terminó con la nota más alta, si corresponde destacarlo. */
 export function calcularMvp(
   eventos: readonly EventoCargado[],
   participantes: readonly JugadorParticipante[] = [],
   bonos: readonly Bono[] = [],
 ): NotaJugador | null {
-  return calcularNotas(eventos, participantes, bonos)[0] ?? null;
+  const [primero] = calcularNotas(eventos, participantes, bonos);
+
+  return esDestacable(primero) ? primero : null;
 }
 
 /** "Jacob (8.5) — 2 goles, 1 asistencia". Solo lista lo que sumó o restó. */

@@ -7,11 +7,11 @@
 -- siempre -- no cambia el nivel de agregacion, solo se agregan mas
 -- `count(*) filter (...)`.
 --
--- Tiene que aplicarse en una corrida de `db:migrate` separada de la 0012
--- que agrega los valores del enum: Postgres no permite usar un valor de
--- enum recien agregado dentro de la misma transaccion en que se agrego, y
--- el migrador de drizzle-orm aplica todas las migraciones pendientes en una
--- sola transaccion.
+-- Depende de que la 0012 (que agrega los valores del enum) ya haya corrido
+-- antes: Postgres no permite usar un valor de enum recien agregado dentro
+-- de la misma transaccion en que se agrego. Ya no hace falta una corrida de
+-- `db:migrate` separada para eso -- `src/db/migrate.ts` aplica cada
+-- migracion pendiente en su propia transaccion, no todas juntas.
 -- ------------------------------------------------------------
 
 create or replace view estadisticas_jugador with (security_invoker = true) as

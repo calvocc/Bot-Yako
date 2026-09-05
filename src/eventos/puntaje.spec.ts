@@ -180,6 +180,17 @@ describe('calcularMvp', () => {
   it('null sin eventos ni participantes', () => {
     expect(calcularMvp([])).toBeNull();
   });
+
+  it('null si todos terminaron con puntaje neto negativo (solo tarjetas)', () => {
+    // Con la base de 6, esto igual sería una nota "aprobada" -- pero no hubo
+    // nada que destacar. Regression: sin este filtro, calcularMvp devolvía
+    // a Andrés igual, apoyado solo en que su nota quedó primera.
+    const eventos = [
+      evento({ jugadorId: 'andres', jugadorNombre: 'Andrés', tipo: 'tarjeta_amarilla' }),
+    ];
+
+    expect(calcularMvp(eventos)).toBeNull();
+  });
 });
 
 describe('describirMvp', () => {
@@ -195,8 +206,22 @@ describe('describirMvp', () => {
   });
 
   it('sin desglose si el único aporte no cuenta en ningún conteo', () => {
-    const destacado = calcularMvp([evento({ jugadorId: 'jacob', tipo: 'cambio' })]);
+    // El bono de cierre suma puntos sin corresponder a ninguna categoría
+    // mostrable (a diferencia de un gol o una atajada): es el único caso
+    // real donde un destacado no tiene nada que desglosar.
+    const destacado = calcularMvp(
+      [],
+      [participante({ jugadorId: 'jacob', nombre: 'Jacob' })],
+      [{ jugadorId: 'jacob', puntos: 3 }],
+    );
 
-    expect(destacado && describirMvp(destacado)).toBe('Jacob (6.0)');
+    // Bono de cierre (+3) = 3 puntos brutos; nota = 6 + (3/8)×4 = 7.5.
+    expect(destacado && describirMvp(destacado)).toBe('Jacob (7.5)');
+  });
+
+  it('sin MVP si el único evento no suma ni resta puntos (cambio)', () => {
+    // Un neto de 0 no alcanza para destacar a nadie: no hizo nada malo, pero
+    // tampoco hizo nada bueno.
+    expect(calcularMvp([evento({ jugadorId: 'jacob', tipo: 'cambio' })])).toBeNull();
   });
 });

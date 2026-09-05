@@ -77,6 +77,30 @@ export class AlineacionService {
   }
 
   /**
+   * `participantesDe` + `minutosJugadosDe` en una sola consulta de titulares
+   * y cambios -- `ResumenService.generar` necesita las dos cosas, y sin esto
+   * eran dos SELECT de titulares y dos de cambios por cada /resumen.
+   */
+  async datosDeParticipacion(
+    partidoId: string,
+    minutoFinal: number,
+    tx?: EjecutorDb,
+  ): Promise<{ participantes: string[]; minutos: Map<string, number> }> {
+    const [titulares, cambios] = await Promise.all([
+      this.titularesDe(partidoId, tx),
+      this.cambiosDe(partidoId, tx),
+    ]);
+
+    return {
+      participantes: [...new Set([...titulares, ...cambios.map((c) => c.entra)])],
+      minutos:
+        titulares.length === 0
+          ? new Map<string, number>()
+          : calcularMinutosJugados(minutoFinal, titulares, cambios),
+    };
+  }
+
+  /**
    * Suma un jugador a la cancha si todavía no estaba.
    *
    * Para cuando alguien que nadie había titularizado ni hecho entrar por

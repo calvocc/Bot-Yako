@@ -5,6 +5,7 @@ import { protagonista } from '../eventos/mensajes';
 import {
   calcularNotas,
   describirMvp,
+  esDestacable,
   type Bono,
   type JugadorParticipante,
 } from '../eventos/puntaje';
@@ -21,7 +22,7 @@ export interface DatosResumen {
   eventos: EventoCargado[];
   /** Titulares + cambios: para que aparezcan con nota aunque no hayan tenido ningún evento. */
   participantes?: JugadorParticipante[];
-  /** Bonos de cierre (valla invicta, goles recibidos): ver `ResumenService.bonosDe`. */
+  /** Bonos de cierre (valla invicta, goles recibidos): ver `ResumenService.bonosDesde`. */
   bonos?: Bono[];
 }
 
@@ -61,35 +62,39 @@ export class ResumenService {
   ) {}
 
   async generar(partido: Partido, equipoNombre: string): Promise<string> {
-    // La plantilla se pide una sola vez acá -- participantesDe y bonosDe la
-    // necesitan las dos, y sin compartirla eran dos SELECT idénticos por
-    // resumen.
-    const [cargados, plantilla] = await Promise.all([
+    // La plantilla y el minuto final se piden una sola vez acá, en paralelo
+    // con los eventos -- son independientes entre sí, y el minuto final hace
+    // falta antes de poder pedir minutos jugados.
+    const [cargados, plantilla, contexto] = await Promise.all([
       this.eventos.delPartido(partido.id),
       this.jugadores.listar(partido.equipoId, true),
+      this.tiempos.contextoDeCarga(partido),
     ]);
 
-    const [participantes, bonos] = await Promise.all([
-      this.participantesDe(partido, plantilla),
-      this.bonosDe(partido, plantilla),
-    ]);
+    const minutoFinal = contexto.minuto.minuto;
+    // Una sola consulta de titulares/cambios para las dos cosas que salen de
+    // ahí (participantes y minutos jugados): antes eran dos SELECT de cada
+    // una, uno por `participantesDe` y otro por `minutosJugadosDe`.
+    const { participantes: ids, minutos } = await this.alineacion.datosDeParticipacion(
+      partido.id,
+      minutoFinal,
+    );
+
+    const porId = new Map(plantilla.map((j) => [j.id, j]));
+    const participantes = this.participantesDesde(ids, porId);
+    const bonos = this.bonosDesde(partido, minutoFinal, minutos, porId);
 
     return componerResumen({ partido, equipoNombre, eventos: cargados, participantes, bonos });
   }
 
   /**
-   * Titulares + cambios, con nombre/dorsal/posición -- lo que `calcularNotas`
-   * necesita para mostrar a todos, no solo a quien tuvo algún evento. Un
-   * partido sin titulares (legado, o cargado enteramente post partido)
-   * devuelve una lista vacía: no hay forma honesta de saber quién jugó ahí.
+   * Ids de participantes → nombre/dorsal/posición, lo que `calcularNotas`
+   * necesita para mostrar a todos, no solo a quien tuvo algún evento.
    */
-  private async participantesDe(
-    partido: Partido,
-    plantilla: readonly Jugador[],
-  ): Promise<JugadorParticipante[]> {
-    const ids = await this.alineacion.participantesDe(partido.id);
-    const porId = new Map(plantilla.map((j) => [j.id, j]));
-
+  private participantesDesde(
+    ids: readonly string[],
+    porId: ReadonlyMap<string, Jugador>,
+  ): JugadorParticipante[] {
     // Un id sin ficha en la plantilla es un dato inconsistente (la FK lo
     // impide en la práctica); se descarta en vez de listar "Sin nombre".
     return ids
@@ -101,19 +106,17 @@ export class ResumenService {
   /**
    * Bono de cierre para arqueros/defensas que jugaron al menos el 60% de
    * los minutos: +3 por valla invicta, -1 cada 2 goles recibidos. Sin
-   * titulares (`minutosJugadosDe` vuelve un `Map` vacío) no hay a quién
-   * dárselo, y sin minutos jugados (partido que no arrancó de verdad)
-   * tampoco -- un umbral de 0 haría "elegible" a cualquiera.
+   * minutos jugados (partido que no arrancó de verdad, o sin titulares
+   * registrados) no hay a quién dárselo -- un umbral de 0 haría "elegible"
+   * a cualquiera.
    */
-  private async bonosDe(partido: Partido, plantilla: readonly Jugador[]): Promise<Bono[]> {
-    const contexto = await this.tiempos.contextoDeCarga(partido);
-    const minutoFinal = contexto.minuto.minuto;
-
-    if (minutoFinal <= 0) return [];
-
-    const minutos = await this.alineacion.minutosJugadosDe(partido.id, minutoFinal);
-
-    if (minutos.size === 0) return [];
+  private bonosDesde(
+    partido: Partido,
+    minutoFinal: number,
+    minutos: ReadonlyMap<string, number>,
+    porId: ReadonlyMap<string, Jugador>,
+  ): Bono[] {
+    if (minutoFinal <= 0 || minutos.size === 0) return [];
 
     const { rival } = marcadorDe(partido);
     const puntos =
@@ -122,7 +125,6 @@ export class ResumenService {
     if (puntos === 0) return [];
 
     const umbral = minutoFinal * PORCENTAJE_MINIMO_BONO;
-    const porId = new Map(plantilla.map((j) => [j.id, j]));
 
     return [...minutos.entries()]
       .filter(([, jugados]) => jugados >= umbral)
@@ -176,12 +178,9 @@ export function componerResumen({
     // calcularMvp no hace falta acá: es solo notas[0], y llamarlo aparte
     // recorrería y ordenaría el mismo acumulado dos veces.
     const notas = calcularNotas(eventos, participantes, bonos);
-    const destacado = notas[0] ?? null;
+    const destacado = notas[0];
 
-    // Se exige puntaje bruto neto positivo, no solo la nota más alta: con
-    // la base de 6 puntos, alguien cuyo único evento fue una tarjeta igual
-    // queda con una nota "aprobada" -- pero no es a quien hay que destacar.
-    if (destacado && destacado.puntosBrutos > 0) {
+    if (esDestacable(destacado)) {
       lineas.push('', textos.mvp(describirMvp(destacado)));
     }
 
