@@ -1,3 +1,6 @@
+import { botonComando } from '../conversacion/comandos';
+import type { Boton } from '../channels/channel.types';
+
 /** Textos de `/invitar`, `/unirme` y el mensaje compartido de resultado del canje. */
 export const textos = {
   invitar: {
