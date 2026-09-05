@@ -20,7 +20,9 @@ export const textos = {
     elegirModo: {
       pregunta: () => '¿Cómo lo agregas?',
       botonLista: '📋 Pegar lista',
-      botonDeAcademia: '🔗 Ya juega en otro equipo de la academia',
+      // Máximo 20 caracteres: es el límite de un botón en WhatsApp
+      // (MAX_CARACTERES_ROTULO_BOTON) — uno más largo se ve truncado ahí.
+      botonDeAcademia: '🔗 Ya en otro equipo',
     },
 
     buscarNombre: {
@@ -58,7 +60,7 @@ export const textos = {
     noEntendido: (comandoListo: string) =>
       `No entendí eso. Escribe algo como "Jacob, 10", o ${comandoListo} para terminar.`,
     posibleDuplicado: (nombre: string, equipoNombre: string) =>
-      `${nombre} también está en la plantilla de ${equipoNombre}. Si es la misma persona, la próxima vez usa "Agregar" → "Ya juega en otro equipo de la academia" para unir sus estadísticas.`,
+      `${nombre} también está en la plantilla de ${equipoNombre}. Si es la misma persona, la próxima vez usa "Agregar" → "Ya en otro equipo" para unir sus estadísticas.`,
     resumenAlta: (van: number, comandoListo: string) =>
       `Van ${van} jugador${van === 1 ? '' : 'es'}. Sigue o escribe ${comandoListo}.`,
     listaLista: (cargados: number, siguiente: string) =>

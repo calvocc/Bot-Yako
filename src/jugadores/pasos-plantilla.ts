@@ -6,7 +6,7 @@ import type { EquiposService } from '../equipos/equipos.service';
 import { textos as textosComunes } from '../textos/comunes';
 import { textos } from '../textos/jugadores';
 import { DorsalOcupadoError, describirJugador, parsearPlantilla } from './jugadores.service';
-import type { Jugador, JugadoresService } from './jugadores.service';
+import type { CandidatoAcademia, Jugador, JugadoresService } from './jugadores.service';
 
 export const CLAVE_ALTAS = 'jugadoresCargados';
 
@@ -124,14 +124,14 @@ async function altaEnLote(
 ): Promise<{ agregados: string[]; problemas: string[]; avisos: string[] }> {
   const agregados: string[] = [];
   const problemas: string[] = [];
-  const avisos: string[] = [];
+  const creados: Jugador[] = [];
 
   for (const jugador of parseados) {
-    let creado: Jugador;
-
     try {
-      creado = await jugadores.crear(equipoId, jugador.nombre, jugador.dorsal);
+      const creado = await jugadores.crear(equipoId, jugador.nombre, jugador.dorsal);
+
       agregados.push(describirJugador(creado));
+      creados.push(creado);
     } catch (error) {
       // Un dorsal repetido no debe abortar el resto del lote: se informa y se
       // sigue, que es lo que espera quien pegó una lista de veinte.
@@ -140,25 +140,58 @@ async function altaEnLote(
           ? `${jugador.nombre}: ${error.message}`
           : `${jugador.nombre}: no se pudo agregar`,
       );
-      continue;
-    }
-
-    // Aviso, no bloqueo: quien pega una lista de veinte no puede confirmar
-    // uno por uno si son la misma persona. Se avisa y se deja para arreglar
-    // a mano con "Agregar" → "Ya juega en otro equipo de la academia", que sí
-    // pregunta antes de vincular.
-    if (academiaId) {
-      const candidatos = await jugadores.buscarEnAcademia(academiaId, jugador.nombre, equipoId);
-
-      if (candidatos.length > 0) {
-        avisos.push(
-          textos.cargarPlantilla.posibleDuplicado(creado.nombre, candidatos[0].equipoNombre),
-        );
-      }
     }
   }
 
+  const avisos = academiaId
+    ? await avisosDeDuplicado(jugadores, academiaId, equipoId, creados)
+    : [];
+
   return { agregados, problemas, avisos };
+}
+
+/**
+ * Aviso, no bloqueo: quien pega una lista de veinte no puede confirmar uno
+ * por uno si son la misma persona. Se avisa y se deja para arreglar a mano
+ * con "Agregar" → "Ya en otro equipo", que sí pregunta antes de vincular.
+ *
+ * Una sola consulta para todo el lote (`buscarVariosEnAcademia`), no una por
+ * jugador: pegar veinte nombres no puede costar veinte consultas aparte de
+ * las veinte altas.
+ */
+async function avisosDeDuplicado(
+  jugadores: JugadoresService,
+  academiaId: string,
+  equipoId: string,
+  creados: readonly Jugador[],
+): Promise<string[]> {
+  if (creados.length === 0) return [];
+
+  const candidatos = await jugadores.buscarVariosEnAcademia(
+    academiaId,
+    creados.map((j) => j.nombre),
+    equipoId,
+  );
+
+  const porNombre = new Map<string, CandidatoAcademia>();
+
+  for (const candidato of candidatos) {
+    const clave = candidato.nombre.trim().toLowerCase();
+
+    if (!porNombre.has(clave)) porNombre.set(clave, candidato);
+  }
+
+  const avisos: string[] = [];
+
+  for (const creado of creados) {
+    const candidato = porNombre.get(creado.nombre.trim().toLowerCase());
+
+    if (candidato) {
+      avisos.push(textos.cargarPlantilla.posibleDuplicado(creado.nombre, candidato.equipoNombre));
+    }
+  }
+
+  return avisos;
 }
 
 function resumenDeAlta(

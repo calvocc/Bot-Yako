@@ -23,12 +23,14 @@ import { leerNumero, leerTexto } from '../conversacion/flow.types';
 import { EquiposService } from '../equipos/equipos.service';
 import { MembresiasService } from '../identidad/membresias.service';
 import {
+  candidatosDeEquipo,
   describirJugador,
   type Jugador,
   type JugadorParseado,
   JugadoresService,
   parsearJugador,
 } from '../jugadores/jugadores.service';
+import { textos as textosJugadores } from '../textos/jugadores';
 import { AlineacionService } from '../partidos/alineacion.service';
 import { describirFecha } from '../partidos/fechas';
 import { describirMinuto } from '../partidos/minuto';
@@ -907,6 +909,13 @@ export class CargarFlujo {
    * es lo que sigue una vez resuelto el jugador (registrar el evento o el
    * cambio), y es la misma función tanto si se resuelve acá de una como si
    * se resuelve después de confirmar.
+   *
+   * Con más de un candidato del mismo nombre en la academia no hay forma
+   * segura de elegir uno solo sin preguntar por los dos a la vez —y este
+   * flujo en vivo solo pregunta por uno—, así que se trata como si no
+   * hubiera ninguno: se crea sin vínculo, y queda para vincular a mano
+   * después con `/plantilla` → "Ya juega en otro equipo", que sí lista a
+   * todos los candidatos para elegir.
    */
   private async resolverJugadorNuevo(
     ctx: ContextoFlujo,
@@ -918,12 +927,14 @@ export class CargarFlujo {
 
     if (existente) return continuar(existente);
 
-    const equipo = await this.equipos.obtener(equipoId);
-    const candidatos = equipo
-      ? await this.jugadores.buscarEnAcademia(equipo.academiaId, parseado.nombre, equipoId)
-      : [];
+    const candidatos = await candidatosDeEquipo(
+      this.equipos,
+      this.jugadores,
+      equipoId,
+      parseado.nombre,
+    );
 
-    if (candidatos.length > 0) {
+    if (candidatos.length === 1) {
       const candidato = candidatos[0];
 
       return {
@@ -939,7 +950,7 @@ export class CargarFlujo {
       };
     }
 
-    const jugador = await this.jugadores.crear(equipoId, parseado.nombre, parseado.dorsal);
+    const jugador = await this.jugadores.crearConDorsalSiLibre(equipoId, parseado);
 
     return continuar(jugador, `➕ ${describirJugador(jugador)} quedó agregado a la plantilla.`);
   }
@@ -975,19 +986,23 @@ export class CargarFlujo {
           dorsal: dorsalTexto ? Number(dorsalTexto) : undefined,
         };
 
-        const jugador =
-          seleccion === ID_SI
-            ? await this.jugadores.vincularNuevoEquipo(
-                equipoId,
-                parseado,
-                leerTexto(ctx.datos, CLAVE_CANDIDATO_ID),
-              )
-            : await this.jugadores.crear(equipoId, parseado.nombre, parseado.dorsal);
+        let jugador: Jugador;
+        let nota: string;
 
-        const nota =
-          seleccion === ID_SI
-            ? `🔗 ${describirJugador(jugador)} vinculado con su ficha de ${leerTexto(ctx.datos, CLAVE_CANDIDATO_EQUIPO)}.`
-            : `➕ ${describirJugador(jugador)} quedó agregado a la plantilla.`;
+        if (seleccion === ID_SI) {
+          jugador = await this.jugadores.vincularNuevoEquipo(
+            equipoId,
+            parseado,
+            leerTexto(ctx.datos, CLAVE_CANDIDATO_ID),
+          );
+          nota = textosJugadores.agregar.vinculado(
+            jugador.nombre,
+            leerTexto(ctx.datos, CLAVE_CANDIDATO_EQUIPO),
+          );
+        } else {
+          jugador = await this.jugadores.crearConDorsalSiLibre(equipoId, parseado);
+          nota = `➕ ${describirJugador(jugador)} quedó agregado a la plantilla.`;
+        }
 
         const saleId = leerTexto(ctx.datos, CLAVE_JUGADOR_SALE);
 

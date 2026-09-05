@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { RespuestaBot } from '../channels/channel.types';
-import { botonComando } from '../conversacion/comandos';
+import { respuestaSinEquipos } from '../conversacion/comandos';
 import { describirFormato } from './equipos.service';
 import { MembresiasService } from '../identidad/membresias.service';
 import { ETIQUETA_ROL_CORTA } from '../identidad/roles';
@@ -23,12 +23,7 @@ export class EquiposHandler {
 
     const suyos = await this.membresias.equiposDe(usuarioId);
 
-    if (suyos.length === 0) {
-      return {
-        texto: textosComunes.sinEquipos(),
-        botones: [botonComando('start', textosComunes.botonEmpezar())],
-      };
-    }
+    if (suyos.length === 0) return respuestaSinEquipos();
 
     const lineas = await Promise.all(
       suyos.map(async (e) => {

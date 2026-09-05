@@ -16,7 +16,12 @@ import { MembresiasService } from '../identidad/membresias.service';
 import { textos as textosComunes } from '../textos/comunes';
 import { textos } from '../textos/jugadores';
 import { CLAVE_ALTAS, pasoCargarPlantilla } from './pasos-plantilla';
-import { describirJugador, JugadoresService } from './jugadores.service';
+import {
+  candidatosDeEquipo,
+  describirJugador,
+  JugadoresService,
+  type CandidatoAcademia,
+} from './jugadores.service';
 
 export const FLUJO_PLANTILLA = 'plantilla';
 
@@ -204,10 +209,7 @@ export class PlantillaFlujo {
         }
 
         const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
-        const equipo = await this.equipos.obtener(equipoId);
-        const candidatos = equipo
-          ? await this.jugadores.buscarEnAcademia(equipo.academiaId, nombre, equipoId)
-          : [];
+        const candidatos = await candidatosDeEquipo(this.equipos, this.jugadores, equipoId, nombre);
 
         if (candidatos.length === 0) {
           return {
@@ -248,6 +250,14 @@ export class PlantillaFlujo {
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
         const seleccion = ctx.mensaje.seleccionId ?? '';
+
+        // La búsqueda por academia no hace falta para descartar un botón
+        // viejo o un texto suelto: se pide solo en las dos ramas que sí la
+        // usan, no antes de saber cuál es.
+        if (seleccion !== ID_VER_MAS && !seleccion.startsWith(PREFIJO_CANDIDATO)) {
+          return { tipo: 'finalizar', respuesta: { texto: textos.agregar.ningunoAgregado() } };
+        }
+
         const candidatos = await this.candidatosDe(ctx);
 
         if (seleccion === ID_VER_MAS) {
@@ -261,10 +271,6 @@ export class PlantillaFlujo {
               ),
             },
           };
-        }
-
-        if (!seleccion.startsWith(PREFIJO_CANDIDATO)) {
-          return { tipo: 'finalizar', respuesta: { texto: textos.agregar.ningunoAgregado() } };
         }
 
         const jugadorOrigenId = seleccion.slice(PREFIJO_CANDIDATO.length);
@@ -294,7 +300,7 @@ export class PlantillaFlujo {
 
         const vinculado = await this.jugadores.vincularNuevoEquipo(
           equipoId,
-          { nombre: candidato.nombre },
+          { nombre: candidato.nombre, dorsal: candidato.dorsal ?? undefined },
           jugadorOrigenId,
         );
 
@@ -307,15 +313,11 @@ export class PlantillaFlujo {
   }
 
   /** Repite la misma búsqueda que armó la lista, para no cargar candidatos completos en `datos`. */
-  private candidatosDe(ctx: ContextoFlujo) {
+  private candidatosDe(ctx: ContextoFlujo): Promise<CandidatoAcademia[]> {
     const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
     const nombre = leerTexto(ctx.datos, CLAVE_BUSQUEDA);
 
-    return this.equipos
-      .obtener(equipoId)
-      .then((equipo) =>
-        equipo ? this.jugadores.buscarEnAcademia(equipo.academiaId, nombre, equipoId) : [],
-      );
+    return candidatosDeEquipo(this.equipos, this.jugadores, equipoId, nombre);
   }
 
   private pasoBajaElegir(): Paso {

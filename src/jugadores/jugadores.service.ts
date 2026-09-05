@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import { DbService, type EjecutorDb } from '../db/db.service';
 import { equipos, jugadores, personas } from '../db/schema';
+import type { EquiposService } from '../equipos/equipos.service';
 
 export interface Jugador {
   id: string;
@@ -109,7 +110,7 @@ export class JugadoresService {
    */
   async buscarEnEquipo(equipoId: string, parseado: JugadorParseado): Promise<Jugador | null> {
     const plantilla = await this.listar(equipoId, true);
-    const buscado = parseado.nombre.toLowerCase();
+    const buscado = parseado.nombre.trim().toLowerCase();
 
     // El nombre exacto manda, pero si no matchea y el dorsal sí es de alguien
     // conocido, es la misma persona escrita distinto ("Jacob, 10" contra
@@ -158,6 +159,16 @@ export class JugadoresService {
    * existe en otro — para ofrecer vincularlo en vez de crear una ficha sin
    * relación. Solo entre jugadores activos: uno dado de baja en otro equipo
    * no es un candidato obvio a "juega acá también".
+   *
+   * A propósito busca en TODA la academia, no solo en equipos donde quien
+   * pregunta tiene rol: la academia (no el equipo) es el límite de confianza
+   * para esta acción — mismo criterio que ya usa `esAdminDeAcademia`, que
+   * trata "admin de un equipo" como "admin de toda la academia" para ciertas
+   * acciones. Restringir esto por equipo rompería el caso de uso principal
+   * (un chico que se pasó de equipo, así que quien carga ya no tiene rol en
+   * el equipo de origen). Los llamadores igual exigen rol de Editor/Admin en
+   * el equipo *destino* antes de invocar esto o `vincularNuevoEquipo` — un
+   * Viewer nunca llega hasta acá.
    */
   async buscarEnAcademia(
     academiaId: string,
@@ -183,6 +194,43 @@ export class JugadoresService {
           eq(equipos.academiaId, academiaId),
           eq(jugadores.activo, true),
           sql`lower(trim(${jugadores.nombre})) = ${buscado}`,
+          excluirEquipoId ? ne(jugadores.equipoId, excluirEquipoId) : undefined,
+        ),
+      )
+      .orderBy(asc(jugadores.nombre));
+
+    return filas;
+  }
+
+  /**
+   * Como `buscarEnAcademia`, pero para varios nombres de una sola vez — una
+   * consulta para todo un lote pegado en `/plantilla`, en vez de una por
+   * jugador (`altaEnLote`, en `pasos-plantilla.ts`).
+   */
+  async buscarVariosEnAcademia(
+    academiaId: string,
+    nombres: readonly string[],
+    excluirEquipoId?: string,
+  ): Promise<CandidatoAcademia[]> {
+    const buscados = [...new Set(nombres.map((n) => n.trim().toLowerCase()).filter(Boolean))];
+
+    if (buscados.length === 0) return [];
+
+    const filas = await this.db.db
+      .select({
+        jugadorId: jugadores.id,
+        nombre: jugadores.nombre,
+        dorsal: jugadores.dorsal,
+        equipoId: jugadores.equipoId,
+        equipoNombre: equipos.nombre,
+      })
+      .from(jugadores)
+      .innerJoin(equipos, eq(equipos.id, jugadores.equipoId))
+      .where(
+        and(
+          eq(equipos.academiaId, academiaId),
+          eq(jugadores.activo, true),
+          sql`lower(trim(${jugadores.nombre})) in ${buscados}`,
           excluirEquipoId ? ne(jugadores.equipoId, excluirEquipoId) : undefined,
         ),
       )
@@ -227,13 +275,37 @@ export class JugadoresService {
         await tx.update(jugadores).set({ personaId }).where(eq(jugadores.id, origen.id));
       }
 
+      // Repetir el vínculo (doble tap, o confirmarlo dos veces por error) no
+      // debe duplicar la ficha: si el equipo destino ya tiene una fila de
+      // esta misma persona, se devuelve esa en vez de crear una segunda.
+      const [yaVinculado] = await tx
+        .select()
+        .from(jugadores)
+        .where(and(eq(jugadores.equipoId, equipoId), eq(jugadores.personaId, personaId)))
+        .limit(1);
+
+      if (yaVinculado) {
+        return {
+          id: yaVinculado.id,
+          nombre: yaVinculado.nombre,
+          dorsal: yaVinculado.dorsal,
+          activo: yaVinculado.activo,
+        };
+      }
+
       return this.crearConDorsalSiLibre(equipoId, parseado, personaId, tx);
     });
   }
 
-  /** El dorsal pedido, o ninguno si ya es de otro en este equipo — el alta
-   * no puede fallar en medio de una carga por un número. */
-  private async crearConDorsalSiLibre(
+  /**
+   * El dorsal pedido, o ninguno si ya es de otro en este equipo — el alta no
+   * puede fallar en medio de una carga por un número.
+   *
+   * Pública (no solo para `resolverOCrear`/`vincularNuevoEquipo` internos):
+   * es el camino seguro que cualquier alta fuera de una lista pegada debería
+   * usar en vez de `crear()` a secas, que sí puede tirar `DorsalOcupadoError`.
+   */
+  async crearConDorsalSiLibre(
     equipoId: string,
     parseado: JugadorParseado,
     personaId?: string,
@@ -255,6 +327,23 @@ export class JugadoresService {
 export interface JugadorParseado {
   nombre: string;
   dorsal?: number;
+}
+
+/**
+ * Candidatos de un jugador nuevo en el resto de la academia, resolviendo el
+ * equipo primero. Compartido entre `cargar.flujo.ts` y `plantilla.flujo.ts`,
+ * que antes repetían el mismo par de llamadas (`equipos.obtener` +
+ * `jugadores.buscarEnAcademia`) cada uno por su lado.
+ */
+export async function candidatosDeEquipo(
+  equipos: Pick<EquiposService, 'obtener'>,
+  jugadores: JugadoresService,
+  equipoId: string,
+  nombre: string,
+): Promise<CandidatoAcademia[]> {
+  const equipo = await equipos.obtener(equipoId);
+
+  return equipo ? jugadores.buscarEnAcademia(equipo.academiaId, nombre, equipoId) : [];
 }
 
 /**

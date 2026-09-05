@@ -184,6 +184,45 @@ describe('Jugadores únicos entre equipos (e2e)', () => {
     expect(enSub11.dorsal).toBeNull();
   });
 
+  it('vincularNuevoEquipo repetido no duplica la ficha en el equipo destino', async () => {
+    const { sub9, sub11 } = await escenario('Sin duplicar');
+    const jacob = await jugadores.crear(sub9.id, 'Jacob Restrepo', 10);
+
+    const primeraVez = await jugadores.vincularNuevoEquipo(
+      sub11.id,
+      { nombre: 'Jacob Restrepo', dorsal: 7 },
+      jacob.id,
+    );
+
+    // Doble tap, o repetir el mismo flujo de "Ya en otro equipo" por error:
+    // no debe crear una segunda ficha de Jacob en Sub-11.
+    const segundaVez = await jugadores.vincularNuevoEquipo(
+      sub11.id,
+      { nombre: 'Jacob Restrepo', dorsal: 7 },
+      jacob.id,
+    );
+
+    expect(segundaVez.id).toBe(primeraVez.id);
+
+    const enSub11 = await jugadores.listar(sub11.id);
+    expect(enSub11.filter((j) => j.nombre === 'Jacob Restrepo')).toHaveLength(1);
+  });
+
+  it('buscarVariosEnAcademia encuentra varios nombres en una sola consulta', async () => {
+    const { academia, sub9, sub11 } = await escenario('Varios nombres');
+    const jacob = await jugadores.crear(sub9.id, 'Jacob Restrepo', 10);
+    const andres = await jugadores.crear(sub9.id, 'Andrés', 7);
+    await jugadores.crear(sub9.id, 'Sin buscar', 3);
+
+    const candidatos = await jugadores.buscarVariosEnAcademia(
+      academia.id,
+      ['Jacob Restrepo', 'andrés', 'Nadie con este nombre'],
+      sub11.id,
+    );
+
+    expect(candidatos.map((c) => c.jugadorId).sort()).toEqual([andres.id, jacob.id].sort());
+  });
+
   it('resolverOCrear sigue sin buscar fuera del equipo (a propósito)', async () => {
     const { sub9, sub11 } = await escenario('Sin cruzar');
     const enSub9 = await jugadores.crear(sub9.id, 'Jacob Restrepo', 10);
