@@ -72,9 +72,12 @@ function descripcionSinReloj(partido: Partido): string {
  * Los botones de evento de una página, con "Ver más" si sobran.
  *
  * `reservar` son los botones que `panelEnVivo` agrega aparte (los de
- * control, 3 o 4 según el estado del partido): sin descontarlos acá, una
- * página llena de eventos más los controles se pasa de las 10 filas que
- * admite WhatsApp.
+ * control, 3 o 4 según el estado del partido) — y se reservan en CADA
+ * página, no solo en la última: el panel siempre vuelve a la página 0
+ * después de cualquier acción (`CargarFlujo.datosPanel`), así que si los
+ * controles solo vivieran en la última página quedarían inalcanzables en
+ * la práctica — habría que tocar "Ver más" en cada turno solo para llegar
+ * a "Finalizar" o "Deshacer".
  */
 export function botonesDeEvento(pagina: number, reservar: number): Boton[] {
   const { botones } = botonesPaginados(

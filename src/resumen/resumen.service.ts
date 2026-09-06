@@ -1,7 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { EventosService, type EventoCargado } from '../eventos/eventos.service';
-import { definicionDe, type TipoEvento } from '../eventos/evento.tipos';
-import { protagonista } from '../eventos/mensajes';
 import {
   calcularNotas,
   describirMvp,
@@ -25,26 +23,6 @@ export interface DatosResumen {
   /** Bonos de cierre (valla invicta, goles recibidos): ver `ResumenService.bonosDesde`. */
   bonos?: Bono[];
 }
-
-/**
- * Orden en que se listan los grupos. Fijo, para que el resumen se lea siempre
- * igual sin importar en qué orden se cargaron los eventos.
- */
-const ORDEN: readonly TipoEvento[] = [
-  'gol',
-  'autogol',
-  'asistencia',
-  'tarjeta_amarilla',
-  'tarjeta_roja',
-  'cambio',
-  'recuperacion',
-  'rechazo',
-  'regate',
-  'tiro_al_arco',
-  'falta_recibida',
-  'atajada',
-  'penal_atajado',
-];
 
 /** Un arquero o defensa necesita al menos este porcentaje de los minutos jugados para el bono de cierre. */
 const PORCENTAJE_MINIMO_BONO = 0.6;
@@ -159,20 +137,12 @@ export function componerResumen({
 
   const lineas = [encabezado, contexto].filter(Boolean);
 
-  const propios = eventos.filter((e) => e.equipoOrigen === 'propio');
+  // El detalle evento por evento ya se vio en vivo (bitácora del panel); acá
+  // solo hace falta saber si hubo algo propio cargado, para decidir entre
+  // mostrar notas o el mensaje de "sin eventos".
+  const hayEventosPropios = eventos.some((e) => e.equipoOrigen === 'propio');
 
-  for (const tipo of ORDEN) {
-    const delTipo = propios.filter((e) => e.tipo === tipo);
-
-    if (delTipo.length === 0) continue;
-
-    const definicion = definicionDe(tipo);
-    const detalle = delTipo.map((e) => describirEvento(e, equipoNombre, partido.rival)).join(', ');
-
-    lineas.push(`${definicion.emoji} ${definicion.sustantivo}: ${detalle}`);
-  }
-
-  if (propios.length === 0 && participantes.length === 0) {
+  if (!hayEventosPropios && participantes.length === 0) {
     lineas.push(textos.sinEventos());
   } else {
     // calcularMvp no hace falta acá: es solo notas[0], y llamarlo aparte
@@ -198,27 +168,4 @@ export function componerResumen({
   }
 
   return lineas.join('\n');
-}
-
-/**
- * "Jacob '23" — el apóstrofo es la convención futbolística para el minuto.
- *
- * Un cambio no tiene "un" protagonista: hay quien sale y quien entra, así que
- * se cuenta con los dos, igual que ya hace la bitácora en vivo (`mensajes.ts`).
- */
-function describirEvento(evento: EventoCargado, equipoNombre: string, rival: string): string {
-  const cuando = evento.minutoCalculado === null ? '' : ` '${evento.minutoCalculado}`;
-
-  if (evento.tipo === 'cambio') {
-    const sale = evento.jugadorNombre ?? protagonista(evento, equipoNombre, rival);
-    // Sin dorsal, igual que `quien` más abajo: el resumen no lo muestra en
-    // ningún otro evento, así que un cambio tampoco debería ser la excepción.
-    const entra = evento.jugadorEntraNombre ?? 'alguien';
-
-    return `${sale} → ${entra}${cuando}`;
-  }
-
-  const quien = evento.jugadorNombre ?? protagonista(evento, equipoNombre, rival);
-
-  return `${quien}${cuando}`;
 }

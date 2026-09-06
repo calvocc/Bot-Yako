@@ -63,8 +63,24 @@ describe('componerResumen', () => {
 
     expect(texto).toContain('🏆 Ringo Amaya Sub-11  2 - 1  Deportivo Norte');
     expect(texto).toContain('Liga del Atlántico');
-    expect(texto).toContain("⚽ Gol: Jacob '23, Jacob '41");
-    expect(texto).toContain("🟨 Amarilla: Andrés '35");
+  });
+
+  it('no detalla los eventos evento por evento: eso ya se vio en la bitácora en vivo', () => {
+    const texto = componerResumen({
+      partido: partido(),
+      equipoNombre: 'Ringo Amaya Sub-11',
+      eventos: [
+        gol('Jacob', 23),
+        gol('Jacob', 41),
+        {
+          ...gol('Andrés', 35),
+          tipo: 'tarjeta_amarilla',
+        },
+      ],
+    });
+
+    expect(texto).not.toContain("⚽ Gol: Jacob '23, Jacob '41");
+    expect(texto).not.toContain("🟨 Amarilla: Andrés '35");
   });
 
   it('muestra el marcador confirmado, no el derivado (C5)', () => {
@@ -120,27 +136,6 @@ describe('componerResumen', () => {
     });
 
     expect(texto).not.toContain('MVP del partido');
-  });
-
-  it('cuenta un cambio con quien sale y quien entra (no solo quien sale)', () => {
-    const texto = componerResumen({
-      partido: partido(),
-      equipoNombre: 'Ringo Amaya',
-      eventos: [
-        {
-          ...gol('Jacob', 34),
-          tipo: 'cambio',
-          jugadorEntraId: 'j-andres',
-          jugadorEntraNombre: 'Andrés',
-          jugadorEntraDorsal: 7,
-        },
-      ],
-    });
-
-    expect(texto).toContain("🔄 Cambio: Jacob → Andrés '34");
-    // Sin dorsal: es el mismo estilo que el resto del resumen (a diferencia
-    // de la bitácora en vivo, que sí lo muestra).
-    expect(texto).not.toContain('#7');
   });
 
   it('no muestra MVP sin eventos cargados', () => {

@@ -20,10 +20,11 @@ import { JugadoresService } from '../src/jugadores/jugadores.service';
 import { OrganizacionModule } from '../src/organizacion.module';
 
 /**
- * `/editarjugador`: posición y datos básicos, conversación completa —
- * selector de equipo → elegir jugador → menú → cada dato vuelve al menú.
+ * `/editarjugador`: nombre, dorsal, posición y datos básicos, conversación
+ * completa — selector de equipo → elegir jugador → menú → cada dato vuelve
+ * al menú.
  */
-describe('Editar jugador: posición y datos básicos (e2e)', () => {
+describe('Editar jugador: nombre, dorsal y datos básicos (e2e)', () => {
   let app: TestingModule;
   let procesador: ProcesadorMensajes;
   let adaptador: FakeChannelAdapter;
@@ -90,7 +91,7 @@ describe('Editar jugador: posición y datos básicos (e2e)', () => {
     return { admin, academia, equipo };
   };
 
-  it('carga posición, fecha de nacimiento, peso y estatura, uno a uno', async () => {
+  it('carga nombre, dorsal, posición, fecha de nacimiento, peso y estatura, uno a uno', async () => {
     const { admin, equipo } = await escenario('Flujo completo');
     const jacob = await jugadores.crear(equipo.id, 'Jacob Restrepo', 10);
 
@@ -104,12 +105,36 @@ describe('Editar jugador: posición y datos básicos (e2e)', () => {
     await tocar(`ej:j:${jacob.id}`);
     expect(adaptador.ultimoTexto).toContain('Editando a Jacob Restrepo #10');
     expect(adaptador.ultimosBotones.map((b) => b.id)).toEqual([
+      'ej:m:nombre',
+      'ej:m:dorsal',
       'ej:m:posicion',
       'ej:m:fecha',
       'ej:m:peso',
       'ej:m:estatura',
       'ej:m:listo',
     ]);
+
+    // Nombre: rechaza un número a secas antes de aceptar uno bueno.
+    await tocar('ej:m:nombre');
+    expect(adaptador.ultimoTexto).toContain('¿Cuál es el nombre correcto?');
+
+    await decir('10');
+    expect(adaptador.ultimoTexto).toContain('Ese nombre no me sirve');
+
+    await decir('Jacob Restrepo Gómez');
+    expect(adaptador.ultimoTexto).toContain('Guardado ✅');
+    expect(adaptador.ultimoTexto).toContain('Editando a Jacob Restrepo Gómez #10');
+
+    // Dorsal: rechaza fuera de rango antes de aceptar el bueno.
+    await tocar('ej:m:dorsal');
+    expect(adaptador.ultimoTexto).toContain('Nuevo dorsal');
+
+    await decir('150');
+    expect(adaptador.ultimoTexto).toContain('Ese dorsal no me cuadra');
+
+    await decir('7');
+    expect(adaptador.ultimoTexto).toContain('Guardado ✅');
+    expect(adaptador.ultimoTexto).toContain('Editando a Jacob Restrepo Gómez #7');
 
     // Posición: cuatro botones, sin texto libre.
     await tocar('ej:m:posicion');
@@ -123,7 +148,7 @@ describe('Editar jugador: posición y datos básicos (e2e)', () => {
 
     await tocar('ej:p:defensa');
     expect(adaptador.ultimoTexto).toContain('Guardado ✅');
-    expect(adaptador.ultimoTexto).toContain('Editando a Jacob Restrepo #10');
+    expect(adaptador.ultimoTexto).toContain('Editando a Jacob Restrepo Gómez #7');
 
     // Fecha de nacimiento: rechaza una inválida antes de aceptar la buena.
     await tocar('ej:m:fecha');
@@ -155,18 +180,77 @@ describe('Editar jugador: posición y datos básicos (e2e)', () => {
     expect(adaptador.ultimoTexto).toContain('Listo');
 
     const [fila] = await db.db.execute<{
+      nombre: string;
+      dorsal: number;
       posicion: string;
       fecha_nacimiento: string;
       peso_kg: string;
       estatura_cm: number;
     }>(
-      sql`select posicion, fecha_nacimiento, peso_kg, estatura_cm from jugadores where id = ${jacob.id}`,
+      sql`select nombre, dorsal, posicion, fecha_nacimiento, peso_kg, estatura_cm from jugadores where id = ${jacob.id}`,
     );
 
+    expect(fila.nombre).toBe('Jacob Restrepo Gómez');
+    expect(fila.dorsal).toBe(7);
     expect(fila.posicion).toBe('defensa');
     expect(String(fila.fecha_nacimiento)).toContain('2015-05-10');
     expect(Number(fila.peso_kg)).toBe(35.5);
     expect(Number(fila.estatura_cm)).toBe(140);
+  });
+
+  it('rechaza un dorsal que ya tiene otro jugador activo, y "ninguno" lo deja sin dorsal', async () => {
+    const { admin, equipo } = await escenario('Dorsal');
+    const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
+    await jugadores.crear(equipo.id, 'Andrés', 7);
+
+    const decir = (texto: string) => procesador.procesar(textoDePrueba(texto, admin));
+    const tocar = (id: string) => procesador.procesar(seleccionDePrueba(id, admin));
+
+    await decir('/editarjugador');
+    await tocar(`ej:j:${jacob.id}`);
+    await tocar('ej:m:dorsal');
+
+    // El 7 ya es de Andrés: se avisa quién lo tiene, sin escribir nada.
+    await decir('7');
+    expect(adaptador.ultimoTexto).toContain('El dorsal 7 ya lo tiene Andrés');
+
+    // Dejarle el mismo dorsal que ya tenía no debería chocar contra sí mismo.
+    await decir('10');
+    expect(adaptador.ultimoTexto).toContain('Guardado ✅');
+
+    // "ninguno" lo deja sin dorsal.
+    await tocar('ej:m:dorsal');
+    await decir('ninguno');
+    expect(adaptador.ultimoTexto).toContain('Guardado ✅');
+
+    const [fila] = await db.db.execute<{ dorsal: number | null }>(
+      sql`select dorsal from jugadores where id = ${jacob.id}`,
+    );
+    expect(fila.dorsal).toBeNull();
+  });
+
+  it('un mensaje sin texto en el paso de dorsal no lo borra en silencio', async () => {
+    const { admin, equipo } = await escenario('Dorsal sin texto');
+    const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
+
+    const decir = (texto: string) => procesador.procesar(textoDePrueba(texto, admin));
+    const tocar = (id: string) => procesador.procesar(seleccionDePrueba(id, admin));
+
+    await decir('/editarjugador');
+    await tocar(`ej:j:${jacob.id}`);
+    await tocar('ej:m:dorsal');
+
+    // Un tap de botón (sin `texto`, solo `seleccionId`) llegando de rebote
+    // mientras el flujo espera el dorsal -- por ejemplo la entrega tardía
+    // de un botón viejo -- no es lo mismo que escribir "ninguno": no debe
+    // borrar el dorsal existente.
+    await tocar('cualquier-boton-viejo');
+    expect(adaptador.ultimoTexto).toContain('Ese dorsal no me cuadra');
+
+    const [fila] = await db.db.execute<{ dorsal: number | null }>(
+      sql`select dorsal from jugadores where id = ${jacob.id}`,
+    );
+    expect(fila.dorsal).toBe(10);
   });
 
   it('no permite editar a quien perdió el rol de editor entre el menú y el guardado', async () => {

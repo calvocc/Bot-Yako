@@ -347,13 +347,7 @@ export class JugadoresService {
     jugadorId: string,
     posicion: Posicion,
   ): Promise<boolean> {
-    const filas = await this.db.db
-      .update(jugadores)
-      .set({ posicion })
-      .where(and(eq(jugadores.id, jugadorId), eq(jugadores.equipoId, equipoId)))
-      .returning({ id: jugadores.id });
-
-    return filas.length > 0;
+    return this.actualizarCampos(equipoId, jugadorId, { posicion });
   }
 
   /**
@@ -368,9 +362,68 @@ export class JugadoresService {
     jugadorId: string,
     datos: { fechaNacimiento?: string; pesoKg?: number; estaturaCm?: number },
   ): Promise<boolean> {
+    return this.actualizarCampos(equipoId, jugadorId, datos);
+  }
+
+  /**
+   * Renombra a un jugador (/editarjugador → Nombre).
+   *
+   * Sin chequeo de duplicados: a diferencia del dorsal, el nombre no es
+   * único en ningún nivel (ver `buscarEnAcademia`, que existe justamente
+   * porque puede repetirse entre equipos, y ni siquiera bloquea dentro del
+   * mismo equipo).
+   */
+  async actualizarNombre(equipoId: string, jugadorId: string, nombre: string): Promise<boolean> {
+    return this.actualizarCampos(equipoId, jugadorId, { nombre });
+  }
+
+  /**
+   * Cambia el dorsal de un jugador (/editarjugador → Dorsal), o lo libera
+   * con `dorsal: null`.
+   *
+   * Mismo chequeo que `crear()`, y por eso la misma `DorsalOcupadoError`: se
+   * busca quién más lo tiene, entre los activos, antes de escribir, para
+   * poder decir *quién* lo tiene -- el índice único de la base también lo
+   * impide, pero su error no sirve para explicárselo a nadie. Se excluye al
+   * propio jugador que se edita: si no, dejarle el mismo dorsal que ya tenía
+   * se rechazaría a sí mismo.
+   *
+   * Igual que en `crear()`, esto es "chequear y después escribir": una
+   * carrera genuina (dos ediciones al mismo tiempo asignando el mismo
+   * dorsal libre) puede colar el error crudo del índice único de la base en
+   * vez de `DorsalOcupadoError` — quien llama debe estar listo para
+   * cualquier error, no solo ese.
+   */
+  async actualizarDorsal(
+    equipoId: string,
+    jugadorId: string,
+    dorsal: number | null,
+  ): Promise<boolean> {
+    if (dorsal !== null) {
+      const ocupado = (await this.listar(equipoId, false)).find(
+        (j) => j.dorsal === dorsal && j.id !== jugadorId,
+      );
+
+      if (ocupado) throw new DorsalOcupadoError(dorsal, ocupado.nombre);
+    }
+
+    return this.actualizarCampos(equipoId, jugadorId, { dorsal });
+  }
+
+  /** El `update ... where jugadorId and equipoId` que comparten todos los `actualizarX`. */
+  private async actualizarCampos(
+    equipoId: string,
+    jugadorId: string,
+    cambios: Partial<
+      Pick<
+        typeof jugadores.$inferInsert,
+        'nombre' | 'dorsal' | 'posicion' | 'fechaNacimiento' | 'pesoKg' | 'estaturaCm'
+      >
+    >,
+  ): Promise<boolean> {
     const filas = await this.db.db
       .update(jugadores)
-      .set(datos)
+      .set(cambios)
       .where(and(eq(jugadores.id, jugadorId), eq(jugadores.equipoId, equipoId)))
       .returning({ id: jugadores.id });
 
@@ -433,88 +486,23 @@ export function parsearJugador(linea: string): JugadorParseado | null {
   return { nombre: soloNombre };
 }
 
+/**
+ * Nombre nuevo para /editarjugador → Nombre: solo el nombre, sin dorsal —
+ * a diferencia de `parsearJugador`, acá el dorsal ya tiene su propio botón.
+ * Mismo criterio contra un número a secas ("10" no es el nombre de nadie).
+ */
+export function parsearNombreJugador(texto: string): string | null {
+  const limpio = texto.trim().replace(/\s+/g, ' ');
+
+  return !limpio || /^\d+$/.test(limpio) ? null : limpio;
+}
+
 /** Varias líneas de una vez: pegar una lista completa también funciona. */
 export function parsearPlantilla(texto: string): JugadorParseado[] {
   return texto
     .split('\n')
     .map((l) => parsearJugador(l))
     .filter((j): j is JugadorParseado => j !== null);
-}
-
-export interface GoleadorParseado {
-  nombre: string;
-  cantidad: number;
-}
-
-/**
- * "Jacob 2, Andrés 1" — cuántos goles metió cada uno, para la carga post
- * partido (RF-4.1: goleadores sin minuto).
- *
- * Reusa `parsearJugador` por segmento separado por comas: la gramática
- * "nombre + número" es la misma que la de la plantilla, solo cambia qué
- * significa el número (cantidad de goles, no dorsal). Sin número se asume
- * un solo gol.
- */
-export function parsearGoleadores(texto: string): GoleadorParseado[] | null {
-  const segmentos = texto
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  if (segmentos.length === 0) return null;
-
-  const goleadores: GoleadorParseado[] = [];
-
-  for (const segmento of segmentos) {
-    const parseado = parsearJugador(segmento);
-
-    if (!parseado) return null;
-
-    goleadores.push({ nombre: parseado.nombre, cantidad: parseado.dorsal ?? 1 });
-  }
-
-  return goleadores;
-}
-
-export interface TarjetaParseada {
-  nombre: string;
-  color: 'amarilla' | 'roja';
-}
-
-const COLORES_TARJETA: Record<string, 'amarilla' | 'roja'> = {
-  amarilla: 'amarilla',
-  amarillas: 'amarilla',
-  roja: 'roja',
-  rojas: 'roja',
-};
-
-/**
- * "Andrés amarilla, Jacob roja" — tarjetas de la carga post partido (RF-4.1:
- * tarjetas sin minuto). Acá el segundo término no es un número, así que no
- * se puede reusar `parsearJugador`: se toma la última palabra como color y
- * el resto como nombre.
- */
-export function parsearTarjetas(texto: string): TarjetaParseada[] | null {
-  const segmentos = texto
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  if (segmentos.length === 0) return null;
-
-  const tarjetas: TarjetaParseada[] = [];
-
-  for (const segmento of segmentos) {
-    const palabras = segmento.split(/\s+/);
-    const color = COLORES_TARJETA[palabras[palabras.length - 1]?.toLowerCase() ?? ''];
-    const nombre = palabras.slice(0, -1).join(' ').trim();
-
-    if (!color || !nombre) return null;
-
-    tarjetas.push({ nombre, color });
-  }
-
-  return tarjetas;
 }
 
 export function describirJugador(jugador: Jugador | JugadorParseado): string {

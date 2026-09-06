@@ -100,6 +100,9 @@ describe('panelEnVivo', () => {
 
     expect(panel.texto).toContain('Tiempo 1 · min 23 · 1-0');
     expect(panel.botones.map((b) => b.id)).toContain('ev:gol');
+    // Los controles se reservan en cada página (no solo en la última): el
+    // panel siempre vuelve a la página 0 después de cada acción, así que
+    // tienen que estar ahí también.
     expect(panel.botones.map((b) => b.id)).toContain('pa:fintiempo');
   });
 
@@ -165,6 +168,8 @@ describe('panelEnVivo', () => {
   });
 
   it('la última página no repite "Ver más"', () => {
+    // Con 4 controles reservados (reloj corriendo, tiempo por arrancar) y 13
+    // eventos, la última página es la 2 (9-4=5 eventos por página: 5+5+3).
     const panel = panelEnVivo({
       partido: partido(),
       equipoNombre: 'Ringo Amaya',

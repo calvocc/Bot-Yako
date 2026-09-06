@@ -29,22 +29,6 @@ export const EVENTOS: readonly DefinicionEvento[] = [
     sustantivo: 'Asistencia',
     admiteRival: false,
   },
-  {
-    tipo: 'tarjeta_amarilla',
-    emoji: '🟨',
-    boton: '🟨 Amarilla',
-    sustantivo: 'Amarilla',
-    admiteRival: false,
-  },
-  {
-    tipo: 'tarjeta_roja',
-    emoji: '🟥',
-    boton: '🟥 Roja',
-    sustantivo: 'Roja',
-    admiteRival: false,
-  },
-  { tipo: 'autogol', emoji: '🙃', boton: '🙃 Autogol', sustantivo: 'Autogol', admiteRival: true },
-  { tipo: 'cambio', emoji: '🔄', boton: '🔄 Cambio', sustantivo: 'Cambio', admiteRival: false },
   // Eventos ampliados para calificar a defensores y arquero (nota por
   // partido, ver puntaje.ts). Siempre requieren jugador propio identificado:
   // ninguno tiene sentido atribuido al rival.
@@ -64,6 +48,8 @@ export const EVENTOS: readonly DefinicionEvento[] = [
     sustantivo: 'Tiro al arco',
     admiteRival: false,
   },
+  { tipo: 'atajada', emoji: '🧤', boton: '🧤 Atajada', sustantivo: 'Atajada', admiteRival: false },
+  { tipo: 'cambio', emoji: '🔄', boton: '🔄 Cambio', sustantivo: 'Cambio', admiteRival: false },
   {
     tipo: 'falta_recibida',
     emoji: '🤕',
@@ -71,7 +57,21 @@ export const EVENTOS: readonly DefinicionEvento[] = [
     sustantivo: 'Falta recibida',
     admiteRival: false,
   },
-  { tipo: 'atajada', emoji: '🧤', boton: '🧤 Atajada', sustantivo: 'Atajada', admiteRival: false },
+  {
+    tipo: 'tarjeta_amarilla',
+    emoji: '🟨',
+    boton: '🟨 Amarilla',
+    sustantivo: 'Amarilla',
+    admiteRival: false,
+  },
+  {
+    tipo: 'tarjeta_roja',
+    emoji: '🟥',
+    boton: '🟥 Roja',
+    sustantivo: 'Roja',
+    admiteRival: false,
+  },
+  { tipo: 'autogol', emoji: '🙃', boton: '🙃 Autogol', sustantivo: 'Autogol', admiteRival: true },
   {
     tipo: 'penal_atajado',
     emoji: '🥅',

@@ -18,6 +18,80 @@ export class AlineacionService {
   }
 
   /**
+   * Si ya se eligió titular para este partido, sin importar el modo de
+   * carga ni si ya arrancó.
+   *
+   * Es el gate de `cargar.flujo.ts` para ofrecer "En vivo"/"Post partido":
+   * elegir titular ya no arranca el partido por sí sola, así que hace falta
+   * poder preguntar "¿ya hay titular?" por separado de "¿ya arrancó?".
+   */
+  async hayTitulares(partidoId: string, tx?: EjecutorDb): Promise<boolean> {
+    const [fila] = await (tx ?? this.db.db)
+      .select({ jugadorId: partidoTitulares.jugadorId })
+      .from(partidoTitulares)
+      .where(eq(partidoTitulares.partidoId, partidoId))
+      .limit(1);
+
+    return fila !== undefined;
+  }
+
+  /**
+   * Guarda la titular sin arrancar el partido, reemplazando lo que hubiera.
+   *
+   * A propósito separado de `TiemposService.iniciarEnVivo`: elegir titular
+   * tiene que poder hacerse en cualquier momento —incluso antes de decidir
+   * si se carga en vivo o post partido—, sin que eso dispare el arranque.
+   * Reemplaza en vez de sumar (borra lo guardado antes y vuelve a insertar)
+   * porque, a diferencia de cuando esto vivía en la misma transacción que
+   * `iniciarEnVivo` bajo el lock de la fila del partido, ya no hay nada que
+   * serialice dos confirmaciones para el mismo partido: con un `insert`
+   * aditivo, dos papás confirmando titulares distintas (o alguien
+   * corrigiendo su propia elección) terminarían mezclando ambas listas en
+   * `partido_titulares` en vez de que la última reemplace a la anterior.
+   */
+  async guardarTitulares(
+    partidoId: string,
+    usuarioId: string,
+    titularesIds: readonly string[],
+    tx?: EjecutorDb,
+  ): Promise<void> {
+    if (titularesIds.length === 0) return;
+
+    const valores = titularesIds.map((jugadorId) => ({
+      partidoId,
+      jugadorId,
+      creadoPor: usuarioId,
+    }));
+
+    if (tx) {
+      await tx.delete(partidoTitulares).where(eq(partidoTitulares.partidoId, partidoId));
+      await tx.insert(partidoTitulares).values(valores);
+
+      return;
+    }
+
+    await this.db.db.transaction(async (t) => {
+      await t.delete(partidoTitulares).where(eq(partidoTitulares.partidoId, partidoId));
+      await t.insert(partidoTitulares).values(valores);
+    });
+  }
+
+  /**
+   * Borra la titular guardada, si la hay.
+   *
+   * La usa `TiemposService.iniciarPostPartido`: post partido no mide minutos
+   * jugados, así que no tiene sentido dejar colgada una titular que alguien
+   * eligió con "👥 Elegir titular" y después no terminó usando -- quedaría
+   * contaminando `datosDeParticipacion` y, con eso, las notas del resumen
+   * con jugadores que quizás nunca tuvieron un evento en esa carga.
+   */
+  async borrarTitulares(partidoId: string, tx?: EjecutorDb): Promise<void> {
+    await (tx ?? this.db.db)
+      .delete(partidoTitulares)
+      .where(eq(partidoTitulares.partidoId, partidoId));
+  }
+
+  /**
    * Quién sigue en cancha ahora mismo.
    *
    * Vacío significa dos cosas distintas según quien llama: "todavía no se

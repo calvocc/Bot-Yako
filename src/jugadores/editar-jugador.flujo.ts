@@ -11,8 +11,19 @@ import { leerNumero, leerTexto } from '../conversacion/flow.types';
 import { MembresiasService } from '../identidad/membresias.service';
 import { textos as textosComunes } from '../textos/comunes';
 import { textos } from '../textos/jugadores';
-import { parsearEstatura, parsearFechaNacimiento, parsearPeso } from './datos-fisicos';
-import { describirJugador, JugadoresService, type Jugador } from './jugadores.service';
+import {
+  parsearDorsal,
+  parsearEstatura,
+  parsearFechaNacimiento,
+  parsearPeso,
+} from './datos-fisicos';
+import {
+  describirJugador,
+  DorsalOcupadoError,
+  JugadoresService,
+  parsearNombreJugador,
+  type Jugador,
+} from './jugadores.service';
 import { esPosicion, ETIQUETA_POSICION, POSICIONES } from './posicion';
 
 export const FLUJO_EDITAR_JUGADOR = 'editar-jugador';
@@ -21,6 +32,8 @@ const PASOS = {
   equipo: 'equipo',
   jugador: 'jugador',
   menu: 'menu',
+  nombre: 'nombre',
+  dorsal: 'dorsal',
   posicion: 'posicion',
   fechaNacimiento: 'fecha-nacimiento',
   peso: 'peso',
@@ -29,11 +42,28 @@ const PASOS = {
 
 const PREFIJO_JUGADOR = 'ej:j:';
 const PREFIJO_POSICION = 'ej:p:';
+const OPCION_NOMBRE = 'ej:m:nombre';
+const OPCION_DORSAL = 'ej:m:dorsal';
 const OPCION_POSICION = 'ej:m:posicion';
 const OPCION_FECHA = 'ej:m:fecha';
 const OPCION_PESO = 'ej:m:peso';
 const OPCION_ESTATURA = 'ej:m:estatura';
 const OPCION_LISTO = 'ej:m:listo';
+
+/**
+ * "ninguno"/"ninguna", explícito: deja al jugador sin dorsal.
+ *
+ * A propósito no incluye el texto vacío: un mensaje sin `texto` también
+ * puede ser la entrega tardía de un tap de botón viejo (`seleccionId` sin
+ * `texto`), y tratar ESO como "ninguno" borraría el dorsal de alguien sin
+ * que nadie haya escrito nada. Vacío se rechaza como cualquier otra entrada
+ * no reconocida, igual que en `pasoNombre`/`pasoFechaNacimiento`/`pasoPeso`.
+ */
+function pideDejarSinDorsal(texto: string): boolean {
+  const limpio = texto.trim().toLowerCase();
+
+  return limpio === 'ninguno' || limpio === 'ninguna';
+}
 
 const CLAVE_JUGADOR_ID = 'jugadorId';
 const CLAVE_PAGINA = 'paginaJugadores';
@@ -46,11 +76,11 @@ const BOTONES_POSICION: Boton[] = POSICIONES.map((p) => ({
 }));
 
 /**
- * `/editarjugador`: posición y datos básicos (fecha de nacimiento, peso,
- * estatura), en un menú al que se vuelve después de cada dato -- mismo
- * patrón conversacional que `PlantillaFlujo` (selector de equipo → elegir
- * jugador → acción), con `rolMinimo: 'editor'` porque acá, a diferencia de
- * `/plantilla`, no hay nada que un viewer venga a solo mirar.
+ * `/editarjugador`: nombre, dorsal, posición y datos básicos (fecha de
+ * nacimiento, peso, estatura), en un menú al que se vuelve después de cada
+ * dato -- mismo patrón conversacional que `PlantillaFlujo` (selector de
+ * equipo → elegir jugador → acción), con `rolMinimo: 'editor'` porque acá, a
+ * diferencia de `/plantilla`, no hay nada que un viewer venga a solo mirar.
  */
 @Injectable()
 export class EditarJugadorFlujo {
@@ -71,6 +101,8 @@ export class EditarJugadorFlujo {
         }),
         this.pasoJugador(),
         this.pasoMenu(),
+        this.pasoNombre(),
+        this.pasoDorsal(),
         this.pasoPosicion(),
         this.pasoFechaNacimiento(),
         this.pasoPeso(),
@@ -131,6 +163,8 @@ export class EditarJugadorFlujo {
 
   private pasoMenu(): Paso {
     const botones: Boton[] = [
+      { id: OPCION_NOMBRE, texto: textos.editar.botonNombre },
+      { id: OPCION_DORSAL, texto: textos.editar.botonDorsal },
       { id: OPCION_POSICION, texto: textos.editar.botonPosicion },
       { id: OPCION_FECHA, texto: textos.editar.botonFechaNacimiento },
       { id: OPCION_PESO, texto: textos.editar.botonPeso },
@@ -167,6 +201,8 @@ export class EditarJugadorFlujo {
 
         const seleccion = ctx.mensaje.seleccionId ?? '';
 
+        if (seleccion === OPCION_NOMBRE) return { tipo: 'ir', pasoId: PASOS.nombre };
+        if (seleccion === OPCION_DORSAL) return { tipo: 'ir', pasoId: PASOS.dorsal };
         if (seleccion === OPCION_POSICION) return { tipo: 'ir', pasoId: PASOS.posicion };
         if (seleccion === OPCION_FECHA) return { tipo: 'ir', pasoId: PASOS.fechaNacimiento };
         if (seleccion === OPCION_PESO) return { tipo: 'ir', pasoId: PASOS.peso };
@@ -177,6 +213,80 @@ export class EditarJugadorFlujo {
         }
 
         return { tipo: 'repetir', respuesta: preguntar(ctx, jugador) };
+      },
+    };
+  }
+
+  // --- Nombre y dorsal: texto libre validado -------------------------------
+
+  private pasoNombre(): Paso {
+    const preguntar = (): RespuestaBot => ({ texto: textos.editar.nombre.pregunta() });
+
+    return {
+      id: PASOS.nombre,
+
+      entrar: () => Promise.resolve({ respuesta: preguntar() }),
+
+      recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
+        const nombre = parsearNombreJugador(ctx.mensaje.texto ?? '');
+
+        if (nombre === null) {
+          return { tipo: 'repetir', respuesta: { texto: textos.editar.nombre.invalido() } };
+        }
+
+        if (!(await this.puedeEditar(ctx))) return this.sinPermiso();
+
+        await this.jugadores.actualizarNombre(
+          leerTexto(ctx.datos, CLAVE_EQUIPO_ID),
+          leerTexto(ctx.datos, CLAVE_JUGADOR_ID),
+          nombre,
+        );
+
+        return this.alMenuConAviso();
+      },
+    };
+  }
+
+  private pasoDorsal(): Paso {
+    const preguntar = (): RespuestaBot => ({ texto: textos.editar.dorsal.pregunta() });
+
+    return {
+      id: PASOS.dorsal,
+
+      entrar: () => Promise.resolve({ respuesta: preguntar() }),
+
+      recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
+        const escrito = ctx.mensaje.texto ?? '';
+        const sinDorsal = pideDejarSinDorsal(escrito);
+        const dorsal = sinDorsal ? null : parsearDorsal(escrito);
+
+        if (!sinDorsal && dorsal === null) {
+          return { tipo: 'repetir', respuesta: { texto: textos.editar.dorsal.invalido() } };
+        }
+
+        if (!(await this.puedeEditar(ctx))) return this.sinPermiso();
+
+        try {
+          await this.jugadores.actualizarDorsal(
+            leerTexto(ctx.datos, CLAVE_EQUIPO_ID),
+            leerTexto(ctx.datos, CLAVE_JUGADOR_ID),
+            dorsal,
+          );
+        } catch (error) {
+          // No solo `DorsalOcupadoError`: si dos ediciones chocan justo
+          // entre el chequeo y la escritura (mismo dorsal libre, casi al
+          // mismo tiempo), lo que llega es el error crudo del índice único
+          // de la base, no la excepción propia. Sin este fallback, ese
+          // error se propagaba sin manejar en vez de pedir reintentar.
+          const mensaje =
+            error instanceof DorsalOcupadoError
+              ? textos.editar.dorsal.ocupado(error.message)
+              : textos.editar.dorsal.noGuardado();
+
+          return { tipo: 'repetir', respuesta: { texto: mensaje } };
+        }
+
+        return this.alMenuConAviso();
       },
     };
   }

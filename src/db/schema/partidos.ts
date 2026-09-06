@@ -101,8 +101,10 @@ export const partidoTiempos = pgTable(
  *
  * Es la única forma de que el minuto jugado por niño sea confiable — sin
  * saber quién estaba en cancha, un gol es de "alguien de la plantilla", no de
- * quien realmente lo jugó. Se exige al menos una fila antes de dejar arrancar
- * el partido en vivo (`TiemposService.iniciarEnVivo`).
+ * quien realmente lo jugó. Se puede guardar en cualquier momento, sin que eso
+ * arranque nada (`AlineacionService.guardarTitulares`), pero se exige al
+ * menos una fila antes de dejar arrancar el partido en vivo
+ * (`TiemposService.iniciarEnVivo`).
  *
  * Quién sigue en cancha en un momento dado no se guarda acá: se deriva de
  * esta lista más los eventos `cambio` no deshechos, en `alineacion.ts` — el

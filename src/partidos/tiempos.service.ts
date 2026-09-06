@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import { DbService, type EjecutorDb } from '../db/db.service';
-import { partidoTiempos, partidos, partidoTitulares, usuarios } from '../db/schema';
+import { partidoTiempos, partidos, usuarios } from '../db/schema';
+import { AlineacionService } from './alineacion.service';
 import { calcularMinuto, type Minuto, type TiempoJugado } from './minuto';
 import { mapearPartido, type Partido } from './partido.mapper';
 
@@ -57,20 +58,26 @@ export type ResultadoFinTiempo =
  */
 @Injectable()
 export class TiemposService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly alineacion: AlineacionService,
+  ) {}
 
   /**
-   * Pasa el partido a modo en vivo y arranca el Tiempo 1, todo junto.
+   * Pasa el partido a modo en vivo y arranca el Tiempo 1.
    *
-   * La titular se escribe en la misma transacción que el arranque: así no
-   * hay ventana donde el partido ya esté "en vivo" pero sin nadie en cancha
-   * todavía, ni riesgo de que dos papás eligiendo titular a la vez terminen
-   * mezclando sus dos listas en una.
+   * La titular normalmente ya se guardó antes, sin arrancar nada
+   * (`AlineacionService.guardarTitulares`, vía el paso `titulares` del
+   * flujo): elegirla no dispara el arranque por sí sola. `titularesIds`
+   * sigue existiendo para quien llama a esto directamente (tests, scripts):
+   * si viene con datos, `guardarTitulares` los deja guardados (reemplazando
+   * cualquier selección previa) antes de arrancar; no hace falta chequear
+   * si la lista viene vacía, `guardarTitulares` ya no hace nada en ese caso.
    */
   async iniciarEnVivo(
     partidoId: string,
     usuarioId: string,
-    titularesIds: readonly string[],
+    titularesIds: readonly string[] = [],
   ): Promise<ResultadoInicio> {
     return this.db.db.transaction(async (tx) => {
       const partido = await this.bloquear(tx, partidoId);
@@ -82,19 +89,13 @@ export class TiemposService {
         return { tipo: 'ya_en_vivo' as const, partido };
       }
 
-      if (titularesIds.length === 0) {
+      await this.alineacion.guardarTitulares(partidoId, usuarioId, titularesIds, tx);
+
+      if (!(await this.alineacion.hayTitulares(partidoId, tx))) {
         return { tipo: 'sin_titulares' as const, partido };
       }
 
       const ahora = new Date();
-
-      await tx.insert(partidoTitulares).values(
-        titularesIds.map((jugadorId) => ({
-          partidoId,
-          jugadorId,
-          creadoPor: usuarioId,
-        })),
-      );
 
       await tx.insert(partidoTiempos).values({
         partidoId,
@@ -139,6 +140,13 @@ export class TiemposService {
       if (partido.modoCarga !== null) {
         return { tipo: 'ya_tiene_modo' as const, partido };
       }
+
+      // Post partido no mide minutos jugados, así que no necesita titular
+      // para nada -- pero alguien pudo haber elegido una con "👥 Elegir
+      // titular" y cambiado de opinión. Sin este borrado, esa titular
+      // huérfana quedaría contaminando las notas del resumen con jugadores
+      // que quizás nunca tuvieron un evento en esta carga.
+      await this.alineacion.borrarTitulares(partidoId, tx);
 
       const [fila] = await tx
         .update(partidos)
