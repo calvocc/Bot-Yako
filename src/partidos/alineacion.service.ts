@@ -18,6 +18,47 @@ export class AlineacionService {
   }
 
   /**
+   * Si ya se eligió titular para este partido, sin importar el modo de
+   * carga ni si ya arrancó.
+   *
+   * Es el gate de `cargar.flujo.ts` para ofrecer "En vivo"/"Post partido":
+   * elegir titular ya no arranca el partido por sí sola, así que hace falta
+   * poder preguntar "¿ya hay titular?" por separado de "¿ya arrancó?".
+   */
+  async hayTitulares(partidoId: string, tx?: EjecutorDb): Promise<boolean> {
+    const [fila] = await (tx ?? this.db.db)
+      .select({ jugadorId: partidoTitulares.jugadorId })
+      .from(partidoTitulares)
+      .where(eq(partidoTitulares.partidoId, partidoId))
+      .limit(1);
+
+    return fila !== undefined;
+  }
+
+  /**
+   * Guarda la titular sin arrancar el partido.
+   *
+   * A propósito separado de `TiemposService.iniciarEnVivo`: elegir titular
+   * tiene que poder hacerse en cualquier momento —incluso antes de decidir
+   * si se carga en vivo o post partido—, sin que eso dispare el arranque.
+   * `onConflictDoNothing` cubre que dos personas la elijan a la vez, o que
+   * alguien la vuelva a confirmar sin querer.
+   */
+  async guardarTitulares(
+    partidoId: string,
+    usuarioId: string,
+    titularesIds: readonly string[],
+    tx?: EjecutorDb,
+  ): Promise<void> {
+    if (titularesIds.length === 0) return;
+
+    await (tx ?? this.db.db)
+      .insert(partidoTitulares)
+      .values(titularesIds.map((jugadorId) => ({ partidoId, jugadorId, creadoPor: usuarioId })))
+      .onConflictDoNothing();
+  }
+
+  /**
    * Quién sigue en cancha ahora mismo.
    *
    * Vacío significa dos cosas distintas según quien llama: "todavía no se

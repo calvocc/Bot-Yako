@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import { DbService, type EjecutorDb } from '../db/db.service';
-import { partidoTiempos, partidos, partidoTitulares, usuarios } from '../db/schema';
+import { partidoTiempos, partidos, usuarios } from '../db/schema';
+import { AlineacionService } from './alineacion.service';
 import { calcularMinuto, type Minuto, type TiempoJugado } from './minuto';
 import { mapearPartido, type Partido } from './partido.mapper';
 
@@ -57,20 +58,25 @@ export type ResultadoFinTiempo =
  */
 @Injectable()
 export class TiemposService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly alineacion: AlineacionService,
+  ) {}
 
   /**
-   * Pasa el partido a modo en vivo y arranca el Tiempo 1, todo junto.
+   * Pasa el partido a modo en vivo y arranca el Tiempo 1.
    *
-   * La titular se escribe en la misma transacción que el arranque: así no
-   * hay ventana donde el partido ya esté "en vivo" pero sin nadie en cancha
-   * todavía, ni riesgo de que dos papás eligiendo titular a la vez terminen
-   * mezclando sus dos listas en una.
+   * La titular normalmente ya se guardó antes, sin arrancar nada
+   * (`AlineacionService.guardarTitulares`, vía el paso `titulares` del
+   * flujo): elegirla no dispara el arranque por sí sola. `titularesIds`
+   * sigue existiendo para quien llama a esto directamente (tests, scripts):
+   * si viene con datos, se guarda igual antes de arrancar —
+   * `guardarTitulares` no duplica si ya estaba.
    */
   async iniciarEnVivo(
     partidoId: string,
     usuarioId: string,
-    titularesIds: readonly string[],
+    titularesIds: readonly string[] = [],
   ): Promise<ResultadoInicio> {
     return this.db.db.transaction(async (tx) => {
       const partido = await this.bloquear(tx, partidoId);
@@ -82,19 +88,15 @@ export class TiemposService {
         return { tipo: 'ya_en_vivo' as const, partido };
       }
 
-      if (titularesIds.length === 0) {
+      if (titularesIds.length > 0) {
+        await this.alineacion.guardarTitulares(partidoId, usuarioId, titularesIds, tx);
+      }
+
+      if (!(await this.alineacion.hayTitulares(partidoId, tx))) {
         return { tipo: 'sin_titulares' as const, partido };
       }
 
       const ahora = new Date();
-
-      await tx.insert(partidoTitulares).values(
-        titularesIds.map((jugadorId) => ({
-          partidoId,
-          jugadorId,
-          creadoPor: usuarioId,
-        })),
-      );
 
       await tx.insert(partidoTiempos).values({
         partidoId,
