@@ -148,6 +148,26 @@ export class JugadoresService {
   }
 
   /**
+   * Busca un jugador por nombre exacto (activos e inactivos) en la plantilla
+   * de un equipo, sin el respaldo por dorsal que sí usa `buscarEnEquipo`.
+   *
+   * Ese respaldo asume que un dorsal ya conocido es la misma persona escrita
+   * distinto -- válido en la carga interactiva (`cargar.flujo.ts`), donde se
+   * resuelve un jugador a la vez. En el alta en lote de `/plantilla` no vale:
+   * ahí puede pegarse "Jacob, 10" y "Otro, 10" en el mismo lote, y esos dos
+   * nombres distintos pidiendo el mismo dorsal es una colisión real, no la
+   * misma persona -- confundirlos haría que `altaEnLote` tratara a "Otro"
+   * como si ya existiera (con el nombre de Jacob) en vez de dejar que el
+   * chequeo de dorsal de `crear()` la señale como el conflicto que es.
+   */
+  async buscarPorNombreEnEquipo(equipoId: string, nombre: string): Promise<Jugador | null> {
+    const plantilla = await this.listar(equipoId, true);
+    const buscado = nombre.trim().toLowerCase();
+
+    return plantilla.find((j) => j.nombre.toLowerCase() === buscado) ?? null;
+  }
+
+  /**
    * Busca un jugador por nombre y, si no está en la plantilla, lo da de alta.
    *
    * Es lo que hace falta al borde de la cancha: aparece alguien que nadie

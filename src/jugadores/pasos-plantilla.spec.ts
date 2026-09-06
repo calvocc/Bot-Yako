@@ -10,8 +10,17 @@ const crear = jest
     Promise.resolve({ id: 'j1', nombre, dorsal: dorsal ?? null, activo: true }),
   );
 const buscarVariosEnAcademia = jest.fn().mockResolvedValue([]);
+// Sin nadie ya en la plantilla por defecto: los tests que sí lo necesitan
+// pisan este mock puntualmente.
+const buscarPorNombreEnEquipo = jest.fn().mockResolvedValue(null);
+const reactivar = jest.fn().mockResolvedValue(true);
 
-const jugadoresFalsos = { crear, buscarVariosEnAcademia } as unknown as JugadoresService;
+const jugadoresFalsos = {
+  crear,
+  buscarVariosEnAcademia,
+  buscarPorNombreEnEquipo,
+  reactivar,
+} as unknown as JugadoresService;
 
 // Sin academia (equipo desconocido en este equipo falso): el paso no debe
 // intentar el aviso de duplicado, solo el alta normal.
@@ -89,6 +98,8 @@ describe('pasoCargarPlantilla', () => {
     const jugadoresConMatch = {
       crear,
       buscarVariosEnAcademia: buscarVariosEnAcademiaConMatch,
+      buscarPorNombreEnEquipo,
+      reactivar,
     } as unknown as JugadoresService;
 
     const paso2 = pasoCargarPlantilla('plantilla', jugadoresConMatch, equiposConAcademia, {
@@ -106,5 +117,39 @@ describe('pasoCargarPlantilla', () => {
     expect(t.respuesta.texto).toContain('Sub-9');
     // El aviso no bloquea el alta: el jugador queda agregado igual.
     expect(t.respuesta.texto).toContain('✅');
+  });
+
+  it('no crea de nuevo a alguien que ya está en la plantilla de este equipo', async () => {
+    buscarPorNombreEnEquipo.mockResolvedValue({
+      id: 'jExistente',
+      nombre: 'Jacob',
+      dorsal: 10,
+      activo: true,
+    });
+
+    const t = await decir('Jacob, 10');
+
+    expect(crear).not.toHaveBeenCalled();
+    expect(reactivar).not.toHaveBeenCalled();
+    if (t.tipo !== 'repetir') throw new Error('esperaba repetir');
+    expect(t.respuesta.texto).toContain('Jacob #10 ya estaba en la plantilla');
+  });
+
+  it('reactiva, en vez de duplicar, a alguien que estaba de baja en este equipo', async () => {
+    buscarPorNombreEnEquipo.mockResolvedValue({
+      id: 'jBaja',
+      nombre: 'Jacob',
+      dorsal: 10,
+      activo: false,
+    });
+
+    const t = await decir('Jacob, 10');
+
+    expect(crear).not.toHaveBeenCalled();
+    expect(reactivar).toHaveBeenCalledWith('eq1', 'jBaja');
+    if (t.tipo !== 'repetir') throw new Error('esperaba repetir');
+    expect(t.respuesta.texto).toContain('Jacob #10 estaba de baja');
+    // Reactivar sí cuenta para el total, aunque no sea una ficha nueva.
+    expect(t.datos?.[CLAVE_ALTAS]).toBe(1);
   });
 });
