@@ -52,11 +52,10 @@ export function panelEnVivo(estado: EstadoPanel): { texto: string; botones: Boto
       : descripcionSinReloj(partido);
 
   const lineas = [aviso, encabezado, `${reloj} · ${describirMarcador(partido)}`].filter(Boolean);
-  const controles = botonesDeControl(partido);
 
   return {
     texto: lineas.join('\n'),
-    botones: [...botonesDeEvento(paginaEventos, controles.length), ...controles],
+    botones: botonesDelPanel(paginaEventos, botonesDeControl(partido)),
   };
 }
 
@@ -69,21 +68,28 @@ function descripcionSinReloj(partido: Partido): string {
 }
 
 /**
- * Los botones de evento de una página, con "Ver más" si sobran.
+ * Todos los botones del panel (eventos + controles) como una sola lista
+ * paginable.
  *
- * `reservar` son los botones que `panelEnVivo` agrega aparte (los de
- * control, 3 o 4 según el estado del partido): sin descontarlos acá, una
- * página llena de eventos más los controles se pasa de las 10 filas que
- * admite WhatsApp.
+ * Los controles van al final de la lista en vez de reservarles espacio en
+ * cada página: así solo aparecen en la última —cuando ya no queda ningún
+ * evento por mostrar— y las páginas anteriores aprovechan las 9 filas
+ * completas para eventos, que es lo que se toca todo el partido.
  */
-export function botonesDeEvento(pagina: number, reservar: number): Boton[] {
-  const { botones } = botonesPaginados(
-    EVENTOS.map((e) => ({ id: `${PREFIJO_EVENTO}${e.tipo}`, texto: e.boton })),
-    pagina,
-    reservar,
-  );
+export function botonesDelPanel(pagina: number, controles: readonly Boton[]): Boton[] {
+  const opciones = [
+    ...EVENTOS.map((e) => ({ id: `${PREFIJO_EVENTO}${e.tipo}`, texto: e.boton })),
+    ...controles,
+  ];
+
+  const { botones } = botonesPaginados(opciones, pagina);
 
   return botones;
+}
+
+/** Cuántas opciones (eventos + controles) tiene el panel en total, para paginar. */
+export function cantidadOpcionesDelPanel(controles: readonly Boton[]): number {
+  return EVENTOS.length + controles.length;
 }
 
 export function botonesDeControl(partido: Partido): Boton[] {

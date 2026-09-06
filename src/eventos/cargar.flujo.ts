@@ -39,7 +39,7 @@ import { PartidosService } from '../partidos/partidos.service';
 import { TiemposService, type ResultadoFinTiempo } from '../partidos/tiempos.service';
 import { ResumenService } from '../resumen/resumen.service';
 import { segundosDesde } from './dedup';
-import { admiteEquipoRival, esTipoDeEvento, EVENTOS } from './evento.tipos';
+import { admiteEquipoRival, esTipoDeEvento } from './evento.tipos';
 import { EventosService, type SolicitudEvento } from './eventos.service';
 import {
   type GanchosPostPartido,
@@ -50,6 +50,7 @@ import {
   avisoDeDuplicado,
   botonesDeControl,
   botonesDeOrigen,
+  cantidadOpcionesDelPanel,
   ID_DESHACER,
   ID_ES_OTRO,
   ID_FINALIZAR_PARTIDO,
@@ -496,10 +497,10 @@ export class CargarFlujo {
 
           if (!partido) return this.partidoPerdido();
 
-          const reservar = botonesDeControl(partido).length;
+          const cantidad = cantidadOpcionesDelPanel(botonesDeControl(partido));
           const pagina = leerNumero(ctx.datos, CLAVE_PAGINA_EVENTOS, 0);
 
-          ctx.datos[CLAVE_PAGINA_EVENTOS] = paginaSiguiente(pagina, EVENTOS.length, reservar);
+          ctx.datos[CLAVE_PAGINA_EVENTOS] = paginaSiguiente(pagina, cantidad);
 
           const respuesta = await this.dibujarPanel(ctx);
 
