@@ -70,8 +70,9 @@ export class TiemposService {
    * (`AlineacionService.guardarTitulares`, vía el paso `titulares` del
    * flujo): elegirla no dispara el arranque por sí sola. `titularesIds`
    * sigue existiendo para quien llama a esto directamente (tests, scripts):
-   * si viene con datos, se guarda igual antes de arrancar —
-   * `guardarTitulares` no duplica si ya estaba.
+   * si viene con datos, `guardarTitulares` los deja guardados (reemplazando
+   * cualquier selección previa) antes de arrancar; no hace falta chequear
+   * si la lista viene vacía, `guardarTitulares` ya no hace nada en ese caso.
    */
   async iniciarEnVivo(
     partidoId: string,
@@ -88,9 +89,7 @@ export class TiemposService {
         return { tipo: 'ya_en_vivo' as const, partido };
       }
 
-      if (titularesIds.length > 0) {
-        await this.alineacion.guardarTitulares(partidoId, usuarioId, titularesIds, tx);
-      }
+      await this.alineacion.guardarTitulares(partidoId, usuarioId, titularesIds, tx);
 
       if (!(await this.alineacion.hayTitulares(partidoId, tx))) {
         return { tipo: 'sin_titulares' as const, partido };
@@ -141,6 +140,13 @@ export class TiemposService {
       if (partido.modoCarga !== null) {
         return { tipo: 'ya_tiene_modo' as const, partido };
       }
+
+      // Post partido no mide minutos jugados, así que no necesita titular
+      // para nada -- pero alguien pudo haber elegido una con "👥 Elegir
+      // titular" y cambiado de opinión. Sin este borrado, esa titular
+      // huérfana quedaría contaminando las notas del resumen con jugadores
+      // que quizás nunca tuvieron un evento en esta carga.
+      await this.alineacion.borrarTitulares(partidoId, tx);
 
       const [fila] = await tx
         .update(partidos)

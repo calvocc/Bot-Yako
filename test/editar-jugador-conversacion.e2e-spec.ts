@@ -229,6 +229,30 @@ describe('Editar jugador: nombre, dorsal y datos básicos (e2e)', () => {
     expect(fila.dorsal).toBeNull();
   });
 
+  it('un mensaje sin texto en el paso de dorsal no lo borra en silencio', async () => {
+    const { admin, equipo } = await escenario('Dorsal sin texto');
+    const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
+
+    const decir = (texto: string) => procesador.procesar(textoDePrueba(texto, admin));
+    const tocar = (id: string) => procesador.procesar(seleccionDePrueba(id, admin));
+
+    await decir('/editarjugador');
+    await tocar(`ej:j:${jacob.id}`);
+    await tocar('ej:m:dorsal');
+
+    // Un tap de botón (sin `texto`, solo `seleccionId`) llegando de rebote
+    // mientras el flujo espera el dorsal -- por ejemplo la entrega tardía
+    // de un botón viejo -- no es lo mismo que escribir "ninguno": no debe
+    // borrar el dorsal existente.
+    await tocar('cualquier-boton-viejo');
+    expect(adaptador.ultimoTexto).toContain('Ese dorsal no me cuadra');
+
+    const [fila] = await db.db.execute<{ dorsal: number | null }>(
+      sql`select dorsal from jugadores where id = ${jacob.id}`,
+    );
+    expect(fila.dorsal).toBe(10);
+  });
+
   it('no permite editar a quien perdió el rol de editor entre el menú y el guardado', async () => {
     const { admin, equipo } = await escenario('Sin permiso');
     const jacob = await jugadores.crear(equipo.id, 'Jacob Restrepo', 10);

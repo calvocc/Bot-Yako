@@ -421,6 +421,59 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     expect(partido.modoCarga).toBeNull();
   });
 
+  it('no deja elegir titular a quien perdió el rol de editor', async () => {
+    const { equipo, usuarioId, decir, tocar } = await escenario('Sin permiso elegir titular');
+    await crearPartido(equipo.id);
+
+    await decir('/cargar');
+
+    // El rol se revoca justo antes de tocar "Elegir titular" -- mismo
+    // patrón de revalidación que el resto del flujo.
+    await db.db.execute(
+      sql`delete from usuarios_equipos where equipo_id = ${equipo.id} and usuario_id = ${usuarioId}`,
+    );
+
+    await tocar('md:titular');
+    expect(adaptador.ultimoTexto).toContain('Ya no tienes permiso');
+
+    const partido = (await partidos.abiertosDe(equipo.id))[0];
+    expect(partido.modoCarga).toBeNull();
+
+    const [{ n }] = await db.db.execute<{ n: number }>(
+      sql`select count(*)::int as n from partido_titulares where partido_id = ${partido.id}`,
+    );
+    expect(n).toBe(0);
+  });
+
+  it('no deja confirmar la titular a quien perdió el rol entre elegir y confirmar', async () => {
+    const { equipo, usuarioId, decir, tocar } = await escenario('Sin permiso confirmar titular');
+    await crearPartido(equipo.id);
+
+    await decir('/cargar');
+    await tocar('md:titular');
+
+    const jacob = adaptador.ultimosBotones.find((b) => b.texto.startsWith('Jacob'));
+    await tocar(jacob!.id);
+
+    // El rol se revoca justo antes de confirmar -- la escritura de
+    // `guardarTitulares` tiene que revalidar, igual que cualquier otro paso
+    // que escribe.
+    await db.db.execute(
+      sql`delete from usuarios_equipos where equipo_id = ${equipo.id} and usuario_id = ${usuarioId}`,
+    );
+
+    await tocar('sm:listo');
+    expect(adaptador.ultimoTexto).toContain('Ya no tienes permiso');
+
+    const partido = (await partidos.abiertosDe(equipo.id))[0];
+    expect(partido.modoCarga).toBeNull();
+
+    const [{ n }] = await db.db.execute<{ n: number }>(
+      sql`select count(*)::int as n from partido_titulares where partido_id = ${partido.id}`,
+    );
+    expect(n).toBe(0);
+  });
+
   it('elegir la titular edita el mismo mensaje en vez de apilar uno por jugador', async () => {
     const { equipo, decir, tocar } = await escenario('Titular sin apilar');
     await crearPartido(equipo.id);
@@ -678,6 +731,32 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
 
       const plantilla = await jugadores.listar(equipo.id);
       expect(plantilla.map((j) => j.nombre)).toContain('Samuel');
+    });
+
+    it('no da de alta a nadie en "Otro jugador" de tarjetas a quien perdió el rol', async () => {
+      const { equipo, usuarioId, decir, tocar } = await escenario(
+        'Post partido sin permiso tarjeta',
+      );
+      await crearPartido(equipo.id);
+
+      await decir('/cargar');
+      await tocar('md:post');
+      await tocar('pp:golesListo');
+      await tocar('pp:otro');
+      expect(adaptador.ultimoTexto).toContain('Escribe el nombre de quien vio la tarjeta');
+
+      // El rol se revoca justo antes de escribir el nombre -- mismo chequeo
+      // que ya hace el "Otro jugador" de goleadores antes de crear al
+      // jugador nuevo.
+      await db.db.execute(
+        sql`delete from usuarios_equipos where equipo_id = ${equipo.id} and usuario_id = ${usuarioId}`,
+      );
+
+      await decir('Samuel, 4');
+      expect(adaptador.ultimoTexto).toContain('Ya no tienes permiso');
+
+      const plantilla = await jugadores.listar(equipo.id, true);
+      expect(plantilla.map((j) => j.nombre)).not.toContain('Samuel');
     });
 
     it('"Corregir todo" borra lo cargado y deja empezar de nuevo', async () => {

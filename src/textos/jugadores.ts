@@ -70,6 +70,7 @@ export const textos = {
       pregunta: () => 'Nuevo dorsal (un número entre 0 y 99), o "ninguno" si no debería tener:',
       invalido: () => 'Ese dorsal no me cuadra. Escribe un número entre 0 y 99, o "ninguno".',
       ocupado: (mensaje: string) => `${mensaje}. Elige otro, o "ninguno".`,
+      noGuardado: () => 'No pude guardar el dorsal. Intenta de nuevo.',
     },
 
     posicion: {

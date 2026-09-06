@@ -50,11 +50,19 @@ const OPCION_PESO = 'ej:m:peso';
 const OPCION_ESTATURA = 'ej:m:estatura';
 const OPCION_LISTO = 'ej:m:listo';
 
-/** "ninguno"/"ninguna", o vacío: deja al jugador sin dorsal. */
+/**
+ * "ninguno"/"ninguna", explícito: deja al jugador sin dorsal.
+ *
+ * A propósito no incluye el texto vacío: un mensaje sin `texto` también
+ * puede ser la entrega tardía de un tap de botón viejo (`seleccionId` sin
+ * `texto`), y tratar ESO como "ninguno" borraría el dorsal de alguien sin
+ * que nadie haya escrito nada. Vacío se rechaza como cualquier otra entrada
+ * no reconocida, igual que en `pasoNombre`/`pasoFechaNacimiento`/`pasoPeso`.
+ */
 function pideDejarSinDorsal(texto: string): boolean {
   const limpio = texto.trim().toLowerCase();
 
-  return limpio === '' || limpio === 'ninguno' || limpio === 'ninguna';
+  return limpio === 'ninguno' || limpio === 'ninguna';
 }
 
 const CLAVE_JUGADOR_ID = 'jugadorId';
@@ -265,12 +273,17 @@ export class EditarJugadorFlujo {
             dorsal,
           );
         } catch (error) {
-          if (!(error instanceof DorsalOcupadoError)) throw error;
+          // No solo `DorsalOcupadoError`: si dos ediciones chocan justo
+          // entre el chequeo y la escritura (mismo dorsal libre, casi al
+          // mismo tiempo), lo que llega es el error crudo del índice único
+          // de la base, no la excepción propia. Sin este fallback, ese
+          // error se propagaba sin manejar en vez de pedir reintentar.
+          const mensaje =
+            error instanceof DorsalOcupadoError
+              ? textos.editar.dorsal.ocupado(error.message)
+              : textos.editar.dorsal.noGuardado();
 
-          return {
-            tipo: 'repetir',
-            respuesta: { texto: textos.editar.dorsal.ocupado(error.message) },
-          };
+          return { tipo: 'repetir', respuesta: { texto: mensaje } };
         }
 
         return this.alMenuConAviso();

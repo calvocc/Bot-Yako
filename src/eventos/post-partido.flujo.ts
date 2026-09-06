@@ -9,6 +9,7 @@ import type { ContextoFlujo, DatosFlujo, Paso, Transicion } from '../conversacio
 import { leerNumero, leerTexto } from '../conversacion/flow.types';
 import {
   describirJugador,
+  type Jugador,
   type JugadoresService,
   parsearJugador,
 } from '../jugadores/jugadores.service';
@@ -31,7 +32,11 @@ import { type EventosService, type ResultadoRegistro } from './eventos.service';
  * nuevo, si anotó o vio tarjeta más de una vez), hasta tocar "Listo". Quien
  * no está en la plantilla entra por "Otro jugador", que sigue aceptando el
  * nombre escrito — no hay plantilla de la que elegir a alguien que no está
- * cargado.
+ * cargado. Las dos variantes (goleadores/tarjetas) comparten exactamente el
+ * mismo mecanismo de selección —`pasoElegirDeLaPlantilla`/`pasoJugadorLibre`
+ * más abajo—, parametrizado solo en lo que de verdad difiere: qué pasa al
+ * elegir a alguien (un gol se registra de una; una tarjeta primero pregunta
+ * el color).
  */
 export interface GanchosPostPartido {
   panelId(ctx: ContextoFlujo): string | undefined;
@@ -52,11 +57,19 @@ const ID_ROJA = 'pp:roja';
 /** Los botones de plantilla más "Otro jugador"/"Listo" reservan estos dos huecos. */
 const RESERVA_BOTONES_FIJOS = 2;
 
-const CLAVE_PAGINA = 'paginaJugadoresPost';
+// Cada paso pagina la plantilla por separado -- si compartieran una sola
+// clave, avanzar de página cargando goleadores dejaría a tarjetas heredando
+// esa misma página en vez de arrancar en la 0, escondiendo a los primeros
+// jugadores de la plantilla en el selector de tarjetas.
+const CLAVE_PAGINA_GOLES = 'paginaGoleadoresPost';
+const CLAVE_PAGINA_TARJETAS = 'paginaTarjetasPost';
 export const CLAVE_GOLES_POST = 'golesPost';
 export const CLAVE_TARJETAS_POST = 'tarjetasPost';
 const CLAVE_TARJETA_JUGADOR_ID = 'tarjetaJugadorIdPost';
 const CLAVE_TARJETA_JUGADOR_NOMBRE = 'tarjetaJugadorNombrePost';
+
+const TEXTO_LIBRE_RECHAZADO = 'Escribe el nombre (y el dorsal si quieres): Jacob, 10';
+const TEXTO_LIBRE_NO_ENTENDIDO = 'No entendí. Escríbelo así: Jacob, 10 (el dorsal es opcional)';
 
 function leerLista(datos: DatosFlujo, clave: string): string[] {
   const valor = datos[clave];
@@ -99,6 +112,160 @@ function finSiHizoFalta(
   return null;
 }
 
+/** Lo que decide `alElegir` al tocar a alguien de la plantilla: seguir en el
+ * mismo paso (releyendo la cuenta ya actualizada) o irse a otro lado. */
+type ResultadoElegir = { transicion: Transicion } | { continuar: true };
+
+interface ConfigElegirDeLaPlantilla {
+  clavePagina: string;
+  claveTally: string;
+  idOtroJugador: string;
+  idListo: string;
+  idLibre: string;
+  textoPregunta: string;
+  textoListoSinCarga: string;
+  jugadores: JugadoresService;
+  ganchos: GanchosPostPartido;
+  alElegir(ctx: ContextoFlujo, jugador: Jugador): Promise<ResultadoElegir>;
+}
+
+/**
+ * "Elige a alguien de la plantilla, toca de nuevo si aplica más de una vez,
+ * o anda a 'Otro jugador'" — el mecanismo que comparten goleadores y
+ * tarjetas, parametrizado solo en qué pasa al elegir a alguien (registrar
+ * un gol de una, o pasar a preguntar el color de la tarjeta).
+ */
+function pasoElegirDeLaPlantilla(
+  id: string,
+  siguientePasoId: string,
+  cfg: ConfigElegirDeLaPlantilla,
+): Paso {
+  const preguntar = async (
+    ctx: ContextoFlujo,
+    pagina: number,
+    plantillaYaCargada?: Jugador[],
+  ): Promise<RespuestaBot> => {
+    const plantilla =
+      plantillaYaCargada ?? (await cfg.jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID)));
+    const cargados = leerLista(ctx.datos, cfg.claveTally);
+
+    const { botones } = botonesPaginados(
+      plantilla.map((j) => ({ id: `${PREFIJO_JUGADOR}${j.id}`, texto: describirJugador(j) })),
+      pagina,
+      RESERVA_BOTONES_FIJOS,
+    );
+
+    botones.push(
+      { id: cfg.idOtroJugador, texto: 'Otro jugador' },
+      {
+        id: cfg.idListo,
+        texto: cargados.length > 0 ? `Listo (${cargados.length})` : cfg.textoListoSinCarga,
+      },
+    );
+
+    return {
+      texto: [cargados.length > 0 ? `Van: ${cargados.join(', ')}.` : undefined, cfg.textoPregunta]
+        .filter(Boolean)
+        .join('\n\n'),
+      botones,
+      editarMensajeId: cfg.ganchos.panelId(ctx),
+    };
+  };
+
+  return {
+    id,
+
+    entrar: async (ctx: ContextoFlujo) => ({
+      respuesta: await preguntar(ctx, leerNumero(ctx.datos, cfg.clavePagina, 0)),
+    }),
+
+    recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
+      const seleccion = ctx.mensaje.seleccionId ?? '';
+      const pagina = leerNumero(ctx.datos, cfg.clavePagina, 0);
+
+      if (seleccion === ID_VER_MAS) {
+        const plantilla = await cfg.jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
+        const siguiente = paginaSiguiente(pagina, plantilla.length, RESERVA_BOTONES_FIJOS);
+
+        ctx.datos[cfg.clavePagina] = siguiente;
+
+        return { tipo: 'repetir', respuesta: await preguntar(ctx, siguiente, plantilla) };
+      }
+
+      if (seleccion === cfg.idListo) {
+        return { tipo: 'ir', pasoId: siguientePasoId, datos: cfg.ganchos.datosPanel(ctx) };
+      }
+
+      if (seleccion === cfg.idOtroJugador) {
+        return { tipo: 'ir', pasoId: cfg.idLibre, datos: cfg.ganchos.datosPanel(ctx) };
+      }
+
+      if (seleccion.startsWith(PREFIJO_JUGADOR)) {
+        const plantilla = await cfg.jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
+        const jugador = plantilla.find((j) => j.id === seleccion.slice(PREFIJO_JUGADOR.length));
+
+        if (!jugador)
+          return { tipo: 'repetir', respuesta: await preguntar(ctx, pagina, plantilla) };
+
+        const resultado = await cfg.alElegir(ctx, jugador);
+
+        if ('transicion' in resultado) return resultado.transicion;
+
+        // Reusa la plantilla ya cargada arriba: nada en `alElegir` la
+        // modifica (solo registra un evento o guarda a quién se le va a
+        // atribuir la tarjeta), así que no hace falta un tercer SELECT.
+        return {
+          tipo: 'repetir',
+          respuesta: await preguntar(ctx, leerNumero(ctx.datos, cfg.clavePagina, 0), plantilla),
+        };
+      }
+
+      return { tipo: 'repetir', respuesta: await preguntar(ctx, pagina) };
+    },
+  };
+}
+
+interface ConfigJugadorLibre {
+  textoPregunta: string;
+  jugadores: JugadoresService;
+  ganchos: GanchosPostPartido;
+  alResolver(ctx: ContextoFlujo, jugador: Jugador): Promise<Transicion>;
+}
+
+/**
+ * "Escribe el nombre (y el dorsal si quieres)" — el "Otro jugador" que
+ * comparten goleadores y tarjetas para quien no está en la plantilla,
+ * parametrizado solo en qué pasa una vez resuelto el jugador.
+ */
+function pasoJugadorLibre(id: string, cfg: ConfigJugadorLibre): Paso {
+  return {
+    id,
+
+    entrar: () => Promise.resolve({ respuesta: { texto: cfg.textoPregunta } }),
+
+    recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
+      const texto = ctx.mensaje.texto?.trim() ?? '';
+
+      if (esComandoDesconocido(texto)) {
+        return { tipo: 'repetir', respuesta: { texto: TEXTO_LIBRE_RECHAZADO } };
+      }
+
+      const parseado = texto ? parsearJugador(texto) : null;
+
+      if (!parseado) {
+        return { tipo: 'repetir', respuesta: { texto: TEXTO_LIBRE_NO_ENTENDIDO } };
+      }
+
+      if (!(await cfg.ganchos.siguePudiendoCargar(ctx))) return cfg.ganchos.sinPermiso();
+
+      const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
+      const { jugador } = await cfg.jugadores.resolverOCrear(equipoId, parseado);
+
+      return cfg.alResolver(ctx, jugador);
+    },
+  };
+}
+
 // --- Goleadores ----------------------------------------------------------
 
 export function pasoGoleadoresPost(
@@ -109,105 +276,37 @@ export function pasoGoleadoresPost(
   eventos: EventosService,
   ganchos: GanchosPostPartido,
 ): Paso {
-  const preguntar = async (ctx: ContextoFlujo, pagina: number): Promise<RespuestaBot> => {
-    const plantilla = await jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
-    const cargados = leerLista(ctx.datos, CLAVE_GOLES_POST);
+  return pasoElegirDeLaPlantilla(id, siguientePasoId, {
+    clavePagina: CLAVE_PAGINA_GOLES,
+    claveTally: CLAVE_GOLES_POST,
+    idOtroJugador: ID_OTRO_JUGADOR,
+    idListo: ID_GOLES_LISTO,
+    idLibre,
+    textoPregunta: '¿Quién anotó? Toca al goleador — de nuevo si anotó más de uno.',
+    textoListoSinCarga: 'Nadie anotó',
+    jugadores,
+    ganchos,
+    alElegir: async (ctx, jugador) => {
+      if (!(await ganchos.siguePudiendoCargar(ctx))) return { transicion: ganchos.sinPermiso() };
 
-    const { botones } = botonesPaginados(
-      plantilla.map((j) => ({ id: `${PREFIJO_JUGADOR}${j.id}`, texto: describirJugador(j) })),
-      pagina,
-      RESERVA_BOTONES_FIJOS,
-    );
+      const resultado = await eventos.registrar({
+        partidoId: ganchos.partidoId(ctx),
+        tipo: 'gol',
+        equipoOrigen: 'propio',
+        jugadorId: jugador.id,
+        reportadoPor: ctx.usuarioId ?? '',
+        origen: 'post_partido',
+      });
 
-    botones.push(
-      { id: ID_OTRO_JUGADOR, texto: 'Otro jugador' },
-      {
-        id: ID_GOLES_LISTO,
-        texto: cargados.length > 0 ? `Listo (${cargados.length})` : 'Nadie anotó',
-      },
-    );
+      const fin = finSiHizoFalta(resultado, ganchos);
 
-    return {
-      texto: [
-        cargados.length > 0 ? `Van: ${cargados.join(', ')}.` : undefined,
-        '¿Quién anotó? Toca al goleador — de nuevo si anotó más de uno.',
-      ]
-        .filter(Boolean)
-        .join('\n\n'),
-      botones,
-      editarMensajeId: ganchos.panelId(ctx),
-    };
-  };
+      if (fin) return { transicion: fin };
 
-  /** Registra un gol y repite la misma pregunta con la cuenta actualizada. */
-  const registrarGol = async (
-    ctx: ContextoFlujo,
-    jugadorId: string,
-    nombre: string,
-  ): Promise<Transicion> => {
-    const resultado = await eventos.registrar({
-      partidoId: ganchos.partidoId(ctx),
-      tipo: 'gol',
-      equipoOrigen: 'propio',
-      jugadorId,
-      reportadoPor: ctx.usuarioId ?? '',
-      origen: 'post_partido',
-    });
+      ctx.datos[CLAVE_GOLES_POST] = [...leerLista(ctx.datos, CLAVE_GOLES_POST), jugador.nombre];
 
-    const fin = finSiHizoFalta(resultado, ganchos);
-
-    if (fin) return fin;
-
-    ctx.datos[CLAVE_GOLES_POST] = [...leerLista(ctx.datos, CLAVE_GOLES_POST), nombre];
-
-    return {
-      tipo: 'repetir',
-      respuesta: await preguntar(ctx, leerNumero(ctx.datos, CLAVE_PAGINA, 0)),
-    };
-  };
-
-  return {
-    id,
-
-    entrar: async (ctx: ContextoFlujo) => ({
-      respuesta: await preguntar(ctx, leerNumero(ctx.datos, CLAVE_PAGINA, 0)),
-    }),
-
-    recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
-      const seleccion = ctx.mensaje.seleccionId ?? '';
-      const pagina = leerNumero(ctx.datos, CLAVE_PAGINA, 0);
-
-      if (seleccion === ID_VER_MAS) {
-        const plantilla = await jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
-        const siguiente = paginaSiguiente(pagina, plantilla.length, RESERVA_BOTONES_FIJOS);
-
-        ctx.datos[CLAVE_PAGINA] = siguiente;
-
-        return { tipo: 'repetir', respuesta: await preguntar(ctx, siguiente) };
-      }
-
-      if (seleccion === ID_GOLES_LISTO) {
-        return { tipo: 'ir', pasoId: siguientePasoId, datos: ganchos.datosPanel(ctx) };
-      }
-
-      if (seleccion === ID_OTRO_JUGADOR) {
-        return { tipo: 'ir', pasoId: idLibre, datos: ganchos.datosPanel(ctx) };
-      }
-
-      if (!(await ganchos.siguePudiendoCargar(ctx))) return ganchos.sinPermiso();
-
-      if (seleccion.startsWith(PREFIJO_JUGADOR)) {
-        const plantilla = await jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
-        const jugador = plantilla.find((j) => j.id === seleccion.slice(PREFIJO_JUGADOR.length));
-
-        if (!jugador) return { tipo: 'repetir', respuesta: await preguntar(ctx, pagina) };
-
-        return registrarGol(ctx, jugador.id, jugador.nombre);
-      }
-
-      return { tipo: 'repetir', respuesta: await preguntar(ctx, pagina) };
+      return { continuar: true };
     },
-  };
+  });
 }
 
 export function pasoGoleadoresPostLibre(
@@ -217,40 +316,11 @@ export function pasoGoleadoresPostLibre(
   eventos: EventosService,
   ganchos: GanchosPostPartido,
 ): Paso {
-  return {
-    id,
-
-    entrar: () =>
-      Promise.resolve({
-        respuesta: {
-          texto: 'Escribe el nombre de quien anotó (y el dorsal si quieres): Jacob, 10',
-        },
-      }),
-
-    recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
-      const texto = ctx.mensaje.texto?.trim() ?? '';
-
-      if (esComandoDesconocido(texto)) {
-        return {
-          tipo: 'repetir',
-          respuesta: { texto: 'Escribe el nombre (y el dorsal si quieres): Jacob, 10' },
-        };
-      }
-
-      const parseado = texto ? parsearJugador(texto) : null;
-
-      if (!parseado) {
-        return {
-          tipo: 'repetir',
-          respuesta: { texto: 'No entendí. Escríbelo así: Jacob, 10 (el dorsal es opcional)' },
-        };
-      }
-
-      if (!(await ganchos.siguePudiendoCargar(ctx))) return ganchos.sinPermiso();
-
-      const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
-      const { jugador } = await jugadores.resolverOCrear(equipoId, parseado);
-
+  return pasoJugadorLibre(id, {
+    textoPregunta: 'Escribe el nombre de quien anotó (y el dorsal si quieres): Jacob, 10',
+    jugadores,
+    ganchos,
+    alResolver: async (ctx, jugador) => {
       const resultado = await eventos.registrar({
         partidoId: ganchos.partidoId(ctx),
         tipo: 'gol',
@@ -273,7 +343,7 @@ export function pasoGoleadoresPostLibre(
         },
       };
     },
-  };
+  });
 }
 
 // --- Tarjetas --------------------------------------------------------------
@@ -286,73 +356,21 @@ export function pasoTarjetasPost(
   jugadores: JugadoresService,
   ganchos: GanchosPostPartido,
 ): Paso {
-  const preguntar = async (ctx: ContextoFlujo, pagina: number): Promise<RespuestaBot> => {
-    const plantilla = await jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
-    const cargadas = leerLista(ctx.datos, CLAVE_TARJETAS_POST);
-
-    const { botones } = botonesPaginados(
-      plantilla.map((j) => ({ id: `${PREFIJO_JUGADOR}${j.id}`, texto: describirJugador(j) })),
-      pagina,
-      RESERVA_BOTONES_FIJOS,
-    );
-
-    botones.push(
-      { id: ID_OTRO_JUGADOR, texto: 'Otro jugador' },
-      {
-        id: ID_TARJETAS_LISTO,
-        texto: cargadas.length > 0 ? `Listo (${cargadas.length})` : 'Ninguna',
-      },
-    );
-
-    return {
-      texto: [
-        cargadas.length > 0 ? `Van: ${cargadas.join(', ')}.` : undefined,
-        '¿Hubo tarjetas? Toca al jugador amonestado o expulsado.',
-      ]
-        .filter(Boolean)
-        .join('\n\n'),
-      botones,
-      editarMensajeId: ganchos.panelId(ctx),
-    };
-  };
-
-  return {
-    id,
-
-    entrar: async (ctx: ContextoFlujo) => ({
-      respuesta: await preguntar(ctx, leerNumero(ctx.datos, CLAVE_PAGINA, 0)),
-    }),
-
-    recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
-      const seleccion = ctx.mensaje.seleccionId ?? '';
-      const pagina = leerNumero(ctx.datos, CLAVE_PAGINA, 0);
-
-      if (seleccion === ID_VER_MAS) {
-        const plantilla = await jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
-        const siguiente = paginaSiguiente(pagina, plantilla.length, RESERVA_BOTONES_FIJOS);
-
-        ctx.datos[CLAVE_PAGINA] = siguiente;
-
-        return { tipo: 'repetir', respuesta: await preguntar(ctx, siguiente) };
-      }
-
-      if (seleccion === ID_TARJETAS_LISTO) {
-        return { tipo: 'ir', pasoId: siguientePasoId, datos: ganchos.datosPanel(ctx) };
-      }
-
-      if (seleccion === ID_OTRO_JUGADOR) {
-        return { tipo: 'ir', pasoId: idLibre, datos: ganchos.datosPanel(ctx) };
-      }
-
-      if (seleccion.startsWith(PREFIJO_JUGADOR)) {
-        const plantilla = await jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
-        const jugador = plantilla.find((j) => j.id === seleccion.slice(PREFIJO_JUGADOR.length));
-
-        if (!jugador) return { tipo: 'repetir', respuesta: await preguntar(ctx, pagina) };
-
-        // El color se pregunta aparte: acá solo se guarda a quién se le va a
-        // atribuir, `pasoTarjetasPostColor` es quien registra el evento.
-        return {
+  return pasoElegirDeLaPlantilla(id, siguientePasoId, {
+    clavePagina: CLAVE_PAGINA_TARJETAS,
+    claveTally: CLAVE_TARJETAS_POST,
+    idOtroJugador: ID_OTRO_JUGADOR,
+    idListo: ID_TARJETAS_LISTO,
+    idLibre,
+    textoPregunta: '¿Hubo tarjetas? Toca al jugador amonestado o expulsado.',
+    textoListoSinCarga: 'Ninguna',
+    jugadores,
+    ganchos,
+    // El color se pregunta aparte: acá solo se guarda a quién se le va a
+    // atribuir, `pasoTarjetasPostColor` es quien registra el evento.
+    alElegir: (ctx, jugador) =>
+      Promise.resolve({
+        transicion: {
           tipo: 'ir',
           pasoId: idColor,
           datos: {
@@ -360,12 +378,9 @@ export function pasoTarjetasPost(
             [CLAVE_TARJETA_JUGADOR_ID]: jugador.id,
             [CLAVE_TARJETA_JUGADOR_NOMBRE]: jugador.nombre,
           },
-        };
-      }
-
-      return { tipo: 'repetir', respuesta: await preguntar(ctx, pagina) };
-    },
-  };
+        },
+      }),
+  });
 }
 
 export function pasoTarjetasPostLibre(
@@ -374,41 +389,12 @@ export function pasoTarjetasPostLibre(
   jugadores: JugadoresService,
   ganchos: GanchosPostPartido,
 ): Paso {
-  return {
-    id,
-
-    entrar: () =>
+  return pasoJugadorLibre(id, {
+    textoPregunta: 'Escribe el nombre de quien vio la tarjeta (y el dorsal si quieres): Jacob, 10',
+    jugadores,
+    ganchos,
+    alResolver: (ctx, jugador) =>
       Promise.resolve({
-        respuesta: {
-          texto: 'Escribe el nombre de quien vio la tarjeta (y el dorsal si quieres): Jacob, 10',
-        },
-      }),
-
-    recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
-      const texto = ctx.mensaje.texto?.trim() ?? '';
-
-      if (esComandoDesconocido(texto)) {
-        return {
-          tipo: 'repetir',
-          respuesta: {
-            texto: 'Escribe el nombre (y el dorsal si quieres): Jacob, 10',
-          },
-        };
-      }
-
-      const parseado = texto ? parsearJugador(texto) : null;
-
-      if (!parseado) {
-        return {
-          tipo: 'repetir',
-          respuesta: { texto: 'No entendí. Escríbelo así: Jacob, 10 (el dorsal es opcional)' },
-        };
-      }
-
-      const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
-      const { jugador } = await jugadores.resolverOCrear(equipoId, parseado);
-
-      return {
         tipo: 'ir',
         pasoId: idColor,
         datos: {
@@ -416,9 +402,8 @@ export function pasoTarjetasPostLibre(
           [CLAVE_TARJETA_JUGADOR_ID]: jugador.id,
           [CLAVE_TARJETA_JUGADOR_NOMBRE]: jugador.nombre,
         },
-      };
-    },
-  };
+      }),
+  });
 }
 
 export function pasoTarjetasPostColor(

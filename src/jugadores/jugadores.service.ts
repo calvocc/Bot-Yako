@@ -347,13 +347,7 @@ export class JugadoresService {
     jugadorId: string,
     posicion: Posicion,
   ): Promise<boolean> {
-    const filas = await this.db.db
-      .update(jugadores)
-      .set({ posicion })
-      .where(and(eq(jugadores.id, jugadorId), eq(jugadores.equipoId, equipoId)))
-      .returning({ id: jugadores.id });
-
-    return filas.length > 0;
+    return this.actualizarCampos(equipoId, jugadorId, { posicion });
   }
 
   /**
@@ -368,13 +362,7 @@ export class JugadoresService {
     jugadorId: string,
     datos: { fechaNacimiento?: string; pesoKg?: number; estaturaCm?: number },
   ): Promise<boolean> {
-    const filas = await this.db.db
-      .update(jugadores)
-      .set(datos)
-      .where(and(eq(jugadores.id, jugadorId), eq(jugadores.equipoId, equipoId)))
-      .returning({ id: jugadores.id });
-
-    return filas.length > 0;
+    return this.actualizarCampos(equipoId, jugadorId, datos);
   }
 
   /**
@@ -386,13 +374,7 @@ export class JugadoresService {
    * mismo equipo).
    */
   async actualizarNombre(equipoId: string, jugadorId: string, nombre: string): Promise<boolean> {
-    const filas = await this.db.db
-      .update(jugadores)
-      .set({ nombre })
-      .where(and(eq(jugadores.id, jugadorId), eq(jugadores.equipoId, equipoId)))
-      .returning({ id: jugadores.id });
-
-    return filas.length > 0;
+    return this.actualizarCampos(equipoId, jugadorId, { nombre });
   }
 
   /**
@@ -405,6 +387,12 @@ export class JugadoresService {
    * impide, pero su error no sirve para explicárselo a nadie. Se excluye al
    * propio jugador que se edita: si no, dejarle el mismo dorsal que ya tenía
    * se rechazaría a sí mismo.
+   *
+   * Igual que en `crear()`, esto es "chequear y después escribir": una
+   * carrera genuina (dos ediciones al mismo tiempo asignando el mismo
+   * dorsal libre) puede colar el error crudo del índice único de la base en
+   * vez de `DorsalOcupadoError` — quien llama debe estar listo para
+   * cualquier error, no solo ese.
    */
   async actualizarDorsal(
     equipoId: string,
@@ -419,9 +407,23 @@ export class JugadoresService {
       if (ocupado) throw new DorsalOcupadoError(dorsal, ocupado.nombre);
     }
 
+    return this.actualizarCampos(equipoId, jugadorId, { dorsal });
+  }
+
+  /** El `update ... where jugadorId and equipoId` que comparten todos los `actualizarX`. */
+  private async actualizarCampos(
+    equipoId: string,
+    jugadorId: string,
+    cambios: Partial<
+      Pick<
+        typeof jugadores.$inferInsert,
+        'nombre' | 'dorsal' | 'posicion' | 'fechaNacimiento' | 'pesoKg' | 'estaturaCm'
+      >
+    >,
+  ): Promise<boolean> {
     const filas = await this.db.db
       .update(jugadores)
-      .set({ dorsal })
+      .set(cambios)
       .where(and(eq(jugadores.id, jugadorId), eq(jugadores.equipoId, equipoId)))
       .returning({ id: jugadores.id });
 

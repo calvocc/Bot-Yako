@@ -15,6 +15,7 @@ import { MembresiasService } from '../src/identidad/membresias.service';
 import { JugadoresService } from '../src/jugadores/jugadores.service';
 import { OrganizacionModule } from '../src/organizacion.module';
 import { PartidosModule } from '../src/partidos.module';
+import { AlineacionService } from '../src/partidos/alineacion.service';
 import { hoyLocal } from '../src/partidos/fechas';
 import { PartidosService } from '../src/partidos/partidos.service';
 import { TiemposService } from '../src/partidos/tiempos.service';
@@ -38,6 +39,7 @@ describe('Partido en vivo (e2e)', () => {
   let membresias: MembresiasService;
   let academias: AcademiasService;
   let equipos: EquiposService;
+  let alineacion: AlineacionService;
 
   let siguiente = 1;
   const nuevoCanalId = () => String(970000 + siguiente++);
@@ -66,6 +68,7 @@ describe('Partido en vivo (e2e)', () => {
     membresias = app.get(MembresiasService);
     academias = app.get(AcademiasService);
     equipos = app.get(EquiposService);
+    alineacion = app.get(AlineacionService);
   });
 
   afterAll(async () => {
@@ -401,6 +404,37 @@ describe('Partido en vivo (e2e)', () => {
       const evento = await gol(partido.id, admin, jacob.id);
       expect(evento.tipo).toBe('registrado');
       expect(evento.tipo === 'registrado' && evento.evento.tiempo).toBe(1);
+    });
+  });
+
+  describe('titulares: guardarTitulares reemplaza, borrarTitulares limpia', () => {
+    it('confirmar la titular de nuevo reemplaza la anterior, no la mezcla', async () => {
+      const { admin, jacob, andres, partido } = await escenario('Titular reemplaza');
+
+      await alineacion.guardarTitulares(partido.id, admin, [jacob.id]);
+      expect(await alineacion.titularesDe(partido.id)).toEqual([jacob.id]);
+
+      // Alguien corrige la elección (o dos personas confirman casi a la vez):
+      // la segunda confirmación reemplaza a la primera, no se suman.
+      await alineacion.guardarTitulares(partido.id, admin, [andres.id]);
+
+      expect(await alineacion.titularesDe(partido.id)).toEqual([andres.id]);
+    });
+
+    it('iniciarPostPartido borra la titular huérfana que alguien eligió y no usó', async () => {
+      const { admin, jacob, partido } = await escenario('Post partido sin titular');
+
+      // Alguien tocó "Elegir titular" y la confirmó, pero al final optó por
+      // "Post partido" en vez de "En vivo" -- esa titular no debe quedar
+      // contaminando las notas del resumen post partido.
+      await alineacion.guardarTitulares(partido.id, admin, [jacob.id]);
+      expect(await alineacion.hayTitulares(partido.id)).toBe(true);
+
+      const inicio = await tiempos.iniciarPostPartido(partido.id, admin);
+
+      expect(inicio.tipo).toBe('iniciado');
+      expect(await alineacion.hayTitulares(partido.id)).toBe(false);
+      expect(await alineacion.titularesDe(partido.id)).toEqual([]);
     });
   });
 });

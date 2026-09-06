@@ -36,13 +36,18 @@ export class AlineacionService {
   }
 
   /**
-   * Guarda la titular sin arrancar el partido.
+   * Guarda la titular sin arrancar el partido, reemplazando lo que hubiera.
    *
    * A propósito separado de `TiemposService.iniciarEnVivo`: elegir titular
    * tiene que poder hacerse en cualquier momento —incluso antes de decidir
    * si se carga en vivo o post partido—, sin que eso dispare el arranque.
-   * `onConflictDoNothing` cubre que dos personas la elijan a la vez, o que
-   * alguien la vuelva a confirmar sin querer.
+   * Reemplaza en vez de sumar (borra lo guardado antes y vuelve a insertar)
+   * porque, a diferencia de cuando esto vivía en la misma transacción que
+   * `iniciarEnVivo` bajo el lock de la fila del partido, ya no hay nada que
+   * serialice dos confirmaciones para el mismo partido: con un `insert`
+   * aditivo, dos papás confirmando titulares distintas (o alguien
+   * corrigiendo su propia elección) terminarían mezclando ambas listas en
+   * `partido_titulares` en vez de que la última reemplace a la anterior.
    */
   async guardarTitulares(
     partidoId: string,
@@ -52,10 +57,38 @@ export class AlineacionService {
   ): Promise<void> {
     if (titularesIds.length === 0) return;
 
+    const valores = titularesIds.map((jugadorId) => ({
+      partidoId,
+      jugadorId,
+      creadoPor: usuarioId,
+    }));
+
+    if (tx) {
+      await tx.delete(partidoTitulares).where(eq(partidoTitulares.partidoId, partidoId));
+      await tx.insert(partidoTitulares).values(valores);
+
+      return;
+    }
+
+    await this.db.db.transaction(async (t) => {
+      await t.delete(partidoTitulares).where(eq(partidoTitulares.partidoId, partidoId));
+      await t.insert(partidoTitulares).values(valores);
+    });
+  }
+
+  /**
+   * Borra la titular guardada, si la hay.
+   *
+   * La usa `TiemposService.iniciarPostPartido`: post partido no mide minutos
+   * jugados, así que no tiene sentido dejar colgada una titular que alguien
+   * eligió con "👥 Elegir titular" y después no terminó usando -- quedaría
+   * contaminando `datosDeParticipacion` y, con eso, las notas del resumen
+   * con jugadores que quizás nunca tuvieron un evento en esa carga.
+   */
+  async borrarTitulares(partidoId: string, tx?: EjecutorDb): Promise<void> {
     await (tx ?? this.db.db)
-      .insert(partidoTitulares)
-      .values(titularesIds.map((jugadorId) => ({ partidoId, jugadorId, creadoPor: usuarioId })))
-      .onConflictDoNothing();
+      .delete(partidoTitulares)
+      .where(eq(partidoTitulares.partidoId, partidoId));
   }
 
   /**

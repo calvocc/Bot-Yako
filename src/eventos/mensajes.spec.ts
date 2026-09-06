@@ -1,7 +1,7 @@
 import type { Partido } from '../partidos/partido.mapper';
 import { EVENTOS } from './evento.tipos';
 import type { EventoCargado } from './eventos.service';
-import { botonesDelPanel, lineaDeBitacora, panelEnVivo, protagonista } from './mensajes';
+import { botonesDeEvento, lineaDeBitacora, panelEnVivo, protagonista } from './mensajes';
 
 const partido = (parcial: Partial<Partido> = {}): Partido => ({
   id: 'p1',
@@ -91,21 +91,19 @@ describe('protagonista', () => {
 
 describe('panelEnVivo', () => {
   it('muestra el reloj mientras el tiempo corre', () => {
-    const estadoBase = {
+    const panel = panelEnVivo({
       partido: partido(),
       equipoNombre: 'Ringo Amaya',
       minuto: { minuto: 23, adicion: 0, baseMostrada: 23 },
-    };
+      paginaEventos: 0,
+    });
 
-    const primeraPagina = panelEnVivo({ ...estadoBase, paginaEventos: 0 });
-
-    expect(primeraPagina.texto).toContain('Tiempo 1 · min 23 · 1-0');
-    expect(primeraPagina.botones.map((b) => b.id)).toContain('ev:gol');
-
-    // Los controles solo aparecen en la última página del panel.
-    const ultimaPagina = panelEnVivo({ ...estadoBase, paginaEventos: 1 });
-
-    expect(ultimaPagina.botones.map((b) => b.id)).toContain('pa:fintiempo');
+    expect(panel.texto).toContain('Tiempo 1 · min 23 · 1-0');
+    expect(panel.botones.map((b) => b.id)).toContain('ev:gol');
+    // Los controles se reservan en cada página (no solo en la última): el
+    // panel siempre vuelve a la página 0 después de cada acción, así que
+    // tienen que estar ahí también.
+    expect(panel.botones.map((b) => b.id)).toContain('pa:fintiempo');
   });
 
   it('ofrece arrancar el siguiente tiempo cuando el actual terminó', () => {
@@ -113,7 +111,7 @@ describe('panelEnVivo', () => {
       partido: partido({ tiempoEstado: 'finalizado' }),
       equipoNombre: 'Ringo Amaya',
       minuto: { minuto: 26, adicion: 1, baseMostrada: 25 },
-      paginaEventos: 1,
+      paginaEventos: 0,
     });
 
     expect(panel.texto).toContain('Tiempo 1 finalizado');
@@ -125,7 +123,7 @@ describe('panelEnVivo', () => {
       partido: partido({ tiempoActual: 2, tiempoEstado: 'finalizado' }),
       equipoNombre: 'Ringo Amaya',
       minuto: { minuto: 52, adicion: 0, baseMostrada: 52 },
-      paginaEventos: 1,
+      paginaEventos: 0,
     });
 
     expect(panel.texto).toContain('era el último');
@@ -170,11 +168,13 @@ describe('panelEnVivo', () => {
   });
 
   it('la última página no repite "Ver más"', () => {
+    // Con 4 controles reservados (reloj corriendo, tiempo por arrancar) y 13
+    // eventos, la última página es la 2 (9-4=5 eventos por página: 5+5+3).
     const panel = panelEnVivo({
       partido: partido(),
       equipoNombre: 'Ringo Amaya',
       minuto: { minuto: 23, adicion: 0, baseMostrada: 23 },
-      paginaEventos: 1,
+      paginaEventos: 2,
     });
 
     expect(panel.botones.map((b) => b.id)).not.toContain('pag:mas');
@@ -182,35 +182,28 @@ describe('panelEnVivo', () => {
   });
 });
 
-describe('botonesDelPanel', () => {
-  const controlesDePrueba = (cantidad: number) =>
-    Array.from({ length: cantidad }, (_, i) => ({ id: `ctl:${i}`, texto: `Control ${i}` }));
+describe('botonesDeEvento', () => {
+  it('pagina los 13 tipos de evento en 3 páginas con 3 controles reservados', () => {
+    const pagina0 = botonesDeEvento(0, 3);
+    const pagina1 = botonesDeEvento(1, 3);
+    const pagina2 = botonesDeEvento(2, 3);
 
-  it('la primera página son puros eventos, sin controles', () => {
-    const pagina0 = botonesDelPanel(0, controlesDePrueba(3));
-
-    // 9 eventos (el límite de página) + "Ver más".
-    expect(pagina0).toHaveLength(10);
+    // 6 eventos + "Ver más" = 7, más los 3 controles reservados = 10 exacto.
+    expect(pagina0).toHaveLength(7);
     expect(pagina0.at(-1)?.id).toBe('pag:mas');
-    expect(pagina0.some((b) => b.id.startsWith('ctl:'))).toBe(false);
-  });
-
-  it('los controles solo aparecen en la última página, junto a los eventos que sobran', () => {
-    const pagina1 = botonesDelPanel(1, controlesDePrueba(3));
-
-    // Quedan 13 - 9 = 4 eventos + 3 controles = 7, sin "Ver más".
     expect(pagina1).toHaveLength(7);
-    expect(pagina1.at(-1)?.id).not.toBe('pag:mas');
-    expect(pagina1.filter((b) => b.id.startsWith('ctl:'))).toHaveLength(3);
+    expect(pagina1.at(-1)?.id).toBe('pag:mas');
+    // Quedan 13 - 6 - 6 = 1 evento en la última página, sin "Ver más".
+    expect(pagina2).toHaveLength(1);
+    expect(pagina2.at(-1)?.id).not.toBe('pag:mas');
   });
 
   it('nunca deja un tipo de evento sin poder tocarse', () => {
-    const controles = controlesDePrueba(4);
     const idsVistos = new Set<string>();
 
-    for (let pagina = 0; pagina < 2; pagina++) {
-      for (const boton of botonesDelPanel(pagina, controles)) {
-        if (!boton.id.startsWith('ctl:') && boton.id !== 'pag:mas') idsVistos.add(boton.id);
+    for (let pagina = 0; pagina < 3; pagina++) {
+      for (const boton of botonesDeEvento(pagina, 3)) {
+        if (boton.id !== 'pag:mas') idsVistos.add(boton.id);
       }
     }
 

@@ -39,7 +39,7 @@ import { PartidosService } from '../partidos/partidos.service';
 import { TiemposService, type ResultadoFinTiempo } from '../partidos/tiempos.service';
 import { ResumenService } from '../resumen/resumen.service';
 import { segundosDesde } from './dedup';
-import { admiteEquipoRival, esTipoDeEvento } from './evento.tipos';
+import { admiteEquipoRival, esTipoDeEvento, EVENTOS } from './evento.tipos';
 import { EventosService, type SolicitudEvento } from './eventos.service';
 import {
   type GanchosPostPartido,
@@ -53,7 +53,6 @@ import {
   avisoDeDuplicado,
   botonesDeControl,
   botonesDeOrigen,
-  cantidadOpcionesDelPanel,
   ID_DESHACER,
   ID_ES_OTRO,
   ID_FINALIZAR_PARTIDO,
@@ -414,6 +413,8 @@ export class CargarFlujo {
         }
 
         if (seleccion === ID_IR_A_TITULARES) {
+          if (!(await this.siguePudiendoCargar(ctx))) return this.sinPermiso();
+
           return { tipo: 'ir', pasoId: PASOS.titulares, datos: this.datosPanel(ctx) };
         }
 
@@ -473,13 +474,18 @@ export class CargarFlujo {
       avisoTextoNoReconocido:
         'No reconocí a nadie ahí. Escribe los dorsales separados por coma (10, 7, 4) o toca los botones.',
       alConfirmar: async (ctx, elegidos) => {
+        const partido = await this.partidoDe(ctx);
+
+        if (!partido) return this.partidoPerdido();
+        if (partido.estado === 'cerrado') return this.finalizarCon(this.textoPartidoCerrado());
+        if (!(await this.siguePudiendoCargar(ctx))) return this.sinPermiso();
+
         const titularesIds = elegidos.map((id) => id.slice(PREFIJO_JUGADOR.length));
-        const partidoId = leerTexto(ctx.datos, CLAVE_PARTIDO_ID);
 
         // Solo se guarda la titular; el partido arranca recién cuando se
         // elige el modo en el paso `modo`: elegir titular no debe arrancar
         // el partido por sí sola.
-        await this.alineacion.guardarTitulares(partidoId, ctx.usuarioId ?? '', titularesIds);
+        await this.alineacion.guardarTitulares(partido.id, ctx.usuarioId ?? '', titularesIds);
 
         return { tipo: 'ir', pasoId: PASOS.modo, datos: this.datosPanel(ctx) };
       },
@@ -552,10 +558,10 @@ export class CargarFlujo {
 
           if (!partido) return this.partidoPerdido();
 
-          const cantidad = cantidadOpcionesDelPanel(botonesDeControl(partido));
+          const reservar = botonesDeControl(partido).length;
           const pagina = leerNumero(ctx.datos, CLAVE_PAGINA_EVENTOS, 0);
 
-          ctx.datos[CLAVE_PAGINA_EVENTOS] = paginaSiguiente(pagina, cantidad);
+          ctx.datos[CLAVE_PAGINA_EVENTOS] = paginaSiguiente(pagina, EVENTOS.length, reservar);
 
           const respuesta = await this.dibujarPanel(ctx);
 
