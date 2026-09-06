@@ -44,7 +44,10 @@ import { EventosService, type SolicitudEvento } from './eventos.service';
 import {
   type GanchosPostPartido,
   pasoGoleadoresPost,
+  pasoGoleadoresPostLibre,
   pasoTarjetasPost,
+  pasoTarjetasPostColor,
+  pasoTarjetasPostLibre,
 } from './post-partido.flujo';
 import {
   avisoDeDuplicado,
@@ -91,7 +94,10 @@ const PASOS = {
   finTiempo: 'fin-tiempo',
   finPartido: 'fin-partido',
   goleadoresPost: 'goleadores-post',
+  goleadoresPostLibre: 'goleadores-post-libre',
   tarjetasPost: 'tarjetas-post',
+  tarjetasPostLibre: 'tarjetas-post-libre',
+  tarjetasPostColor: 'tarjetas-post-color',
 } as const;
 
 const CLAVE_PARTIDO_ID = 'partidoId';
@@ -123,6 +129,7 @@ const CLAVE_BITACORA = 'bitacora';
 const PREFIJO_PARTIDO = 'pt:';
 const ID_MODO_VIVO = 'md:vivo';
 const ID_MODO_POST = 'md:post';
+const ID_IR_A_TITULARES = 'md:titular';
 const ID_POST_CORREGIR = 'pp:corregir';
 const ID_POST_LISTO = 'pp:listo';
 
@@ -134,6 +141,19 @@ interface Novedad {
 
 const BOTONES_MODO = [
   { id: ID_MODO_VIVO, texto: '🔴 En vivo' },
+  { id: ID_MODO_POST, texto: '📝 Post partido' },
+];
+
+/**
+ * Sin titular todavía no se puede ofrecer "En vivo" (es la única forma de
+ * medir minutos jugados), pero "Post partido" no la necesita para nada —
+ * carga goleadores y tarjetas sueltos, sin reloj. En vez de esconder el
+ * camino a "En vivo" sin dar ninguna salida, este botón lleva directo a
+ * elegirla; confirmada, se vuelve a este mismo paso, que ya ofrece las dos
+ * opciones.
+ */
+const BOTONES_MODO_SIN_TITULAR = [
+  { id: ID_IR_A_TITULARES, texto: '👥 Elegir titular' },
   { id: ID_MODO_POST, texto: '📝 Post partido' },
 ];
 
@@ -188,15 +208,36 @@ export class CargarFlujo {
         this.pasoFinPartido(),
         pasoGoleadoresPost(
           PASOS.goleadoresPost,
+          PASOS.goleadoresPostLibre,
           PASOS.tarjetasPost,
+          this.jugadores,
+          this.eventos,
+          this.ganchosPostPartido(),
+        ),
+        pasoGoleadoresPostLibre(
+          PASOS.goleadoresPostLibre,
+          PASOS.goleadoresPost,
           this.jugadores,
           this.eventos,
           this.ganchosPostPartido(),
         ),
         pasoTarjetasPost(
           PASOS.tarjetasPost,
+          PASOS.tarjetasPostLibre,
+          PASOS.tarjetasPostColor,
           PASOS.finPartido,
           this.jugadores,
+          this.ganchosPostPartido(),
+        ),
+        pasoTarjetasPostLibre(
+          PASOS.tarjetasPostLibre,
+          PASOS.tarjetasPostColor,
+          this.jugadores,
+          this.ganchosPostPartido(),
+        ),
+        pasoTarjetasPostColor(
+          PASOS.tarjetasPostColor,
+          PASOS.tarjetasPost,
           this.eventos,
           this.ganchosPostPartido(),
         ),
@@ -276,9 +317,9 @@ export class CargarFlujo {
   // --- Bifurcación por modo (§4) ----------------------------------------
 
   private pasoModo(): Paso {
-    const preguntarModo = (): RespuestaBot => ({
+    const preguntarModo = (hayTitulares: boolean): RespuestaBot => ({
       texto: '¿Vas a cargar en vivo o ya terminó el partido?',
-      botones: BOTONES_MODO,
+      botones: hayTitulares ? BOTONES_MODO : BOTONES_MODO_SIN_TITULAR,
     });
 
     // 4c: reentrada a un partido ya cargado como post partido (RF-4.2). Se
@@ -325,16 +366,10 @@ export class CargarFlujo {
           return { transicion: this.irAlPanel(ctx, { aviso: await this.avisoEnCurso(partido) }) };
         }
 
-        // 4a: sin modo definido. Elegir titular no arranca el partido por sí
-        // sola: "En vivo" y "Post partido" solo se ofrecen una vez que hay a
-        // quién dársela, así que sin titular se pasa por ese paso primero.
-        if (!(await this.alineacion.hayTitulares(partido.id))) {
-          return {
-            transicion: { tipo: 'ir', pasoId: PASOS.titulares, datos: this.datosPanel(ctx) },
-          };
-        }
-
-        return { respuesta: preguntarModo() };
+        // 4a: sin modo definido. "Post partido" no necesita titular (carga
+        // goleadores y tarjetas sueltos, sin reloj); "En vivo" sí, así que sin
+        // titular ese botón se reemplaza por uno que lleva a elegirla.
+        return { respuesta: preguntarModo(await this.alineacion.hayTitulares(partido.id)) };
       },
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
@@ -378,17 +413,26 @@ export class CargarFlujo {
           return { tipo: 'ir', pasoId: PASOS.goleadoresPost, datos: this.datosPanel(ctx) };
         }
 
+        if (seleccion === ID_IR_A_TITULARES) {
+          return { tipo: 'ir', pasoId: PASOS.titulares, datos: this.datosPanel(ctx) };
+        }
+
         if (seleccion !== ID_MODO_VIVO) {
-          return { tipo: 'repetir', respuesta: preguntarModo() };
+          return {
+            tipo: 'repetir',
+            respuesta: preguntarModo(await this.alineacion.hayTitulares(partido.id)),
+          };
         }
 
         if (!(await this.siguePudiendoCargar(ctx))) return this.sinPermiso();
 
-        // `entrar` ya garantizó que hay titular antes de ofrecer este botón.
-        // Si dos personas tocan "En vivo" a la vez, la que confirme después
-        // ve "ya_en_vivo" al llamar a `iniciarEnVivo` y su elección se
-        // descarta sin drama — el mismo criterio que ya usa el resto del
-        // partido.
+        // El botón "En vivo" solo se ofrece habiendo titular, pero puede que
+        // el mensaje ya estuviera en pantalla de antes: `iniciarPartidoEnVivo`
+        // revalida y, si ya no hay titular (no debería pasar), manda de vuelta
+        // a elegirla en vez de arrancar en falso. Si dos personas tocan "En
+        // vivo" a la vez, la que confirme después ve "ya_en_vivo" al llamar a
+        // `iniciarEnVivo` y su elección se descarta sin drama — el mismo
+        // criterio que ya usa el resto del partido.
         return this.iniciarPartidoEnVivo(ctx);
       },
     };
