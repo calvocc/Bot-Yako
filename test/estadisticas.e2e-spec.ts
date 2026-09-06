@@ -20,6 +20,7 @@ import { IdentidadService } from '../src/identidad/identidad.service';
 import { MembresiasService } from '../src/identidad/membresias.service';
 import { JugadoresService } from '../src/jugadores/jugadores.service';
 import { OrganizacionModule } from '../src/organizacion.module';
+import { AlineacionService } from '../src/partidos/alineacion.service';
 import { PartidosModule } from '../src/partidos.module';
 import { PartidosService } from '../src/partidos/partidos.service';
 import { TiemposService } from '../src/partidos/tiempos.service';
@@ -42,6 +43,7 @@ describe('Estadísticas (e2e)', () => {
   let tiempos: TiemposService;
   let eventos: EventosService;
   let estadisticas: EstadisticasService;
+  let alineacion: AlineacionService;
   let handler: EstadisticasHandler;
   let procesador: ProcesadorMensajes;
   let adaptador: FakeChannelAdapter;
@@ -81,6 +83,7 @@ describe('Estadísticas (e2e)', () => {
     tiempos = app.get(TiemposService);
     eventos = app.get(EventosService);
     estadisticas = app.get(EstadisticasService);
+    alineacion = app.get(AlineacionService);
     handler = app.get(EstadisticasHandler);
   });
 
@@ -170,6 +173,72 @@ describe('Estadísticas (e2e)', () => {
 
       expect(stats).toHaveLength(1);
       expect(stats[0]).toMatchObject({ nombre: 'Jacob', temporada: 2026, goles: 2 });
+    });
+
+    it('partidosJugados cuenta a quien jugó sin ningún evento propio, no solo a quien anotó', async () => {
+      const { equipo, admin } = await escenario('Partidos jugados sin evento');
+      const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
+      const andres = await jugadores.crear(equipo.id, 'Andrés', 7);
+
+      const partido = await partidos.crear({
+        equipoId: equipo.id,
+        rival: 'Rival',
+        fecha: '2026-03-01',
+        formato: { cantidadTiempos: 2, minutosPorTiempo: 25 },
+        creadoPor: admin,
+      });
+
+      // Los dos titulares, pero Andrés no tiene ningún evento individual.
+      await tiempos.iniciarEnVivo(partido.id, admin, [jacob.id, andres.id]);
+      await eventos.registrar({
+        partidoId: partido.id,
+        tipo: 'gol',
+        equipoOrigen: 'propio',
+        jugadorId: jacob.id,
+        reportadoPor: admin,
+      });
+      await partidos.cerrar(partido.id, admin, { propio: 1, rival: 0 });
+
+      const [statsJacob] = await estadisticas.deJugador(equipo.id, 'Jacob', 2026);
+      const [statsAndres] = await estadisticas.deJugador(equipo.id, 'Andrés', 2026);
+
+      expect(statsJacob).toMatchObject({ partidosJugados: 1, goles: 1 });
+      // Antes de este cambio, Andrés no aparecía en la vista: sin ningún
+      // evento propio, la vieja `partidos_con_evento` no lo contaba y la
+      // fila para él ni se generaba.
+      expect(statsAndres).toMatchObject({ partidosJugados: 1, goles: 0 });
+    });
+
+    it('partidosJugados cuenta a un participante marcado en post partido, sin ningún evento', async () => {
+      const { equipo, admin } = await escenario('Partidos jugados post partido');
+      const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
+      const andres = await jugadores.crear(equipo.id, 'Andrés', 7);
+
+      const partido = await partidos.crear({
+        equipoId: equipo.id,
+        rival: 'Rival',
+        fecha: '2026-03-08',
+        formato: { cantidadTiempos: 2, minutosPorTiempo: 25 },
+        creadoPor: admin,
+      });
+
+      await tiempos.iniciarPostPartido(partido.id, admin);
+      // Lo que hace `pasoParticipantesPost` (cargar.flujo.ts) al confirmar:
+      // guarda a quiénes jugaron en `partido_titulares`, sin arrancar reloj.
+      await alineacion.guardarTitulares(partido.id, admin, [jacob.id, andres.id]);
+
+      await eventos.registrar({
+        partidoId: partido.id,
+        tipo: 'gol',
+        equipoOrigen: 'propio',
+        jugadorId: jacob.id,
+        reportadoPor: admin,
+      });
+      await partidos.cerrar(partido.id, admin, { propio: 1, rival: 0 });
+
+      const [statsAndres] = await estadisticas.deJugador(equipo.id, 'Andrés', 2026);
+
+      expect(statsAndres).toMatchObject({ partidosJugados: 1, goles: 0 });
     });
 
     it('busca por un pedazo del nombre, sin distinguir mayúsculas', async () => {
