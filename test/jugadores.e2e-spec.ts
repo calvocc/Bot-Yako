@@ -115,6 +115,32 @@ describe('Jugadores únicos entre equipos (e2e)', () => {
     );
   });
 
+  it('buscarPorNombreEnEquipo encuentra por nombre exacto (sin importar mayúsculas), activo o de baja', async () => {
+    const { sub9, sub11 } = await escenario('Nombre exacto');
+    const jacob = await jugadores.crear(sub9.id, 'Jacob Restrepo', 10);
+
+    expect(await jugadores.buscarPorNombreEnEquipo(sub9.id, 'jacob restrepo')).toMatchObject({
+      id: jacob.id,
+    });
+
+    // Ni por dorsal ni por nombre distinto: a diferencia de `buscarEnEquipo`,
+    // este método no tiene respaldo por dorsal -- es lo que evita que
+    // `/plantilla` confunda a dos personas distintas del mismo lote que piden
+    // el mismo dorsal por error.
+    expect(await jugadores.buscarPorNombreEnEquipo(sub9.id, 'Otro Nombre')).toBeNull();
+
+    // No en otro equipo, aunque sea de la misma academia.
+    expect(await jugadores.buscarPorNombreEnEquipo(sub11.id, 'jacob restrepo')).toBeNull();
+
+    // Sigue encontrándolo aunque esté de baja: es justo el caso que permite
+    // reactivarlo en vez de crear una ficha repetida.
+    await jugadores.desactivar(sub9.id, jacob.id);
+    expect(await jugadores.buscarPorNombreEnEquipo(sub9.id, 'Jacob Restrepo')).toMatchObject({
+      id: jacob.id,
+      activo: false,
+    });
+  });
+
   it('vincularNuevoEquipo crea la ficha nueva con el mismo personaId, y lo backfillea en la vieja', async () => {
     const { sub9, sub11 } = await escenario('Vincular');
     const jacob = await jugadores.crear(sub9.id, 'Jacob Restrepo', 10);

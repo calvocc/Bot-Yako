@@ -99,17 +99,22 @@ export function pasoCargarPlantilla(
       // Se busca la academia una vez por lote, no por jugador: es la misma
       // para todos los nombres de este mensaje.
       const equipo = await equipos.obtener(equipoId);
-      const { agregados, problemas, avisos } = await altaEnLote(
+      const { agregados, reactivados, yaEnPlantilla, problemas, avisos } = await altaEnLote(
         jugadores,
         equipoId,
         equipo?.academiaId,
         parseados,
       );
-      const total = yaCargados + agregados.length;
+      // Reactivar a alguien que estaba de baja también cuenta para el total:
+      // vuelve a ser un jugador activo de la plantilla, aunque no sea una
+      // ficha nueva. Uno que ya estaba activo no suma nada, porque ya contaba.
+      const total = yaCargados + agregados.length + reactivados.length;
 
       return {
         tipo: 'repetir',
-        respuesta: { texto: resumenDeAlta(agregados, problemas, avisos, total) },
+        respuesta: {
+          texto: resumenDeAlta(agregados, reactivados, yaEnPlantilla, problemas, avisos, total),
+        },
         datos: { [CLAVE_ALTAS]: total },
       };
     },
@@ -121,12 +126,41 @@ async function altaEnLote(
   equipoId: string,
   academiaId: string | undefined,
   parseados: ReturnType<typeof parsearPlantilla>,
-): Promise<{ agregados: string[]; problemas: string[]; avisos: string[] }> {
+): Promise<{
+  agregados: string[];
+  reactivados: string[];
+  yaEnPlantilla: string[];
+  problemas: string[];
+  avisos: string[];
+}> {
   const agregados: string[] = [];
+  const reactivados: string[] = [];
+  const yaEnPlantilla: string[] = [];
   const problemas: string[] = [];
   const creados: Jugador[] = [];
 
   for (const jugador of parseados) {
+    // Si ya está en la plantilla de este mismo equipo (mismo nombre) no se
+    // crea una ficha nueva: quedaría repetido, con las estadísticas de la
+    // misma persona repartidas entre dos jugadorId distintos. Por nombre
+    // exacto solamente -- no por dorsal como `buscarEnEquipo`, que confundiría
+    // a dos personas distintas del lote pidiendo sin querer el mismo dorsal
+    // (ver el comentario de `buscarPorNombreEnEquipo`). Se busca antes de
+    // cada alta (no solo al principio del lote) para que pegar el mismo
+    // nombre dos veces en una sola lista tampoco lo duplique.
+    const existente = await jugadores.buscarPorNombreEnEquipo(equipoId, jugador.nombre);
+
+    if (existente) {
+      if (existente.activo) {
+        yaEnPlantilla.push(textos.cargarPlantilla.yaEnPlantilla(describirJugador(existente)));
+      } else {
+        await jugadores.reactivar(equipoId, existente.id);
+        reactivados.push(textos.cargarPlantilla.reactivado(describirJugador(existente)));
+      }
+
+      continue;
+    }
+
     try {
       const creado = await jugadores.crear(equipoId, jugador.nombre, jugador.dorsal);
 
@@ -147,7 +181,7 @@ async function altaEnLote(
     ? await avisosDeDuplicado(jugadores, academiaId, equipoId, creados)
     : [];
 
-  return { agregados, problemas, avisos };
+  return { agregados, reactivados, yaEnPlantilla, problemas, avisos };
 }
 
 /**
@@ -196,6 +230,8 @@ async function avisosDeDuplicado(
 
 function resumenDeAlta(
   agregados: string[],
+  reactivados: string[],
+  yaEnPlantilla: string[],
   problemas: string[],
   avisos: string[],
   total: number,
@@ -204,6 +240,14 @@ function resumenDeAlta(
 
   if (agregados.length > 0) {
     lineas.push(`✅ ${agregados.join(', ')}`);
+  }
+
+  if (reactivados.length > 0) {
+    lineas.push(...reactivados.map((linea) => `🔄 ${linea}`));
+  }
+
+  if (yaEnPlantilla.length > 0) {
+    lineas.push(...yaEnPlantilla.map((linea) => `ℹ️ ${linea}`));
   }
 
   if (problemas.length > 0) {

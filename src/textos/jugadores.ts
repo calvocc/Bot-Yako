@@ -112,6 +112,10 @@ export const textos = {
       `No entendí eso. Escribe algo como "Jacob, 10", o ${comandoListo} para terminar.`,
     posibleDuplicado: (nombre: string, equipoNombre: string) =>
       `${nombre} también está en la plantilla de ${equipoNombre}. Si es la misma persona, la próxima vez usa "Agregar" → "Ya en otro equipo" para unir sus estadísticas.`,
+    yaEnPlantilla: (nombre: string) =>
+      `${nombre} ya estaba en la plantilla; no lo agregué de nuevo.`,
+    reactivado: (nombre: string) =>
+      `${nombre} estaba de baja: lo reactivé en vez de crear una ficha repetida.`,
     resumenAlta: (van: number, comandoListo: string) =>
       `Van ${van} jugador${van === 1 ? '' : 'es'}. Sigue o escribe ${comandoListo}.`,
     listaLista: (cargados: number, siguiente: string) =>
