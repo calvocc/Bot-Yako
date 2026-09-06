@@ -17,6 +17,8 @@ export const PESO_MIN_KG = 10;
 export const PESO_MAX_KG = 120;
 export const ESTATURA_MIN_CM = 80;
 export const ESTATURA_MAX_CM = 210;
+export const DORSAL_MIN = 0;
+export const DORSAL_MAX = 99;
 
 /** "12/10/2018", "12-10-2018", "12.10.2018". Año siempre explícito, de 4 cifras. */
 export function parsearFechaNacimiento(texto: string, hoy: string = hoyLocal()): string | null {
@@ -58,6 +60,22 @@ export function parsearEstatura(texto: string): number | null {
   }
 
   return numero;
+}
+
+/**
+ * "7", "07" -- entero entre 0 y 99, mismo rango que el check de la base
+ * (`jugadores_dorsal_check`). No reconoce "ninguno"/vacío: eso lo decide el
+ * paso que llama (`EditarJugadorFlujo.pasoDorsal`), porque acá "sin dorsal"
+ * no es lo mismo que "no entendí lo que escribiste".
+ */
+export function parsearDorsal(texto: string): number | null {
+  const limpio = texto.trim();
+
+  if (!/^\d{1,2}$/.test(limpio)) return null;
+
+  const numero = Number(limpio);
+
+  return numero >= DORSAL_MIN && numero <= DORSAL_MAX ? numero : null;
 }
 
 function edadEn(iso: string, hoy: string): number {

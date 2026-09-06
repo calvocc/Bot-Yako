@@ -1,4 +1,9 @@
-import { parsearEstatura, parsearFechaNacimiento, parsearPeso } from './datos-fisicos';
+import {
+  parsearDorsal,
+  parsearEstatura,
+  parsearFechaNacimiento,
+  parsearPeso,
+} from './datos-fisicos';
 
 const HOY = '2026-09-05';
 
@@ -90,5 +95,36 @@ describe('parsearEstatura', () => {
   it('acepta los límites', () => {
     expect(parsearEstatura('80')).toBe(80);
     expect(parsearEstatura('210')).toBe(210);
+  });
+});
+
+describe('parsearDorsal', () => {
+  it('interpreta un entero', () => {
+    expect(parsearDorsal('7')).toBe(7);
+  });
+
+  it('acepta un cero a la izquierda', () => {
+    expect(parsearDorsal('07')).toBe(7);
+  });
+
+  it('acepta los límites', () => {
+    expect(parsearDorsal('0')).toBe(0);
+    expect(parsearDorsal('99')).toBe(99);
+  });
+
+  it('rechaza más de dos dígitos', () => {
+    expect(parsearDorsal('100')).toBeNull();
+  });
+
+  it('rechaza decimales', () => {
+    expect(parsearDorsal('7.5')).toBeNull();
+  });
+
+  it('rechaza texto que no es un número', () => {
+    expect(parsearDorsal('siete')).toBeNull();
+  });
+
+  it('rechaza vacío: acá "sin dorsal" lo decide el llamador, no este parser', () => {
+    expect(parsearDorsal('')).toBeNull();
   });
 });

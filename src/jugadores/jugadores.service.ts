@@ -376,6 +376,57 @@ export class JugadoresService {
 
     return filas.length > 0;
   }
+
+  /**
+   * Renombra a un jugador (/editarjugador → Nombre).
+   *
+   * Sin chequeo de duplicados: a diferencia del dorsal, el nombre no es
+   * único en ningún nivel (ver `buscarEnAcademia`, que existe justamente
+   * porque puede repetirse entre equipos, y ni siquiera bloquea dentro del
+   * mismo equipo).
+   */
+  async actualizarNombre(equipoId: string, jugadorId: string, nombre: string): Promise<boolean> {
+    const filas = await this.db.db
+      .update(jugadores)
+      .set({ nombre })
+      .where(and(eq(jugadores.id, jugadorId), eq(jugadores.equipoId, equipoId)))
+      .returning({ id: jugadores.id });
+
+    return filas.length > 0;
+  }
+
+  /**
+   * Cambia el dorsal de un jugador (/editarjugador → Dorsal), o lo libera
+   * con `dorsal: null`.
+   *
+   * Mismo chequeo que `crear()`, y por eso la misma `DorsalOcupadoError`: se
+   * busca quién más lo tiene, entre los activos, antes de escribir, para
+   * poder decir *quién* lo tiene -- el índice único de la base también lo
+   * impide, pero su error no sirve para explicárselo a nadie. Se excluye al
+   * propio jugador que se edita: si no, dejarle el mismo dorsal que ya tenía
+   * se rechazaría a sí mismo.
+   */
+  async actualizarDorsal(
+    equipoId: string,
+    jugadorId: string,
+    dorsal: number | null,
+  ): Promise<boolean> {
+    if (dorsal !== null) {
+      const ocupado = (await this.listar(equipoId, false)).find(
+        (j) => j.dorsal === dorsal && j.id !== jugadorId,
+      );
+
+      if (ocupado) throw new DorsalOcupadoError(dorsal, ocupado.nombre);
+    }
+
+    const filas = await this.db.db
+      .update(jugadores)
+      .set({ dorsal })
+      .where(and(eq(jugadores.id, jugadorId), eq(jugadores.equipoId, equipoId)))
+      .returning({ id: jugadores.id });
+
+    return filas.length > 0;
+  }
 }
 
 export interface JugadorParseado {
@@ -431,6 +482,17 @@ export function parsearJugador(linea: string): JugadorParseado | null {
   if (!soloNombre || /^\d+$/.test(soloNombre)) return null;
 
   return { nombre: soloNombre };
+}
+
+/**
+ * Nombre nuevo para /editarjugador → Nombre: solo el nombre, sin dorsal —
+ * a diferencia de `parsearJugador`, acá el dorsal ya tiene su propio botón.
+ * Mismo criterio contra un número a secas ("10" no es el nombre de nadie).
+ */
+export function parsearNombreJugador(texto: string): string | null {
+  const limpio = texto.trim().replace(/\s+/g, ' ');
+
+  return !limpio || /^\d+$/.test(limpio) ? null : limpio;
 }
 
 /** Varias líneas de una vez: pegar una lista completa también funciona. */

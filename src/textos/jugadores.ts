@@ -51,12 +51,26 @@ export const textos = {
     ningunoEncontrado: () => 'No encontré a ese jugador.',
 
     menu: (jugador: string) => `✏️ Editando a ${jugador}. ¿Qué quieres cargar?`,
+    botonNombre: 'Nombre',
+    botonDorsal: 'Dorsal',
     botonPosicion: 'Posición',
     botonFechaNacimiento: 'Fecha de nacimiento',
     botonPeso: 'Peso',
     botonEstatura: 'Estatura',
     botonListo: 'Listo',
     listo: () => 'Listo 👍',
+
+    nombre: {
+      pregunta: () => '¿Cuál es el nombre correcto?',
+      invalido: () =>
+        'Ese nombre no me sirve. Escribe el nombre (no puede quedar vacío ni ser solo un número).',
+    },
+
+    dorsal: {
+      pregunta: () => 'Nuevo dorsal (un número entre 0 y 99), o "ninguno" si no debería tener:',
+      invalido: () => 'Ese dorsal no me cuadra. Escribe un número entre 0 y 99, o "ninguno".',
+      ocupado: (mensaje: string) => `${mensaje}. Elige otro, o "ninguno".`,
+    },
 
     posicion: {
       pregunta: () => '¿En qué posición juega?',
