@@ -3,9 +3,11 @@ import { and, desc, eq, getTableColumns, gte, ne } from 'drizzle-orm';
 import { DbService, type EjecutorDb } from '../db/db.service';
 import type { FormatoPartido } from '../equipos/equipos.service';
 import { competencias, partidos, usuarios } from '../db/schema';
-import { hoyLocal, sumarDias } from './fechas';
 import { mapearPartido, type Partido } from './partido.mapper';
 import { TiemposService } from './tiempos.service';
+
+/** Una vez cargado, un partido deja de ofrecerse en /cargar pasado este tiempo. */
+const HORAS_LIMITE_CARGA = 24;
 
 export interface NuevoPartido {
   equipoId: string;
@@ -75,18 +77,25 @@ export class PartidosService {
   /**
    * Partidos a los que todavía se les puede cargar algo.
    *
-   * Se limita a ayer y hoy: sin esto, un partido de hace semanas que alguien
-   * dejó con un tiempo abierto (el bot se cayó, nadie tocó "Finalizar")
-   * seguía ofreciéndose en /cargar para siempre, y su minuto crecía sin freno
-   * hasta reventar el `smallint` de `minuto_calculado`.
+   * El corte se mide contra `creadoEn`, no contra `fecha`: un partido pasado
+   * cargado hoy con una fecha vieja (un torneo del fin de semana que recién
+   * se registra) tiene que poder cargarse igual que uno de hoy. Lo que hay
+   * que evitar es otra cosa: un partido que alguien dejó con un tiempo
+   * abierto (el bot se cayó, nadie tocó "Finalizar") y que sin este freno
+   * seguía ofreciéndose en /cargar para siempre, con su minuto creciendo sin
+   * freno hasta reventar el `smallint` de `minuto_calculado`. Ese riesgo
+   * depende de cuánto hace que el registro quedó ahí, no de qué fecha de
+   * partido eligió quien lo cargó.
    */
   async abiertosDe(equipoId: string, limite = PARTIDOS_POR_LISTA): Promise<Partido[]> {
+    const limiteEn = new Date(Date.now() - HORAS_LIMITE_CARGA * 60 * 60 * 1000);
+
     const filas = await this.consulta()
       .where(
         and(
           eq(partidos.equipoId, equipoId),
           ne(partidos.estado, 'cerrado'),
-          gte(partidos.fecha, sumarDias(hoyLocal(), -1)),
+          gte(partidos.creadoEn, limiteEn),
         ),
       )
       .orderBy(desc(partidos.fecha), desc(partidos.creadoEn))
