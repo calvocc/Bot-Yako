@@ -238,8 +238,9 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     const { equipo, usuarioId, decir } = await escenario('Reabierto viejo');
     const partido = await crearPartido(equipo.id);
 
-    // Simula un partido creado hace varios días: creadoEn viejo es justo lo
-    // que abiertosDe() deja afuera por defecto (ver PartidosService).
+    // Simula un partido creado hace varios días: creadoEn viejo por sí solo
+    // ya no saca a un partido de /cargar (ver PartidosService.abiertosDe) --
+    // lo que importa es si tiene un reloj corriendo, y este no lo tiene.
     await db.db.execute(
       sql`update partidos set creado_en = now() - interval '3 days' where id = ${partido.id}`,
     );
@@ -260,6 +261,55 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     adaptador.limpiar();
     await decir('/cargar');
     expect(adaptador.ultimoTexto).not.toContain('Este equipo no tiene partidos abiertos');
+  });
+
+  it('un partido post partido sin tocar hace más de un día sigue apareciendo en /cargar', async () => {
+    // Caso real reportado: un partido cargado post partido (nunca corre
+    // reloj) que lleva más de un día sin tocarse, sin haberse cerrado ni
+    // reabierto nunca -- antes quedaba invisible en /cargar igual, sin que
+    // corriera ningún riesgo real (ver el comentario de abiertosDe).
+    const { equipo, decir } = await escenario('Post partido viejo');
+    const partido = await crearPartido(equipo.id);
+
+    await db.db.execute(
+      sql`update partidos
+          set modo_carga = 'post_partido', tiempo_estado = 'finalizado', creado_en = now() - interval '3 days'
+          where id = ${partido.id}`,
+    );
+
+    const abiertos = await partidos.abiertosDe(equipo.id);
+    expect(abiertos.map((p) => p.id)).toContain(partido.id);
+
+    await decir('/cargar');
+    expect(adaptador.ultimoTexto).not.toContain('Este equipo no tiene partidos abiertos');
+  });
+
+  it('un partido en vivo con el reloj corriendo hace más de un día deja de ofrecerse en /cargar', async () => {
+    // La protección original (PR #19): un partido que alguien dejó con el
+    // reloj corriendo (el bot se cayó, nadie tocó "Finalizar") no puede
+    // seguir ofreciéndose para siempre -- su minuto seguiría creciendo sin
+    // freno. Se sigue cumpliendo con el nuevo criterio (tiempoIniciadoEn),
+    // solo que ahora aplica de verdad solo mientras el reloj sigue corriendo.
+    const { equipo, decir, tocar } = await escenario('Reloj viejo');
+    await crearPartido(equipo.id);
+
+    await decir('/cargar');
+    await elegirTitulares(tocar, ['Jacob']);
+    await tocar('md:vivo');
+    expect(adaptador.ultimoTexto).toContain('Arrancó el Tiempo 1');
+
+    const partido = (await partidos.abiertosDe(equipo.id))[0];
+
+    await db.db.execute(
+      sql`update partidos set tiempo_iniciado_en = now() - interval '3 days' where id = ${partido.id}`,
+    );
+
+    const abiertos = await partidos.abiertosDe(equipo.id);
+    expect(abiertos.map((p) => p.id)).not.toContain(partido.id);
+
+    adaptador.limpiar();
+    await decir('/cargar');
+    expect(adaptador.ultimoTexto).toContain('Este equipo no tiene partidos abiertos');
   });
 
   it('/deshacer quita el último evento propio y lo cuenta', async () => {
