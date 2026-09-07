@@ -935,6 +935,52 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
       expect(cargados[0].jugadorNombre).toBe('Andrés');
     });
 
+    it('cada pregunta de goleadores/tarjetas post partido manda un mensaje nuevo, nunca edita el anterior', async () => {
+      // Reportado: tras "Corregir todo", la pregunta de goleadores editaba el
+      // resumen de arriba en vez de mandar un mensaje nuevo -- un papá podía
+      // no darse cuenta de que había algo nuevo que contestar. A diferencia
+      // del panel en vivo (que sí edita en el sitio a propósito), acá cada
+      // pregunta tiene que quedar como su propio mensaje.
+      const { equipo, decir, tocar } = await escenario('Post partido sin editar');
+      await crearPartido(equipo.id);
+
+      await decir('/cargar');
+      await tocar('md:post');
+      await elegirParticipantesPost(tocar);
+      expect(adaptador.ultimoTexto).toContain('¿Quién anotó?');
+      expect(adaptador.ultimo.fueEdicion).toBe(false);
+
+      const jacobBoton = botonDe('Jacob');
+
+      await tocar(jacobBoton);
+      expect(adaptador.ultimo.fueEdicion).toBe(false);
+
+      await tocar('pp:golesListo');
+      expect(adaptador.ultimoTexto).toContain('¿Hubo tarjetas?');
+      expect(adaptador.ultimo.fueEdicion).toBe(false);
+
+      await tocar(jacobBoton);
+      expect(adaptador.ultimoTexto).toContain('¿Amarilla o roja para Jacob?');
+      expect(adaptador.ultimo.fueEdicion).toBe(false);
+
+      await tocar('pp:amarilla');
+      expect(adaptador.ultimo.fueEdicion).toBe(false);
+
+      await tocar('pp:tarjetasListo');
+      expect(adaptador.ultimoTexto).toContain('¿Confirmas el marcador final?');
+
+      // Y el caso puntual reportado: sin cerrar el partido todavía, volver a
+      // /cargar y tocar "Corregir todo" (RF-4.2) también manda un mensaje
+      // nuevo con la pregunta de goleadores, no edita el resumen de arriba.
+      adaptador.limpiar();
+      await decir('/cargar');
+      expect(adaptador.ultimoTexto).toContain('¿Agregas o corriges algo?');
+
+      await tocar('pp:corregir');
+      expect(adaptador.ultimoTexto).toContain('¿Quién anotó?');
+      expect(adaptador.ultimo.fueEdicion).toBe(false);
+    });
+
     it('"/saltar" no se guarda como el nombre de un jugador', async () => {
       const { equipo, decir, tocar } = await escenario('Post partido saltar');
       const partido = await crearPartido(equipo.id);

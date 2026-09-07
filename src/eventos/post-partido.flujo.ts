@@ -23,9 +23,9 @@ import { type EventosService, type ResultadoRegistro } from './eventos.service';
  * estos pasos se plantan tal cual dentro de su mismo `FLUJO_CARGAR` (una
  * sesión de post partido pasa por `pasoModo` igual que la de en vivo). Los
  * ganchos que reciben son la parte de `CargarFlujo` que sí hay que compartir
- * —la edición del panel y las guardas de permiso/partido perdido—; el resto
- * (equipo, partido) ya viaja en `ctx.datos` gracias a las claves compartidas
- * de `selector-equipo.ts` y `cargar.flujo.ts`.
+ * —las guardas de permiso/partido perdido—; el resto (equipo, partido) ya
+ * viaja en `ctx.datos` gracias a las claves compartidas de
+ * `selector-equipo.ts` y `cargar.flujo.ts`.
  *
  * Goleadores y tarjetas se eligen tocando la plantilla, no escribiendo el
  * nombre: cada toque registra un evento y vuelve a la misma pregunta (de
@@ -37,9 +37,16 @@ import { type EventosService, type ResultadoRegistro } from './eventos.service';
  * más abajo—, parametrizado solo en lo que de verdad difiere: qué pasa al
  * elegir a alguien (un gol se registra de una; una tarjeta primero pregunta
  * el color).
+ *
+ * Cada pregunta manda un mensaje nuevo — nunca se edita la anterior, a
+ * diferencia del panel en vivo (que sí se edita en el sitio porque ahí todo
+ * pasa en un único mensaje que se va actualizando). Acá, sin nada que avise
+ * que el mensaje cambió, un papá podía tocar "Corregir todo" y no darse
+ * cuenta de que la pregunta de goleadores ya estaba lista más arriba en el
+ * chat -- quedaba mirando el resumen de siempre, sin ver que había algo
+ * nuevo que contestar.
  */
 export interface GanchosPostPartido {
-  panelId(ctx: ContextoFlujo): string | undefined;
   datosPanel(ctx: ContextoFlujo): DatosFlujo;
   partidoId(ctx: ContextoFlujo): string;
   siguePudiendoCargar(ctx: ContextoFlujo): Promise<boolean>;
@@ -168,7 +175,6 @@ function pasoElegirDeLaPlantilla(
         .filter(Boolean)
         .join('\n\n'),
       botones,
-      editarMensajeId: cfg.ganchos.panelId(ctx),
     };
   };
 
@@ -422,7 +428,6 @@ export function pasoTarjetasPostColor(
     return {
       texto: `¿Amarilla o roja para ${nombre}?`,
       botones,
-      editarMensajeId: ganchos.panelId(ctx),
     };
   };
 

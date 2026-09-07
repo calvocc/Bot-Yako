@@ -1687,7 +1687,6 @@ export class CargarFlujo {
   /** Lo que `post-partido.flujo.ts` necesita prestado de acá. */
   private ganchosPostPartido(): GanchosPostPartido {
     return {
-      panelId: (ctx) => this.panelId(ctx),
       datosPanel: (ctx) => this.datosPanel(ctx),
       partidoId: (ctx) => leerTexto(ctx.datos, CLAVE_PARTIDO_ID),
       siguePudiendoCargar: (ctx) => this.siguePudiendoCargar(ctx),
