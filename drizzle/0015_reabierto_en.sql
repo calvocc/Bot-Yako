@@ -1,0 +1,1 @@
+ALTER TABLE "partidos" ADD COLUMN "reabierto_en" timestamp with time zone;

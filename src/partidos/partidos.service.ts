@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, getTableColumns, gte, ne } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, gte, ne, or } from 'drizzle-orm';
 import { DbService, type EjecutorDb } from '../db/db.service';
 import type { FormatoPartido } from '../equipos/equipos.service';
 import { competencias, partidos, usuarios } from '../db/schema';
@@ -77,15 +77,22 @@ export class PartidosService {
   /**
    * Partidos a los que todavía se les puede cargar algo.
    *
-   * El corte se mide contra `creadoEn`, no contra `fecha`: un partido pasado
-   * cargado hoy con una fecha vieja (un torneo del fin de semana que recién
-   * se registra) tiene que poder cargarse igual que uno de hoy. Lo que hay
-   * que evitar es otra cosa: un partido que alguien dejó con un tiempo
-   * abierto (el bot se cayó, nadie tocó "Finalizar") y que sin este freno
-   * seguía ofreciéndose en /cargar para siempre, con su minuto creciendo sin
-   * freno hasta reventar el `smallint` de `minuto_calculado`. Ese riesgo
-   * depende de cuánto hace que el registro quedó ahí, no de qué fecha de
-   * partido eligió quien lo cargó.
+   * El corte se mide contra `creadoEn` (o `reabiertoEn`, si se reabrió más
+   * recientemente), no contra `fecha`: un partido pasado cargado hoy con una
+   * fecha vieja (un torneo del fin de semana que recién se registra) tiene
+   * que poder cargarse igual que uno de hoy. Lo que hay que evitar es otra
+   * cosa: un partido que alguien dejó con un tiempo abierto (el bot se cayó,
+   * nadie tocó "Finalizar") y que sin este freno seguía ofreciéndose en
+   * /cargar para siempre, con su minuto creciendo sin freno hasta reventar
+   * el `smallint` de `minuto_calculado`. Ese riesgo depende de cuánto hace
+   * que el registro quedó ahí, no de qué fecha de partido eligió quien lo
+   * cargó.
+   *
+   * `reabiertoEn` entra en el `or` por la misma razón: /reabrir vuelve a
+   * dejar el partido genuinamente abierto, pero por sí solo no toca
+   * `creadoEn` -- sin mirar también cuándo se reabrió, un partido creado
+   * hace semanas y reabierto recién ahora quedaba invisible para /cargar
+   * aunque `/partidos` lo siguiera mostrando abierto.
    */
   async abiertosDe(equipoId: string, limite = PARTIDOS_POR_LISTA): Promise<Partido[]> {
     const limiteEn = new Date(Date.now() - HORAS_LIMITE_CARGA * 60 * 60 * 1000);
@@ -95,7 +102,7 @@ export class PartidosService {
         and(
           eq(partidos.equipoId, equipoId),
           ne(partidos.estado, 'cerrado'),
-          gte(partidos.creadoEn, limiteEn),
+          or(gte(partidos.creadoEn, limiteEn), gte(partidos.reabiertoEn, limiteEn)),
         ),
       )
       .orderBy(desc(partidos.fecha), desc(partidos.creadoEn))
@@ -227,6 +234,7 @@ export class PartidosService {
           cerradoPor: null,
           marcadorPropioConfirmado: null,
           marcadorRivalConfirmado: null,
+          reabiertoEn: new Date(),
         })
         .where(eq(partidos.id, partidoId));
 

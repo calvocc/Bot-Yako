@@ -55,6 +55,14 @@ export const partidos = pgTable(
     creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
     cerradoEn: timestamp('cerrado_en', { withTimezone: true }),
     cerradoPor: uuid('cerrado_por').references(() => usuarios.id),
+    /**
+     * Cuándo se reabrió por última vez (`PartidosService.reabrir`). Null si
+     * nunca se reabrió. Es lo que `abiertosDe` usa junto con `creadoEn` para
+     * decidir si sigue ofreciéndose en /cargar: sin esto, reabrir un partido
+     * creado hace más de un día lo revivía en la base pero lo dejaba
+     * invisible para /cargar, que solo miraba `creadoEn`.
+     */
+    reabiertoEn: timestamp('reabierto_en', { withTimezone: true }),
   },
   (t) => [
     index('idx_partidos_equipo_estado').on(t.equipoId, t.estado),
