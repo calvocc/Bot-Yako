@@ -119,6 +119,18 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
     id,
 
     entrar: async (ctx: ContextoFlujo): Promise<Entrada> => {
+      // Un mismo flujo puede usar este paso genérico más de una vez con
+      // datos distintos (ver `cargar.flujo.ts`: `pasoTitulares` y
+      // `pasoParticipantesPost` comparten esta clave de sesión). Sin
+      // limpiarla acá, una selección que quedó de la visita anterior se
+      // cuela como si el usuario ya la hubiera marcado en esta -- aunque
+      // acá se muestre todo destildado. Se muta `ctx.datos` directo (no
+      // alcanza con `armar(lista, [], 0)`, que solo arma la respuesta):
+      // `FlowEngine` relee `ctx.datos` después de `entrar`, así que
+      // mutarlo es lo que hace que la limpieza quede guardada.
+      ctx.datos[CLAVE_SELECCION] = [];
+      ctx.datos[CLAVE_PAGINA] = 0;
+
       const lista = await opciones.obtenerOpciones(ctx);
 
       if (lista.length === 0 && opciones.sinOpciones) {

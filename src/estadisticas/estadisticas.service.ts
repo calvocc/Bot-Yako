@@ -10,7 +10,15 @@ export interface EstadisticaJugador {
   nombre: string;
   dorsal: number | null;
   temporada: number;
-  partidosConEvento: number;
+  /**
+   * Partidos donde tuvo un evento propio, entró por cambio, o quedó
+   * marcado como participante en `/cargar` post partido
+   * (`partido_titulares`, ver `cargar.flujo.ts`) -- no solo los que
+   * tuvieron algún evento individual (`partidos_con_evento` en la vista,
+   * que no se expone acá): un jugador que jugó sin anotar ni ver tarjeta
+   * también cuenta.
+   */
+  partidosJugados: number;
   goles: number;
   autogoles: number;
   asistencias: number;
@@ -214,7 +222,7 @@ function mapearEstadisticaJugador(fila: Record<string, unknown>): EstadisticaJug
     nombre: String(fila.nombre),
     dorsal: fila.dorsal === null ? null : Number(fila.dorsal),
     temporada: Number(fila.temporada),
-    partidosConEvento: Number(fila.partidos_con_evento),
+    partidosJugados: Number(fila.partidos_jugados),
     goles: Number(fila.goles),
     autogoles: Number(fila.autogoles),
     asistencias: Number(fila.asistencias),

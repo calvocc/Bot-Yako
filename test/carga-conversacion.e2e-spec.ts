@@ -633,6 +633,61 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     const botonDe = (nombre: string): string =>
       adaptador.ultimosBotones.find((b) => b.texto.startsWith(nombre))!.id;
 
+    /**
+     * Tras "Post partido", el paso nuevo pide quiénes jugaron antes de
+     * ofrecer goleadores/tarjetas (mínimo 1, ver `pasoParticipantesPost`).
+     * "Todos" alcanza para la mayoría de estos tests: lo que prueban es la
+     * carga de eventos, no la selección de plantel en sí (esa la prueban
+     * los dos tests de acá abajo).
+     */
+    const elegirParticipantesPost = async (tocar: (id: string) => Promise<void>): Promise<void> => {
+      await tocar('sm:todos');
+      await tocar('sm:listo');
+    };
+
+    it('exige elegir al menos un participante antes de ofrecer goleadores', async () => {
+      const { equipo, decir, tocar } = await escenario('Post partido participantes obligatorio');
+      await crearPartido(equipo.id);
+
+      await decir('/cargar');
+      await tocar('md:post');
+      expect(adaptador.ultimoTexto).toContain('¿Quiénes jugaron este partido?');
+
+      // Confirmar sin marcar a nadie no debe dejar avanzar a goleadores.
+      await tocar('sm:listo');
+      expect(adaptador.ultimoTexto).toContain('Elige al menos uno.');
+      expect(adaptador.ultimoTexto).toContain('¿Quiénes jugaron este partido?');
+
+      await tocar(botonDe('Jacob'));
+      await tocar('sm:listo');
+      expect(adaptador.ultimoTexto).toContain('¿Quién anotó?');
+    });
+
+    it('un participante sin ningún evento propio aparece en el resumen con nota base', async () => {
+      const { equipo, decir, tocar } = await escenario('Post partido participante sin evento');
+      await crearPartido(equipo.id);
+
+      await decir('/cargar');
+      await tocar('md:post');
+
+      // Jacob anota; Andrés se marca como participante pero no tiene ningún
+      // evento propio -- antes de este paso quedaba afuera del resumen (y
+      // de /stats) por completo, como si no hubiera jugado.
+      await tocar(botonDe('Jacob'));
+      await tocar(botonDe('Andrés'));
+      await tocar('sm:listo');
+
+      await tocar(botonDe('Jacob'));
+      await tocar('pp:golesListo');
+      await tocar('pp:tarjetasListo');
+      await decir('1-0');
+
+      const textos = adaptador.enviados.map((e) => e.respuesta.texto).join('\n');
+      // 1 gol sin posición (3 puntos brutos) → nota 7.5; sin eventos → 6.0.
+      expect(textos).toContain('Jacob #10: 7.5');
+      expect(textos).toContain('Andrés #7: 6.0');
+    });
+
     it('no pide titular: el modo se ofrece igual sin ninguna elegida', async () => {
       const { equipo, decir, tocar } = await escenario('Post partido sin titular');
       await crearPartido(equipo.id);
@@ -643,6 +698,9 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
       expect(adaptador.ultimosBotones.map((b) => b.id)).not.toContain('md:vivo');
 
       await tocar('md:post');
+      expect(adaptador.ultimoTexto).toContain('¿Quiénes jugaron este partido?');
+
+      await elegirParticipantesPost(tocar);
       expect(adaptador.ultimoTexto).toContain('¿Quién anotó?');
     });
 
@@ -654,6 +712,7 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
       expect(adaptador.ultimoTexto).toContain('¿Vas a cargar en vivo');
 
       await tocar('md:post');
+      await elegirParticipantesPost(tocar);
       expect(adaptador.ultimoTexto).toContain('¿Quién anotó?');
 
       // Jacob anota dos, Andrés uno: se toca el botón de cada uno tantas
@@ -706,6 +765,7 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
 
       await decir('/cargar');
       await tocar('md:post');
+      await elegirParticipantesPost(tocar);
 
       await tocar('pp:otro');
       expect(adaptador.ultimoTexto).toContain('Escribe el nombre de quien anotó');
@@ -741,6 +801,7 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
 
       await decir('/cargar');
       await tocar('md:post');
+      await elegirParticipantesPost(tocar);
       await tocar('pp:golesListo');
       await tocar('pp:otro');
       expect(adaptador.ultimoTexto).toContain('Escribe el nombre de quien vio la tarjeta');
@@ -765,6 +826,7 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
 
       await decir('/cargar');
       await tocar('md:post');
+      await elegirParticipantesPost(tocar);
 
       const jacobBoton = botonDe('Jacob');
       await tocar(jacobBoton);
@@ -801,6 +863,7 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
 
       await decir('/cargar');
       await tocar('md:post');
+      await elegirParticipantesPost(tocar);
       await tocar('pp:otro');
 
       // "/saltar" es una palabra de flujo genérica (COMANDOS_DE_FLUJO), no

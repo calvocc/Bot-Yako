@@ -129,17 +129,21 @@ export class AlineacionService {
    * Minutos jugados por cada jugador, para el bono de cierre (valla invicta
    * / goles recibidos) de `puntaje.ts`.
    *
-   * Sin titulares registrados (partido legado, o uno cargado enteramente
-   * post partido) devuelve un `Map` vacío: no hay forma honesta de saber
-   * minutos ahí, y por lo tanto tampoco se disparan los bonos de cierre
-   * para ese partido — pero sí puede seguir habiendo notas de quien tuvo
-   * algún evento.
+   * Devuelve un `Map` vacío -- no hay forma honesta de saber minutos, y por
+   * lo tanto tampoco se disparan los bonos de cierre para ese partido, pero
+   * sí puede seguir habiendo notas de quien tuvo algún evento -- en dos
+   * casos: sin `minutoFinal` (nunca corrió un reloj; un partido cargado
+   * post partido siempre cae acá, aunque desde `pasoParticipantesPost`
+   * tenga titulares registrados) o sin titulares (partido legado, de antes
+   * de que ese paso existiera).
    */
   async minutosJugadosDe(
     partidoId: string,
     minutoFinal: number,
     tx?: EjecutorDb,
   ): Promise<Map<string, number>> {
+    if (minutoFinal <= 0) return new Map();
+
     const [titulares, cambios] = await Promise.all([
       this.titularesDe(partidoId, tx),
       this.cambiosDe(partidoId, tx),
@@ -154,6 +158,9 @@ export class AlineacionService {
    * `participantesDe` + `minutosJugadosDe` en una sola consulta de titulares
    * y cambios -- `ResumenService.generar` necesita las dos cosas, y sin esto
    * eran dos SELECT de titulares y dos de cambios por cada /resumen.
+   *
+   * `minutos` sigue el mismo criterio que `minutosJugadosDe` (ver su
+   * comentario): vacío sin `minutoFinal` o sin titulares.
    */
   async datosDeParticipacion(
     partidoId: string,
@@ -168,7 +175,7 @@ export class AlineacionService {
     return {
       participantes: [...new Set([...titulares, ...cambios.map((c) => c.entra)])],
       minutos:
-        titulares.length === 0
+        minutoFinal <= 0 || titulares.length === 0
           ? new Map<string, number>()
           : calcularMinutosJugados(minutoFinal, titulares, cambios),
     };

@@ -5,7 +5,10 @@ import {
   ID_VER_MAS,
   paginaSiguiente,
 } from '../conversacion/pasos-comunes/paginacion';
-import { pasoSeleccionMultiple } from '../conversacion/pasos-comunes/seleccion-multiple';
+import {
+  pasoSeleccionMultiple,
+  type OpcionesSeleccionMultiple,
+} from '../conversacion/pasos-comunes/seleccion-multiple';
 import {
   CLAVE_EQUIPO_ID,
   CLAVE_EQUIPO_NOMBRE,
@@ -82,6 +85,7 @@ const PASOS = {
   partido: 'partido',
   modo: 'modo',
   titulares: 'titulares',
+  participantesPost: 'participantes-post',
   panel: 'panel',
   origen: 'origen',
   jugador: 'jugador',
@@ -195,6 +199,7 @@ export class CargarFlujo {
         this.pasoPartido(),
         this.pasoModo(),
         this.pasoTitulares(),
+        this.pasoParticipantesPost(),
         this.pasoPanel(),
         this.pasoOrigen(),
         this.pasoJugador(),
@@ -393,7 +398,17 @@ export class CargarFlujo {
 
           await this.eventos.borrarEventosPostPartido(partido.id, ctx.usuarioId ?? '');
 
-          return { tipo: 'ir', pasoId: PASOS.goleadoresPost, datos: this.datosPanel(ctx) };
+          // Si ya hay participantes elegidos (lo normal, desde que este paso
+          // existe) se respetan y se va directo a corregir goleadores y
+          // tarjetas. Un partido legado que nunca pasó por `participantesPost`
+          // no tiene a quién respetar, así que primero hay que elegirlos.
+          const yaHayParticipantes = await this.alineacion.hayTitulares(partido.id);
+
+          return {
+            tipo: 'ir',
+            pasoId: yaHayParticipantes ? PASOS.goleadoresPost : PASOS.participantesPost,
+            datos: this.datosPanel(ctx),
+          };
         }
 
         if (seleccion === ID_MODO_POST) {
@@ -409,7 +424,10 @@ export class CargarFlujo {
             );
           }
 
-          return { tipo: 'ir', pasoId: PASOS.goleadoresPost, datos: this.datosPanel(ctx) };
+          // Sin esto, un partido cargado enteramente post partido solo suma
+          // estadísticas para quien anotó o vio una tarjeta -- el resto de la
+          // plantilla que jugó igual queda afuera del resumen y de /stats.
+          return { tipo: 'ir', pasoId: PASOS.participantesPost, datos: this.datosPanel(ctx) };
         }
 
         if (seleccion === ID_IR_A_TITULARES) {
@@ -439,11 +457,31 @@ export class CargarFlujo {
     };
   }
 
-  /** Elige la titular sin arrancar el partido; ver `pasoModo`. */
-  private pasoTitulares(): Paso {
-    return pasoSeleccionMultiple(PASOS.titulares, {
-      pregunta:
-        'Elige la titular. Toca a cada jugador, "Todos" si juega el plantel completo, o escribe los dorsales separados por coma (10, 7, 4). "Listo" cuando termines.',
+  /**
+   * Las opciones que comparten `pasoTitulares` y `pasoParticipantesPost`:
+   * las dos son "elige de la plantilla a quiénes marco como parte de este
+   * partido", solo cambia qué hacen con la elección al confirmar.
+   *
+   * Escribir "10, 7, 4" en vez de tocar quince botones — mismo criterio que
+   * `resolverPorNombre` usa en el resto del bot: dorsal primero, nombre
+   * exacto (sin mayúsculas) como respaldo. Se vuelve a pedir la plantilla en
+   * cada visita (mismo patrón que `candidatosDe` en `plantilla.flujo.ts`:
+   * recalcular en vez de guardar estado extra) porque hace falta el dato
+   * real de cada jugador, no la etiqueta ya renderizada del botón.
+   */
+  private opcionesElegirDeLaPlantilla(
+    pregunta: string,
+  ): Pick<
+    OpcionesSeleccionMultiple,
+    | 'pregunta'
+    | 'minimo'
+    | 'sinOpciones'
+    | 'obtenerOpciones'
+    | 'interpretarTexto'
+    | 'avisoTextoNoReconocido'
+  > {
+    return {
+      pregunta,
       minimo: 1,
       sinOpciones: 'Este equipo no tiene jugadores cargados. Agrégalos con /plantilla primero.',
       obtenerOpciones: async (ctx) => {
@@ -454,12 +492,6 @@ export class CargarFlujo {
           texto: describirJugador(j),
         }));
       },
-      // Escribir "10, 7, 4" en vez de tocar quince botones — mismo criterio
-      // que `resolverPorNombre` usa en el resto del bot: dorsal primero,
-      // nombre exacto (sin mayúsculas) como respaldo. Se vuelve a pedir la
-      // plantilla acá (mismo patrón que `candidatosDe` en `plantilla.flujo.ts`:
-      // recalcular en vez de guardar estado extra) porque hace falta el dato
-      // real de cada jugador, no la etiqueta ya renderizada del botón.
       interpretarTexto: async (ctx, texto) => {
         const plantilla = await this.jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
         const resultado = idsPorDorsalONombre(texto, plantilla);
@@ -473,6 +505,15 @@ export class CargarFlujo {
       },
       avisoTextoNoReconocido:
         'No reconocí a nadie ahí. Escribe los dorsales separados por coma (10, 7, 4) o toca los botones.',
+    };
+  }
+
+  /** Elige la titular sin arrancar el partido; ver `pasoModo`. */
+  private pasoTitulares(): Paso {
+    return pasoSeleccionMultiple(PASOS.titulares, {
+      ...this.opcionesElegirDeLaPlantilla(
+        'Elige la titular. Toca a cada jugador, "Todos" si juega el plantel completo, o escribe los dorsales separados por coma (10, 7, 4). "Listo" cuando termines.',
+      ),
       alConfirmar: async (ctx, elegidos) => {
         const partido = await this.partidoDe(ctx);
 
@@ -488,6 +529,40 @@ export class CargarFlujo {
         await this.alineacion.guardarTitulares(partido.id, ctx.usuarioId ?? '', titularesIds);
 
         return { tipo: 'ir', pasoId: PASOS.modo, datos: this.datosPanel(ctx) };
+      },
+    });
+  }
+
+  /**
+   * Quiénes jugaron un partido cargado post partido (RF-4.1).
+   *
+   * Post partido no tiene reloj ni cambios, así que a diferencia de
+   * `pasoTitulares` esto no es "la titular" sino "todos los que jugaron en
+   * algún momento" — pero se guarda en la misma tabla (`partido_titulares`,
+   * vía `guardarTitulares`): es justo lo que `ResumenService` y las vistas
+   * de `/stats` ya leen para saber quién participó, y sin esto un partido
+   * cargado enteramente post partido solo sumaba estadísticas para quien
+   * anotó o vio una tarjeta -- el resto de la plantilla que jugó quedaba
+   * afuera. El mínimo de 1 (default de `pasoSeleccionMultiple`) es lo que
+   * impide cargar goleadores y tarjetas sin nadie marcado como participante.
+   */
+  private pasoParticipantesPost(): Paso {
+    return pasoSeleccionMultiple(PASOS.participantesPost, {
+      ...this.opcionesElegirDeLaPlantilla(
+        '¿Quiénes jugaron este partido? Toca a cada jugador, "Todos" si jugó el plantel completo, o escribe los dorsales separados por coma (10, 7, 4). "Listo" cuando termines.',
+      ),
+      alConfirmar: async (ctx, elegidos) => {
+        const partido = await this.partidoDe(ctx);
+
+        if (!partido) return this.partidoPerdido();
+        if (partido.estado === 'cerrado') return this.finalizarCon(this.textoPartidoCerrado());
+        if (!(await this.siguePudiendoCargar(ctx))) return this.sinPermiso();
+
+        const idsJugadores = elegidos.map((id) => id.slice(PREFIJO_JUGADOR.length));
+
+        await this.alineacion.guardarTitulares(partido.id, ctx.usuarioId ?? '', idsJugadores);
+
+        return { tipo: 'ir', pasoId: PASOS.goleadoresPost, datos: this.datosPanel(ctx) };
       },
     });
   }

@@ -10,7 +10,7 @@ export const textos = {
     dorsal: number | null;
     equipoNombre: string;
     temporada: number;
-    partidosConEvento: number;
+    partidosJugados: number;
     goles: number;
     asistencias: number;
     amarillas: number;
@@ -19,7 +19,7 @@ export const textos = {
 
     return [
       `📊 ${datos.nombre}${dorsal} — ${datos.equipoNombre} · temporada ${datos.temporada}`,
-      `Partidos jugados: ${datos.partidosConEvento}`,
+      `Partidos jugados: ${datos.partidosJugados}`,
       `Goles: ${datos.goles}  ·  Asistencias: ${datos.asistencias}  ·  Amarillas: ${datos.amarillas}`,
     ].join('\n');
   },
@@ -28,14 +28,14 @@ export const textos = {
     nombre: string;
     temporada: number;
     equipos: number;
-    partidosConEvento: number;
+    partidosJugados: number;
     goles: number;
     asistencias: number;
     amarillas: number;
   }): string => {
     return [
       `🧮 Total en la academia — ${datos.nombre} · temporada ${datos.temporada} (${datos.equipos} equipos)`,
-      `Partidos jugados: ${datos.partidosConEvento}`,
+      `Partidos jugados: ${datos.partidosJugados}`,
       `Goles: ${datos.goles}  ·  Asistencias: ${datos.asistencias}  ·  Amarillas: ${datos.amarillas}`,
     ].join('\n');
   },

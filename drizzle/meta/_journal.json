@@ -99,6 +99,13 @@
       "when": 1788613400000,
       "tag": "0013_estadisticas_jugador_eventos_extra",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788613500000,
+      "tag": "0014_partidos_jugados_participacion",
+      "breakpoints": true
     }
   ]
 }
