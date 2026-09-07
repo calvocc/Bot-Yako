@@ -234,6 +234,34 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     expect(adaptador.ultimoTexto).toContain('Este equipo no tiene partidos abiertos');
   });
 
+  it('un partido reabierto vuelve a aparecer en /cargar aunque se haya creado hace más de un día', async () => {
+    const { equipo, usuarioId, decir } = await escenario('Reabierto viejo');
+    const partido = await crearPartido(equipo.id);
+
+    // Simula un partido creado hace varios días: creadoEn viejo es justo lo
+    // que abiertosDe() deja afuera por defecto (ver PartidosService).
+    await db.db.execute(
+      sql`update partidos set creado_en = now() - interval '3 days' where id = ${partido.id}`,
+    );
+    await partidos.cerrar(partido.id, usuarioId, { propio: 1, rival: 0 });
+
+    // Cerrado: no aparece en /cargar, como en el test de arriba.
+    await decir('/cargar');
+    expect(adaptador.ultimoTexto).toContain('Este equipo no tiene partidos abiertos');
+
+    const reabierto = await partidos.reabrir(partido.id);
+    expect(reabierto.tipo).toBe('reabierto');
+
+    // Reabierto, aunque siga siendo "viejo" por creadoEn, tiene que volver a
+    // ofrecerse: la idea de /reabrir es justamente poder editarlo con /cargar.
+    const abiertos = await partidos.abiertosDe(equipo.id);
+    expect(abiertos.map((p) => p.id)).toContain(partido.id);
+
+    adaptador.limpiar();
+    await decir('/cargar');
+    expect(adaptador.ultimoTexto).not.toContain('Este equipo no tiene partidos abiertos');
+  });
+
   it('/deshacer quita el último evento propio y lo cuenta', async () => {
     const { equipo, usuarioId, decir, tocar } = await escenario('Deshacer');
     await crearPartido(equipo.id);
