@@ -39,6 +39,31 @@ describe('pasoSeleccionMultiple', () => {
     ]);
   });
 
+  it('entrar limpia una selección que quedó de otro uso de este paso genérico', async () => {
+    // Un mismo flujo puede reusar `pasoSeleccionMultiple` más de una vez con
+    // datos distintos (ver `cargar.flujo.ts`: `pasoTitulares` y
+    // `pasoParticipantesPost` comparten la clave `seleccionMultiple` de la
+    // sesión). Sin esta limpieza al entrar, una selección confirmada en la
+    // primera visita se colaba como ya marcada en la segunda.
+    const paso = construir();
+    const ctx = contexto({}, { seleccionMultiple: ['jg:jacob', 'jg:andres'], otroDato: 'x' });
+
+    const entrada = await paso.entrar(ctx);
+
+    if (!('respuesta' in entrada)) throw new Error('esperaba una respuesta');
+    expect(entrada.respuesta.botones?.map((b) => b.texto)).toEqual([
+      'Jacob #10',
+      'Andrés #7',
+      '✅ Todos',
+      'Ninguno',
+      'Listo (0)',
+    ]);
+    // La limpieza quedó en `ctx.datos`, no solo en lo que se muestra: un
+    // toque siguiente no puede heredar la selección de la visita anterior.
+    expect(ctx.datos.seleccionMultiple).toEqual([]);
+    expect(ctx.datos.otroDato).toBe('x');
+  });
+
   it('tocar una opción la marca, y tocarla de nuevo la desmarca', async () => {
     const paso = construir();
 
