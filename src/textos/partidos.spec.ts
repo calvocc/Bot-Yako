@@ -20,8 +20,6 @@ describe('partidos.reabrir.reabierto', () => {
   it('incluye equipo, rival y fecha', () => {
     const texto = textos.reabrir.reabierto('Sub-11', 'Rival FC', '12-10');
 
-    expect(texto).toContain('Partido reabierto ✅ Sub-11 vs Rival FC — 12-10');
-    expect(texto).toContain('/cargar');
-    expect(texto).toContain('/finalizar');
+    expect(texto).toBe('Partido reabierto ✅ Sub-11 vs Rival FC — 12-10');
   });
 });

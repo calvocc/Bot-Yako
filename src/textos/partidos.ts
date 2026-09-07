@@ -40,11 +40,9 @@ export const textos = {
     tocaUnPartido: () => 'Toca uno de los partidos:',
     yaLoReabrieron: () => 'Alguien lo reabrió antes que tú; ya se le puede cargar.',
     reabierto: (equipoNombre: string, rival: string, fecha: string) =>
-      [
-        `Partido reabierto ✅ ${equipoNombre} vs ${rival} — ${fecha}`,
-        '',
-        'Corrige lo que falte con /cargar y vuelve a cerrarlo con /finalizar.',
-      ].join('\n'),
+      `Partido reabierto ✅ ${equipoNombre} vs ${rival} — ${fecha}`,
+    botonEditar: 'Editar partido',
+    botonFinalizar: 'Finalizar',
   },
 
   listar: {

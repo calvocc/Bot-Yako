@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { botonComando } from '../conversacion/comandos';
 import {
   CLAVE_EQUIPO_ID,
   CLAVE_EQUIPO_NOMBRE,
@@ -153,6 +154,16 @@ export class ReabrirFlujo {
               elegido.rival,
               describirFecha(elegido.fecha),
             ),
+            // Sin esto, corregir un partido reabierto obligaba a escribir
+            // /cargar (o /finalizar) a mano -- acá mismo ya se sabe cuál es
+            // el partido, así que los botones ahorran ese paso. Disparan el
+            // comando tal cual: /cargar vuelve a preguntar equipo/partido
+            // igual que siempre (con un solo partido abierto no pregunta
+            // nada), así que no hace falta pasarle el id del partido acá.
+            botones: [
+              botonComando('cargar', textos.reabrir.botonEditar),
+              botonComando('finalizar', textos.reabrir.botonFinalizar),
+            ],
           },
         };
       },
