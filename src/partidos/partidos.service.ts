@@ -77,22 +77,24 @@ export class PartidosService {
   /**
    * Partidos a los que todavía se les puede cargar algo.
    *
-   * El corte se mide contra `creadoEn` (o `reabiertoEn`, si se reabrió más
-   * recientemente), no contra `fecha`: un partido pasado cargado hoy con una
-   * fecha vieja (un torneo del fin de semana que recién se registra) tiene
-   * que poder cargarse igual que uno de hoy. Lo que hay que evitar es otra
-   * cosa: un partido que alguien dejó con un tiempo abierto (el bot se cayó,
-   * nadie tocó "Finalizar") y que sin este freno seguía ofreciéndose en
-   * /cargar para siempre, con su minuto creciendo sin freno hasta reventar
-   * el `smallint` de `minuto_calculado`. Ese riesgo depende de cuánto hace
-   * que el registro quedó ahí, no de qué fecha de partido eligió quien lo
-   * cargó.
+   * El único riesgo real de dejar un partido ofreciéndose para siempre es un
+   * *reloj corriendo* sin que nadie lo pare: el bot se cae con un tiempo
+   * `en_curso`, nadie toca "Finalizar", y el minuto sigue creciendo hasta
+   * reventar el `smallint` de `minuto_calculado`. Por eso el corte se mide
+   * contra `tiempoIniciadoEn`, y solo aplica mientras el tiempo sigue
+   * `en_curso` de verdad -- ni contra `creadoEn` ni contra `fecha`.
    *
-   * `reabiertoEn` entra en el `or` por la misma razón: /reabrir vuelve a
-   * dejar el partido genuinamente abierto, pero por sí solo no toca
-   * `creadoEn` -- sin mirar también cuándo se reabrió, un partido creado
-   * hace semanas y reabierto recién ahora quedaba invisible para /cargar
-   * aunque `/partidos` lo siguiera mostrando abierto.
+   * Cualquier otro partido sin reloj corriendo (post partido -- nunca tiene
+   * reloj --, entre tiempos, recién creado, o reabierto -- `reabrir()` deja
+   * `tiempoEstado` en `finalizado`, nunca lo vuelve a `en_curso`) no corre
+   * ese riesgo y se sigue ofreciendo sin importar cuánto hace que se creó o
+   * se tocó por última vez: un torneo del fin de semana que se termina de
+   * cargar el lunes, o un partido reabierto para corregirlo semanas después,
+   * tienen que seguir apareciendo en /cargar igual.
+   *
+   * (Antes esto se medía contra `creadoEn`/`reabiertoEn`: un partido post
+   * partido -- sin reloj, sin ese riesgo -- que llevaba más de un día sin
+   * tocarse quedaba invisible en /cargar igual, sin ninguna razón real.)
    */
   async abiertosDe(equipoId: string, limite = PARTIDOS_POR_LISTA): Promise<Partido[]> {
     const limiteEn = new Date(Date.now() - HORAS_LIMITE_CARGA * 60 * 60 * 1000);
@@ -102,7 +104,7 @@ export class PartidosService {
         and(
           eq(partidos.equipoId, equipoId),
           ne(partidos.estado, 'cerrado'),
-          or(gte(partidos.creadoEn, limiteEn), gte(partidos.reabiertoEn, limiteEn)),
+          or(ne(partidos.tiempoEstado, 'en_curso'), gte(partidos.tiempoIniciadoEn, limiteEn)),
         ),
       )
       .orderBy(desc(partidos.fecha), desc(partidos.creadoEn))

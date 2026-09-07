@@ -155,14 +155,15 @@ export class ReabrirFlujo {
               describirFecha(elegido.fecha),
             ),
             // Sin esto, corregir un partido reabierto obligaba a escribir
-            // /cargar (o /finalizar) a mano -- acá mismo ya se sabe cuál es
-            // el partido, así que los botones ahorran ese paso. Disparan el
-            // comando tal cual: /cargar vuelve a preguntar equipo/partido
-            // igual que siempre (con un solo partido abierto no pregunta
-            // nada), así que no hace falta pasarle el id del partido acá.
+            // /cargar (o /finalizar) a mano y encima volver a elegir equipo
+            // y partido -- acá mismo ya se sabe cuál es el partido, así que
+            // los botones lo llevan de una: disparan 'continuarcarga'/
+            // 'continuarfinalizar' (atajos internos, no /cargar ni
+            // /finalizar directo) con el id del partido, que entran directo
+            // al paso que corresponde sin volver a preguntar nada.
             botones: [
-              botonComando('cargar', textos.reabrir.botonEditar),
-              botonComando('finalizar', textos.reabrir.botonFinalizar),
+              botonComando('continuarcarga', textos.reabrir.botonEditar, elegido.id),
+              botonComando('continuarfinalizar', textos.reabrir.botonFinalizar, elegido.id),
             ],
           },
         };

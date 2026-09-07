@@ -81,5 +81,18 @@ export class PartidosModule implements OnModuleInit {
       tipo: 'respuesta',
       ejecutar: (_ctx, usuarioId) => this.handler.listar(usuarioId),
     });
+
+    // Atajos internos, solo alcanzables por botón (no van en el catálogo de
+    // /ayuda): "Editar partido"/"Finalizar" tras /reabrir, que ya saben
+    // equipo y partido y no tienen que volver a preguntarlos.
+    this.router.registrarComando('continuarcarga', {
+      tipo: 'respuesta',
+      ejecutar: (ctx, usuarioId) => this.handler.continuarCarga(ctx.argumento, usuarioId, 'cargar'),
+    });
+    this.router.registrarComando('continuarfinalizar', {
+      tipo: 'respuesta',
+      ejecutar: (ctx, usuarioId) =>
+        this.handler.continuarCarga(ctx.argumento, usuarioId, 'finalizar'),
+    });
   }
 }

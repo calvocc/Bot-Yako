@@ -113,9 +113,9 @@ describe('Reabrir, conversación completa (e2e)', () => {
     return partido;
   };
 
-  it('al reabrir, ofrece botones para editar o finalizar en vez de solo texto', async () => {
+  it('al reabrir, ofrece botones con el id del partido para editar o finalizar de una', async () => {
     const { equipo, usuarioId, decir, tocar } = await escenario('Botones');
-    await partidoCerrado(equipo.id, usuarioId);
+    const partido = await partidoCerrado(equipo.id, usuarioId);
 
     await decir('/reabrir');
     expect(adaptador.ultimoTexto).toContain('¿Cuál quieres reabrir?');
@@ -123,33 +123,68 @@ describe('Reabrir, conversación completa (e2e)', () => {
     await tocar(adaptador.ultimosBotones[0].id);
 
     expect(adaptador.ultimoTexto).toContain('Partido reabierto ✅');
+    // El id del partido va en el botón (no en un /cargar a secas): es lo que
+    // le permite a `continuarCarga` saltarse equipo y partido sin preguntar.
     expect(adaptador.ultimosBotones).toEqual([
-      { id: 'cmd:cargar', texto: 'Editar partido' },
-      { id: 'cmd:finalizar', texto: 'Finalizar' },
+      { id: `cmd:continuarcarga:${partido.id}`, texto: 'Editar partido' },
+      { id: `cmd:continuarfinalizar:${partido.id}`, texto: 'Finalizar' },
     ]);
   });
 
-  it('el botón "Editar partido" dispara /cargar sin tener que escribirlo', async () => {
-    const { equipo, usuarioId, decir, tocar } = await escenario('Boton editar');
-    await partidoCerrado(equipo.id, usuarioId);
+  it('"Editar partido" entra directo al partido reabierto, sin volver a preguntar equipo ni partido', async () => {
+    // Con dos equipos administrados (el caso real que reportó el bug: elegir
+    // el equipo equivocado en /cargar hacía parecer que el partido reabierto
+    // no aparecía), el atajo tiene que ignorar la ambigüedad por completo --
+    // ya se sabe el equipo y el partido, se eligieron acá mismo.
+    const { equipo, usuarioId, decir, tocar } = await escenario('Editar dos equipos');
+    await equipos.crear(
+      (await academias.crear('REAB Editar dos equipos extra')).id,
+      'Otro equipo',
+      { cantidadTiempos: 2, minutosPorTiempo: 25 },
+      usuarioId,
+    );
+    const partido = await partidoCerrado(equipo.id, usuarioId);
 
     await decir('/reabrir');
+    // Con dos equipos, /reabrir sí pregunta cuál -- elige el correcto antes
+    // de elegir el partido a reabrir.
+    expect(adaptador.ultimoTexto).toContain('¿De qué equipo?');
+    await tocar(`eq:${equipo.id}`);
     await tocar(adaptador.ultimosBotones[0].id);
 
-    await tocar('cmd:cargar');
+    await tocar(`cmd:continuarcarga:${partido.id}`);
 
+    expect(adaptador.ultimoTexto).not.toContain('¿De qué equipo?');
+    expect(adaptador.ultimoTexto).not.toContain('¿A qué partido?');
     expect(adaptador.ultimoTexto).toContain('¿Vas a cargar en vivo o ya terminó el partido?');
   });
 
-  it('el botón "Finalizar" dispara /finalizar sin tener que escribirlo', async () => {
+  it('"Finalizar" entra directo a confirmar el marcador del partido reabierto', async () => {
     const { equipo, usuarioId, decir, tocar } = await escenario('Boton finalizar');
-    await partidoCerrado(equipo.id, usuarioId);
+    const partido = await partidoCerrado(equipo.id, usuarioId);
 
     await decir('/reabrir');
     await tocar(adaptador.ultimosBotones[0].id);
 
-    await tocar('cmd:finalizar');
+    await tocar(`cmd:continuarfinalizar:${partido.id}`);
 
+    expect(adaptador.ultimoTexto).not.toContain('¿De qué equipo?');
     expect(adaptador.ultimoTexto).toContain('¿Confirmas el marcador final?');
+  });
+
+  it('el atajo revalida el permiso: sin rol de editor, no entra a cargar', async () => {
+    const { equipo, usuarioId, decir, tocar } = await escenario('Sin permiso');
+    const partido = await partidoCerrado(equipo.id, usuarioId);
+
+    await decir('/reabrir');
+    await tocar(adaptador.ultimosBotones[0].id);
+
+    await db.db.execute(
+      sql`delete from usuarios_equipos where equipo_id = ${equipo.id} and usuario_id = ${usuarioId}`,
+    );
+
+    await tocar(`cmd:continuarcarga:${partido.id}`);
+
+    expect(adaptador.ultimoTexto).toContain('permiso');
   });
 });
