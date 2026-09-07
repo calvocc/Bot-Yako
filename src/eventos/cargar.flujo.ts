@@ -80,10 +80,25 @@ export const FLUJO_CARGAR = 'cargar';
 export type DestinoCarga = 'cargar' | 'finalizar' | 'deshacer';
 export const CLAVE_DESTINO = 'destino';
 
+/**
+ * Ids de paso y claves que un atajo externo necesita para entrar directo a
+ * `modo`/`finPartido` sin repasar `equipo`/`partido` -- ver
+ * `PartidosHandler.continuarCarga`, que arma esos `datos` a mano cuando
+ * "Editar partido"/"Finalizar" tras /reabrir ya saben equipo y partido. No
+ * hace falta exportar la clave del panel: sin ella, `panelId()` cae solo al
+ * `mensajeOrigenId` del propio botón que disparó el atajo -- el mismo
+ * respaldo que ya usa para un mensaje escrito. El resto de `PASOS` y las
+ * demás claves se quedan privados: nada más fuera de este archivo necesita
+ * entrar a mitad del flujo.
+ */
+export const PASO_MODO_CARGA = 'modo';
+export const PASO_FIN_PARTIDO_CARGA = 'fin-partido';
+export const CLAVE_PARTIDO_ID_CARGA = 'partidoId';
+
 const PASOS = {
   equipo: 'equipo',
   partido: 'partido',
-  modo: 'modo',
+  modo: PASO_MODO_CARGA,
   titulares: 'titulares',
   participantesPost: 'participantes-post',
   panel: 'panel',
@@ -95,7 +110,7 @@ const PASOS = {
   confirmarJugadorAcademia: 'confirmar-jugador-academia',
   duplicado: 'duplicado',
   finTiempo: 'fin-tiempo',
-  finPartido: 'fin-partido',
+  finPartido: PASO_FIN_PARTIDO_CARGA,
   goleadoresPost: 'goleadores-post',
   goleadoresPostLibre: 'goleadores-post-libre',
   tarjetasPost: 'tarjetas-post',
@@ -103,7 +118,7 @@ const PASOS = {
   tarjetasPostColor: 'tarjetas-post-color',
 } as const;
 
-const CLAVE_PARTIDO_ID = 'partidoId';
+const CLAVE_PARTIDO_ID = CLAVE_PARTIDO_ID_CARGA;
 const CLAVE_PANEL = 'panelId';
 const CLAVE_TIPO = 'tipoEvento';
 const CLAVE_ORIGEN = 'origenEvento';

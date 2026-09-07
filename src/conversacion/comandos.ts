@@ -117,8 +117,20 @@ export function esComandoDeFlujo(nombre: string): boolean {
  */
 export const PREFIJO_BOTON_COMANDO = 'cmd:';
 
-export function botonComando(nombre: string, texto: string): { id: string; texto: string } {
-  return { id: `${PREFIJO_BOTON_COMANDO}${nombre}`, texto };
+/**
+ * `argumento` viaja tal cual en el id del botón (lo separa `comandoDesdeBoton`
+ * al volver), así que tiene que ser corto -- ideal un id, no texto libre: el
+ * límite real es el de Telegram para `callback_data` (`LIMITE_BYTES_ID_BOTON`,
+ * 64 bytes en total).
+ */
+export function botonComando(
+  nombre: string,
+  texto: string,
+  argumento?: string,
+): { id: string; texto: string } {
+  const sufijo = argumento ? `:${argumento}` : '';
+
+  return { id: `${PREFIJO_BOTON_COMANDO}${nombre}${sufijo}`, texto };
 }
 
 /**

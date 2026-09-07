@@ -26,12 +26,23 @@ export class FlowEngine {
     private readonly sesiones: SesionStore,
   ) {}
 
-  /** Arranca un flujo desde su paso inicial. */
+  /**
+   * Arranca un flujo, por defecto desde su paso inicial.
+   *
+   * `pasoInicialId` permite entrar directo a un paso más adelante cuando
+   * quien arranca el flujo ya tiene los datos que ese paso necesita -- por
+   * ejemplo, "Editar partido" tras /reabrir ya sabe equipo y partido (se
+   * acaban de elegir ahí mismo) y no tiene sentido volver a preguntarlos.
+   * El paso tiene que pertenecer al mismo flujo: no hay forma de saltar a un
+   * paso de otro flujo, porque cada paso da por sentado los datos que su
+   * propio flujo ya le garantizó antes de llegar ahí.
+   */
   async iniciar(
     mensaje: MensajeEntrante,
     flujoId: string,
     datosIniciales: DatosFlujo = {},
     usuarioId?: string,
+    pasoInicialId?: string,
   ): Promise<RespuestaBot | null> {
     const flujo = this.registro.obtener(flujoId);
 
@@ -39,7 +50,13 @@ export class FlowEngine {
       throw new Error(`Flujo desconocido: "${flujoId}"`);
     }
 
-    return this.entrarEn(mensaje, flujoId, flujo.pasoInicial, datosIniciales, usuarioId);
+    return this.entrarEn(
+      mensaje,
+      flujoId,
+      pasoInicialId ?? flujo.pasoInicial,
+      datosIniciales,
+      usuarioId,
+    );
   }
 
   /**

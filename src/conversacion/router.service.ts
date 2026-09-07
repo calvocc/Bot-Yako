@@ -18,6 +18,13 @@ export interface DelegarAFlujo {
   tipo: 'delegar';
   flujoId: string;
   datos?: DatosFlujo;
+  /**
+   * Paso por el que arranca, si no es el inicial del flujo -- para cuando
+   * `ejecutar` ya resolvió datos que un paso más adelante necesita (por
+   * ejemplo, equipo y partido ya elegidos en otro flujo) y preguntarlos nuevo
+   * sería redundante. Tiene que ser un paso del propio `flujoId`.
+   */
+  pasoInicial?: string;
 }
 
 /** Qué hace un comando: responder de una, o abrir un flujo de varios pasos. */
@@ -108,7 +115,13 @@ export class Router {
       const resultado = await manejador.ejecutar(contexto, usuarioId);
 
       if (esDelegacion(resultado)) {
-        return this.motor.iniciar(mensaje, resultado.flujoId, resultado.datos ?? {}, usuarioId);
+        return this.motor.iniciar(
+          mensaje,
+          resultado.flujoId,
+          resultado.datos ?? {},
+          usuarioId,
+          resultado.pasoInicial,
+        );
       }
 
       return resultado;
