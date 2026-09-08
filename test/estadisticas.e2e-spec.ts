@@ -382,8 +382,8 @@ describe('Estadísticas (e2e)', () => {
       const respuesta = await handler.stats(undefined, admin);
 
       expect(respuesta.texto).toContain('📋 Sub-11:');
-      expect(respuesta.texto).toContain('• Jacob #10');
-      expect(respuesta.texto).toContain('• Andrés #7');
+      expect(respuesta.texto).toContain('• #10 Jacob');
+      expect(respuesta.texto).toContain('• #7 Andrés');
       expect(respuesta.texto).toContain('/stats seguido de un nombre');
     });
 

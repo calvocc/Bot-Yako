@@ -98,7 +98,7 @@ describe('Onboarding y organización (e2e)', () => {
 
       // Varios jugadores de una sola vez: es como llega una plantilla real.
       await decir('Jacob, 10\nAndrés, 7\nMateo 4');
-      expect(adaptador.ultimoTexto).toContain('Jacob #10');
+      expect(adaptador.ultimoTexto).toContain('#10 Jacob');
       expect(adaptador.ultimoTexto).toContain('Van 3 jugadores');
 
       await decir('/listo');
@@ -127,8 +127,8 @@ describe('Onboarding y organización (e2e)', () => {
 
       await decir('Jacob, 10\nOtro, 10\nTercero, 11');
 
-      expect(adaptador.ultimoTexto).toContain('Jacob #10');
-      expect(adaptador.ultimoTexto).toContain('Tercero #11');
+      expect(adaptador.ultimoTexto).toContain('#10 Jacob');
+      expect(adaptador.ultimoTexto).toContain('#11 Tercero');
       expect(adaptador.ultimoTexto).toContain('ya lo tiene Jacob');
       expect(adaptador.ultimoTexto).toContain('Van 2 jugadores');
     });

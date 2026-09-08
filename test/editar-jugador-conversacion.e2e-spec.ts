@@ -103,7 +103,7 @@ describe('Editar jugador: nombre, dorsal y datos básicos (e2e)', () => {
     expect(adaptador.ultimoTexto).toContain('¿A quién editas?');
 
     await tocar(`ej:j:${jacob.id}`);
-    expect(adaptador.ultimoTexto).toContain('Editando a Jacob Restrepo #10');
+    expect(adaptador.ultimoTexto).toContain('Editando a #10 Jacob Restrepo');
     expect(adaptador.ultimosBotones.map((b) => b.id)).toEqual([
       'ej:m:nombre',
       'ej:m:dorsal',
@@ -123,7 +123,7 @@ describe('Editar jugador: nombre, dorsal y datos básicos (e2e)', () => {
 
     await decir('Jacob Restrepo Gómez');
     expect(adaptador.ultimoTexto).toContain('Guardado ✅');
-    expect(adaptador.ultimoTexto).toContain('Editando a Jacob Restrepo Gómez #10');
+    expect(adaptador.ultimoTexto).toContain('Editando a #10 Jacob Restrepo Gómez');
 
     // Dorsal: rechaza fuera de rango antes de aceptar el bueno.
     await tocar('ej:m:dorsal');
@@ -134,7 +134,7 @@ describe('Editar jugador: nombre, dorsal y datos básicos (e2e)', () => {
 
     await decir('7');
     expect(adaptador.ultimoTexto).toContain('Guardado ✅');
-    expect(adaptador.ultimoTexto).toContain('Editando a Jacob Restrepo Gómez #7');
+    expect(adaptador.ultimoTexto).toContain('Editando a #7 Jacob Restrepo Gómez');
 
     // Posición: cuatro botones, sin texto libre.
     await tocar('ej:m:posicion');
@@ -148,7 +148,7 @@ describe('Editar jugador: nombre, dorsal y datos básicos (e2e)', () => {
 
     await tocar('ej:p:defensa');
     expect(adaptador.ultimoTexto).toContain('Guardado ✅');
-    expect(adaptador.ultimoTexto).toContain('Editando a Jacob Restrepo Gómez #7');
+    expect(adaptador.ultimoTexto).toContain('Editando a #7 Jacob Restrepo Gómez');
 
     // Fecha de nacimiento: rechaza una inválida antes de aceptar la buena.
     await tocar('ej:m:fecha');

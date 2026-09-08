@@ -132,7 +132,7 @@ describe('pasoCargarPlantilla', () => {
     expect(crear).not.toHaveBeenCalled();
     expect(reactivar).not.toHaveBeenCalled();
     if (t.tipo !== 'repetir') throw new Error('esperaba repetir');
-    expect(t.respuesta.texto).toContain('Jacob #10 ya estaba en la plantilla');
+    expect(t.respuesta.texto).toContain('#10 Jacob ya estaba en la plantilla');
   });
 
   it('reactiva, en vez de duplicar, a alguien que estaba de baja en este equipo', async () => {
@@ -148,7 +148,7 @@ describe('pasoCargarPlantilla', () => {
     expect(crear).not.toHaveBeenCalled();
     expect(reactivar).toHaveBeenCalledWith('eq1', 'jBaja');
     if (t.tipo !== 'repetir') throw new Error('esperaba repetir');
-    expect(t.respuesta.texto).toContain('Jacob #10 estaba de baja');
+    expect(t.respuesta.texto).toContain('#10 Jacob estaba de baja');
     // Reactivar sí cuenta para el total, aunque no sea una ficha nueva.
     expect(t.datos?.[CLAVE_ALTAS]).toBe(1);
   });

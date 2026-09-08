@@ -165,7 +165,7 @@ describe('componerResumen', () => {
 
     expect(posNotas).toBeGreaterThan(-1);
     // Jacob (con un gol) queda antes que Andrés (sin eventos, nota base).
-    expect(texto.indexOf('Jacob #10', posNotas)).toBeLessThan(texto.indexOf('Andrés #7', posNotas));
+    expect(texto.indexOf('#10 Jacob', posNotas)).toBeLessThan(texto.indexOf('#7 Andrés', posNotas));
   });
 
   it('muestra con nota base (6.0) a quien jugó sin tener ningún evento', () => {
@@ -180,7 +180,7 @@ describe('componerResumen', () => {
       participantes,
     });
 
-    expect(texto).toContain('Andrés #7: 6.0');
+    expect(texto).toContain('#7 Andrés: 6.0');
     // Sí hay a quién listar, aunque nadie tuvo eventos: no es "sin eventos".
     expect(texto).not.toContain('Sin eventos cargados.');
   });
@@ -200,6 +200,6 @@ describe('componerResumen', () => {
     });
 
     // nota = 6 + (3/8)×4 = 7.5.
-    expect(texto).toContain('Andrés #7: 7.5');
+    expect(texto).toContain('#7 Andrés: 7.5');
   });
 });
