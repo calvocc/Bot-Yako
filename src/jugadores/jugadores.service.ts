@@ -525,9 +525,15 @@ export function parsearPlantilla(texto: string): JugadorParseado[] {
     .filter((j): j is JugadorParseado => j !== null);
 }
 
+/**
+ * El dorsal va primero: con nombres largos, "Jacob Andrés Fernández #10" se
+ * corta en los botones de Telegram antes de llegar al número, y el dorsal es
+ * justo el dato más rápido de identificar a alguien (es el que está grande
+ * en la camiseta).
+ */
 export function describirJugador(jugador: Jugador | JugadorParseado): string {
   return jugador.dorsal !== undefined && jugador.dorsal !== null
-    ? `${jugador.nombre} #${jugador.dorsal}`
+    ? `#${jugador.dorsal} ${jugador.nombre}`
     : jugador.nombre;
 }
 

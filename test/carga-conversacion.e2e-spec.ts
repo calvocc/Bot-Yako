@@ -137,7 +137,7 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     await tocar('md:titular');
 
     for (const nombre of nombres) {
-      const boton = adaptador.ultimosBotones.find((b) => b.texto.startsWith(nombre));
+      const boton = adaptador.ultimosBotones.find((b) => b.texto.includes(nombre));
 
       if (!boton) throw new Error(`No encontré el botón de ${nombre} para la titular`);
 
@@ -195,7 +195,7 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     await tocar('or:propio');
     expect(adaptador.ultimoTexto).toContain('¿Quién?');
 
-    const jacob = adaptador.ultimosBotones.find((b) => b.texto.startsWith('Jacob'));
+    const jacob = adaptador.ultimosBotones.find((b) => b.texto.includes('Jacob'));
     expect(jacob).toBeDefined();
 
     adaptador.limpiar();
@@ -321,7 +321,7 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     await tocar('md:vivo');
     await tocar('ev:gol');
     await tocar('or:propio');
-    await tocar(adaptador.ultimosBotones.find((b) => b.texto.startsWith('Jacob'))!.id);
+    await tocar(adaptador.ultimosBotones.find((b) => b.texto.includes('Jacob'))!.id);
 
     adaptador.limpiar();
     await decir('/deshacer');
@@ -344,7 +344,7 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     await tocar('md:vivo');
     await tocar('ev:gol');
     await tocar('or:propio');
-    await tocar(adaptador.ultimosBotones.find((b) => b.texto.startsWith('Jacob'))!.id);
+    await tocar(adaptador.ultimosBotones.find((b) => b.texto.includes('Jacob'))!.id);
 
     adaptador.limpiar();
     await decir('/finalizar');
@@ -530,7 +530,7 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     await decir('/cargar');
     await tocar('md:titular');
 
-    const jacob = adaptador.ultimosBotones.find((b) => b.texto.startsWith('Jacob'));
+    const jacob = adaptador.ultimosBotones.find((b) => b.texto.includes('Jacob'));
     await tocar(jacob!.id);
 
     // El rol se revoca justo antes de confirmar -- la escritura de
@@ -559,7 +559,7 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     await decir('/cargar');
     await tocar('md:titular');
 
-    const jacob = adaptador.ultimosBotones.find((b) => b.texto.startsWith('Jacob'));
+    const jacob = adaptador.ultimosBotones.find((b) => b.texto.includes('Jacob'));
 
     adaptador.limpiar();
     await tocar(jacob!.id);
@@ -570,7 +570,7 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
 
     const idPanel = adaptador.enviados[0].mensajeId;
 
-    const andres = adaptador.ultimosBotones.find((b) => b.texto.startsWith('Andrés'));
+    const andres = adaptador.ultimosBotones.find((b) => b.texto.includes('Andrés'));
     await tocar(andres!.id);
 
     expect(adaptador.enviados.at(-1)?.mensajeId).toBe(idPanel);
@@ -645,17 +645,17 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     expect(adaptador.ultimoTexto).toContain('¿Quién sale?');
 
     const botonesSale = adaptador.ultimosBotones.map((b) => b.texto);
-    expect(botonesSale.some((t) => t.startsWith('Jacob'))).toBe(true);
-    expect(botonesSale.some((t) => t.startsWith('Andrés'))).toBe(false);
+    expect(botonesSale.some((t) => t.includes('Jacob'))).toBe(true);
+    expect(botonesSale.some((t) => t.includes('Andrés'))).toBe(false);
 
-    await tocar(adaptador.ultimosBotones.find((b) => b.texto.startsWith('Jacob'))!.id);
+    await tocar(adaptador.ultimosBotones.find((b) => b.texto.includes('Jacob'))!.id);
     expect(adaptador.ultimoTexto).toContain('¿Quién entra?');
 
     const botonesEntra = adaptador.ultimosBotones.map((b) => b.texto);
-    expect(botonesEntra.some((t) => t.startsWith('Andrés'))).toBe(true);
-    expect(botonesEntra.some((t) => t.startsWith('Jacob'))).toBe(false);
+    expect(botonesEntra.some((t) => t.includes('Andrés'))).toBe(true);
+    expect(botonesEntra.some((t) => t.includes('Jacob'))).toBe(false);
 
-    const idAndres = adaptador.ultimosBotones.find((b) => b.texto.startsWith('Andrés'))!.id;
+    const idAndres = adaptador.ultimosBotones.find((b) => b.texto.includes('Andrés'))!.id;
 
     adaptador.limpiar();
     await tocar(idAndres);
@@ -668,8 +668,8 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     await tocar('or:propio');
 
     const botonesQuien = adaptador.ultimosBotones.map((b) => b.texto);
-    expect(botonesQuien.some((t) => t.startsWith('Andrés'))).toBe(true);
-    expect(botonesQuien.some((t) => t.startsWith('Jacob'))).toBe(false);
+    expect(botonesQuien.some((t) => t.includes('Andrés'))).toBe(true);
+    expect(botonesQuien.some((t) => t.includes('Jacob'))).toBe(false);
   });
 
   it('cambio: escribir el nombre de quien ya está en cancha (o el que sale) se rechaza', async () => {
@@ -684,7 +684,7 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
     await tocar('md:vivo');
 
     await tocar('ev:cambio');
-    await tocar(adaptador.ultimosBotones.find((b) => b.texto.startsWith('Jacob'))!.id);
+    await tocar(adaptador.ultimosBotones.find((b) => b.texto.includes('Jacob'))!.id);
     expect(adaptador.ultimoTexto).toContain('¿Quién entra?');
 
     // Alguien que sigue en cancha (Andrés, que no sale) no puede "entrar".
@@ -707,9 +707,9 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
   });
 
   describe('post partido (RF-4)', () => {
-    /** Devuelve el id del botón de la plantilla que empieza con `nombre`. */
+    /** Devuelve el id del botón de la plantilla que incluye `nombre`. */
     const botonDe = (nombre: string): string =>
-      adaptador.ultimosBotones.find((b) => b.texto.startsWith(nombre))!.id;
+      adaptador.ultimosBotones.find((b) => b.texto.includes(nombre))!.id;
 
     /**
      * Tras "Post partido", el paso nuevo pide quiénes jugaron antes de
@@ -762,8 +762,8 @@ describe('Carga en vivo, conversación completa (e2e)', () => {
 
       const textos = adaptador.enviados.map((e) => e.respuesta.texto).join('\n');
       // 1 gol sin posición (3 puntos brutos) → nota 7.5; sin eventos → 6.0.
-      expect(textos).toContain('Jacob #10: 7.5');
-      expect(textos).toContain('Andrés #7: 6.0');
+      expect(textos).toContain('#10 Jacob: 7.5');
+      expect(textos).toContain('#7 Andrés: 6.0');
     });
 
     it('no pide titular: el modo se ofrece igual sin ninguna elegida', async () => {
