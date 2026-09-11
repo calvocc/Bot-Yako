@@ -175,6 +175,72 @@ describe('pasoSeleccionMultiple', () => {
     expect(siguiente.respuesta.botones?.some((b) => b.id === 'pag:mas')).toBe(false);
   });
 
+  it('sin `mostrarNinguno`, "Ninguno" nunca aparece', async () => {
+    const paso = construir();
+    const entrada = await paso.entrar(contexto());
+
+    if (!('respuesta' in entrada)) throw new Error('esperaba una respuesta');
+    expect(entrada.respuesta.botones?.some((b) => b.id === 'sm:ninguno')).toBe(false);
+  });
+
+  it('con `mostrarNinguno`, "Ninguno" aparece junto a "Todos" y vacía la selección', async () => {
+    const paso = construir({ mostrarNinguno: true });
+    const entrada = await paso.entrar(contexto());
+
+    if (!('respuesta' in entrada)) throw new Error('esperaba una respuesta');
+    // Con solo 2 jugadores, esta ya es la última (y única) página.
+    expect(entrada.respuesta.botones?.map((b) => b.id)).toEqual([
+      'jg:jacob',
+      'jg:andres',
+      'sm:todos',
+      'sm:ninguno',
+      'sm:listo',
+    ]);
+
+    if (!paso.recibir) throw new Error('el paso no recibe mensajes');
+
+    const datos = { seleccionMultiple: ['jg:jacob', 'jg:andres'] };
+    const ninguno = await paso.recibir(
+      contexto({ mensaje: seleccionDePrueba('sm:ninguno') }, datos),
+    );
+
+    if (ninguno.tipo !== 'repetir') throw new Error('esperaba repetir');
+    expect(ninguno.datos).toEqual({ seleccionMultiple: [] });
+    expect(ninguno.respuesta.botones?.find((b) => b.id === 'sm:listo')?.texto).toBe('Listo (0)');
+  });
+
+  it('con `mostrarNinguno`, ni "Todos" ni "Ninguno" aparecen mientras queda lista por ver', async () => {
+    // Con la reserva de 3 (Todos + Ninguno + Listo) entran 6 opciones por
+    // página: una lista de 8 no cabe entera en la primera.
+    const opciones = Array.from({ length: 8 }, (_, i) => ({
+      id: `jg:${i}`,
+      texto: `Jugador ${i}`,
+    }));
+    const paso = construir({
+      obtenerOpciones: () => Promise.resolve(opciones),
+      mostrarNinguno: true,
+    });
+
+    const entrada = await paso.entrar(contexto());
+
+    if (!('respuesta' in entrada)) throw new Error('esperaba una respuesta');
+    expect(entrada.respuesta.botones?.some((b) => b.id === 'sm:todos')).toBe(false);
+    expect(entrada.respuesta.botones?.some((b) => b.id === 'sm:ninguno')).toBe(false);
+    expect(entrada.respuesta.botones?.some((b) => b.id === 'pag:mas')).toBe(true);
+
+    if (!paso.recibir) throw new Error('el paso no recibe mensajes');
+
+    const datos = { paginaSeleccionMultiple: 0 };
+    const siguiente = await paso.recibir(
+      contexto({ mensaje: seleccionDePrueba('pag:mas') }, datos),
+    );
+
+    if (siguiente.tipo !== 'repetir') throw new Error('esperaba repetir');
+    expect(siguiente.respuesta.botones?.some((b) => b.id === 'sm:todos')).toBe(true);
+    expect(siguiente.respuesta.botones?.some((b) => b.id === 'sm:ninguno')).toBe(true);
+    expect(siguiente.respuesta.botones?.some((b) => b.id === 'pag:mas')).toBe(false);
+  });
+
   it('el atajo por texto reemplaza la selección con lo que reconoce', async () => {
     const paso = construir({
       interpretarTexto: (_ctx, texto, lista) => ({

@@ -8,13 +8,14 @@ const CLAVE_SELECCION = 'seleccionMultiple';
 const CLAVE_PAGINA = 'paginaSeleccionMultiple';
 const ID_CONFIRMAR = 'sm:listo';
 const ID_TODOS = 'sm:todos';
+const ID_NINGUNO = 'sm:ninguno';
 /**
- * "Listo" y "Todos": dos botones fijos, a descontar del tamaño de página.
- * "Todos" solo se agrega cuando la página ya muestra el final de la lista
- * (no hay "Ver más"), así que ocupa el mismo lugar que ese botón — nunca
- * compiten por espacio.
+ * "Listo" y "Todos" (más "Ninguno" cuando el paso lo pide): botones fijos, a
+ * descontar del tamaño de página. "Todos"/"Ninguno" solo se agregan cuando
+ * la página ya muestra el final de la lista (no hay "Ver más"), así que
+ * ocupan el mismo lugar que ese botón — nunca compiten por espacio.
  */
-const RESERVA_BOTONES_FIJOS = 2;
+const RESERVA_BOTONES_BASE = 2;
 
 export interface OpcionesSeleccionMultiple {
   /** Texto de la pregunta, arriba de la lista. */
@@ -29,6 +30,13 @@ export interface OpcionesSeleccionMultiple {
   textoConfirmar?: string;
   /** Qué decir si `obtenerOpciones` no tiene nada para ofrecer. */
   sinOpciones?: string;
+  /**
+   * Si además de "Todos" hay que ofrecer "Ninguno" (vaciar la selección),
+   * junto a él al final de la lista. Por defecto no: para la titular, por
+   * ejemplo, no vale la pena el lugar que le saca a un jugador más visible
+   * por página.
+   */
+  mostrarNinguno?: boolean;
   /**
    * Atajo por texto: escribir en vez de tocar botones uno por uno.
    *
@@ -65,14 +73,15 @@ export interface OpcionesSeleccionMultiple {
  *
  * Cada toque edita el mismo mensaje en vez de mandar uno nuevo — con una
  * plantilla de 15 jugadores, marcar la titular a los golpes no puede dejar 15
- * mensajes en el chat. "Todos" y el atajo por texto (si el paso lo ofrece)
- * existen por la misma razón: menos toques para el caso común. "Todos" recién
- * aparece en la última página: antes de eso, ese lugar lo ocupa "Ver más" y
- * mostrar un jugador extra por página importa más que tener el atajo a mano
- * de entrada.
+ * mensajes en el chat. "Todos"/"Ninguno" y el atajo por texto (si el paso lo
+ * ofrece) existen por la misma razón: menos toques para el caso común.
+ * "Todos"/"Ninguno" recién aparecen en la última página: antes de eso, ese
+ * lugar lo ocupa "Ver más" y mostrar un jugador extra por página importa más
+ * que tener el atajo a mano de entrada.
  */
 export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMultiple): Paso {
   const minimo = opciones.minimo ?? 1;
+  const reserva = RESERVA_BOTONES_BASE + (opciones.mostrarNinguno ? 1 : 0);
 
   const leerSeleccion = (datos: DatosFlujo): string[] => {
     const valor = datos[CLAVE_SELECCION];
@@ -90,13 +99,17 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
       id: o.id,
       texto: elegidos.includes(o.id) ? textos.marcaSeleccionado(o.texto) : o.texto,
     }));
-    const { botones, hayMas } = botonesPaginados(marcadas, pagina, RESERVA_BOTONES_FIJOS);
+    const { botones, hayMas } = botonesPaginados(marcadas, pagina, reserva);
 
-    // "Todos" solo entra cuando esta página ya llegó al final de la lista:
-    // antes de eso ese lugar lo ocupa "Ver más", y dejarlo libre es un
-    // jugador más visible por página.
+    // "Todos" (y "Ninguno", si el paso lo pide) solo entran cuando esta
+    // página ya llegó al final de la lista: antes de eso ese lugar lo ocupa
+    // "Ver más", y dejarlo libre es un jugador más visible por página.
     if (!hayMas) {
       botones.push({ id: ID_TODOS, texto: textos.todos });
+
+      if (opciones.mostrarNinguno) {
+        botones.push({ id: ID_NINGUNO, texto: textos.ninguno });
+      }
     }
 
     botones.push({
@@ -159,7 +172,7 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
       const pagina = leerNumero(ctx.datos, CLAVE_PAGINA, 0);
 
       if (seleccion === ID_VER_MAS) {
-        const siguiente = paginaSiguiente(pagina, lista.length, RESERVA_BOTONES_FIJOS);
+        const siguiente = paginaSiguiente(pagina, lista.length, reserva);
 
         return {
           tipo: 'repetir',
@@ -175,6 +188,14 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
           tipo: 'repetir',
           ...repetir(ctx, lista, todos, pagina),
           datos: { [CLAVE_SELECCION]: todos },
+        };
+      }
+
+      if (seleccion === ID_NINGUNO) {
+        return {
+          tipo: 'repetir',
+          ...repetir(ctx, lista, [], pagina),
+          datos: { [CLAVE_SELECCION]: [] },
         };
       }
 
