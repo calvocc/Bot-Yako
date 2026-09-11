@@ -54,7 +54,6 @@ import {
 } from './post-partido.flujo';
 import {
   avisoDeDuplicado,
-  botonesDeControl,
   botonesDeOrigen,
   ID_DESHACER,
   ID_ES_OTRO,
@@ -648,14 +647,12 @@ export class CargarFlujo {
         const seleccion = ctx.mensaje.seleccionId ?? '';
 
         if (seleccion === ID_VER_MAS) {
-          const partido = await this.partidoDe(ctx);
-
-          if (!partido) return this.partidoPerdido();
-
-          const reservar = botonesDeControl(partido).length;
           const pagina = leerNumero(ctx.datos, CLAVE_PAGINA_EVENTOS, 0);
 
-          ctx.datos[CLAVE_PAGINA_EVENTOS] = paginaSiguiente(pagina, EVENTOS.length, reservar);
+          // Misma reserva (0) que usa `panelEnVivo` al armar cada página: los
+          // controles no le sacan lugar a los eventos, así que tampoco a la
+          // cuenta de páginas.
+          ctx.datos[CLAVE_PAGINA_EVENTOS] = paginaSiguiente(pagina, EVENTOS.length, 0);
 
           const respuesta = await this.dibujarPanel(ctx);
 

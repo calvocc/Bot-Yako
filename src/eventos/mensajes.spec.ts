@@ -102,32 +102,37 @@ describe('panelEnVivo', () => {
     expect(panel.botones.map((b) => b.id)).toContain('ev:gol');
   });
 
-  it('"Ver más" está en todas las páginas, los controles solo en la última', () => {
-    // Reloj corriendo => 4 controles reservados (Fin del tiempo, Deshacer,
-    // Ver resumen, Finalizar), 9-4=5 eventos por página, 13 eventos en 3
-    // páginas (5+5+3). La 0 y la 1 no son la última.
+  it('los eventos no le dejan lugar a los controles: la página 0 aprovecha las 9 opciones', () => {
+    // Los controles solo entran en la última página, así que la paginación
+    // de eventos no reserva nada para ellos (reservar=0): 9 eventos por
+    // página, 13 eventos en 2 páginas (9+4). Antes de este ajuste quedaban
+    // solo 5 por página (9-4, reservando los 4 controles en todas) aunque
+    // no se mostraran ahí -- este test cubre que eso no vuelva a pasar.
     const pagina0 = panelEnVivo({
       partido: partido(),
       equipoNombre: 'Ringo Amaya',
       minuto: { minuto: 23, adicion: 0, baseMostrada: 23 },
       paginaEventos: 0,
     });
+    const idsEvento = pagina0.botones.map((b) => b.id).filter((id) => id.startsWith('ev:'));
 
+    expect(idsEvento).toHaveLength(9);
     expect(pagina0.botones.map((b) => b.id)).toContain('pag:mas');
     expect(pagina0.botones.map((b) => b.id)).not.toContain('pa:fintiempo');
     expect(pagina0.botones.map((b) => b.id)).not.toContain('pa:deshacer');
 
-    // La página 2 sí es la última: ahí entran los controles -- después de
-    // los eventos que quedan -- y "Ver más" sigue estando, para volver a la
-    // página 0.
-    const pagina2 = panelEnVivo({
+    // La página 1 sí es la última (quedan 13-9=4 eventos): ahí entran los
+    // controles -- después de los eventos que quedan -- y "Ver más" sigue
+    // estando, para volver a la página 0.
+    const pagina1 = panelEnVivo({
       partido: partido(),
       equipoNombre: 'Ringo Amaya',
       minuto: { minuto: 23, adicion: 0, baseMostrada: 23 },
-      paginaEventos: 2,
+      paginaEventos: 1,
     });
 
-    expect(pagina2.botones.map((b) => b.id)).toEqual(
+    expect(pagina1.botones.filter((b) => b.id.startsWith('ev:'))).toHaveLength(4);
+    expect(pagina1.botones.map((b) => b.id)).toEqual(
       expect.arrayContaining([
         'pag:mas',
         'pa:fintiempo',
@@ -139,13 +144,14 @@ describe('panelEnVivo', () => {
   });
 
   it('ofrece arrancar el siguiente tiempo cuando el actual terminó, en la última página', () => {
-    // tiempoActual 1 < cantidadTiempos 2: sigue reservando 4 controles, así
-    // que la última página es la misma que arriba, la 2.
+    // 13 eventos en páginas de 9 (reservar=0 siempre): la última sigue
+    // siendo la página 1, sin importar cuántos controles reserve
+    // `botonesDeControl` -- ya no le sacan lugar a los eventos.
     const panel = panelEnVivo({
       partido: partido({ tiempoEstado: 'finalizado' }),
       equipoNombre: 'Ringo Amaya',
       minuto: { minuto: 26, adicion: 1, baseMostrada: 25 },
-      paginaEventos: 2,
+      paginaEventos: 1,
     });
 
     expect(panel.texto).toContain('Tiempo 1 finalizado');
@@ -178,10 +184,10 @@ describe('panelEnVivo', () => {
   });
 
   it('nunca manda más de 10 botones en total, en ninguna página', () => {
-    // Recorre las 3 páginas de ambos escenarios de controles (4 con reloj
+    // Recorre las 2 páginas de ambos escenarios de controles (4 con reloj
     // corriendo, 3 sin "Fin del tiempo"): el cupo nunca se pasa, ni siquiera
     // en la última página, donde se suman eventos + "Ver más" + controles.
-    for (const paginaEventos of [0, 1, 2]) {
+    for (const paginaEventos of [0, 1]) {
       const conCuatroControles = panelEnVivo({
         partido: partido(),
         equipoNombre: 'Ringo Amaya',
@@ -207,7 +213,7 @@ describe('panelEnVivo', () => {
       partido: partido(),
       equipoNombre: 'Ringo Amaya',
       minuto: { minuto: 23, adicion: 0, baseMostrada: 23 },
-      paginaEventos: 2,
+      paginaEventos: 1,
     });
 
     expect(panel.botones.map((b) => b.id)).toContain('pag:mas');

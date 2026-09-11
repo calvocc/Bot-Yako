@@ -56,7 +56,12 @@ export function panelEnVivo(estado: EstadoPanel): { texto: string; botones: Boto
 
   const lineas = [aviso, encabezado, `${reloj} · ${describirMarcador(partido)}`].filter(Boolean);
   const controles = botonesDeControl(partido);
-  const { botones: botonesEventos, hayMas } = botonesDeEvento(paginaEventos, controles.length);
+  // Los controles ya no reservan lugar en cada página (solo entran en la
+  // última, ver abajo), así que la paginación de eventos no les deja nada
+  // aparte: usa las 9 opciones completas + "Ver más". Con 13 tipos de
+  // evento fijos y como máximo 4 controles, la última página nunca junta
+  // más de 10 botones (13 − 9 = 4 eventos + "Ver más" + hasta 4 controles).
+  const { botones: botonesEventos, hayMas } = botonesDeEvento(paginaEventos, 0);
 
   // "Ver más" es lo único que se mantiene siempre visible mientras se pagina
   // -- incluso en la última página, desde donde vuelve a la primera -- así
@@ -90,9 +95,10 @@ function descripcionSinReloj(partido: Partido): string {
  * página ya llegó al final de la lista (`hayMas` en falso, para que
  * `panelEnVivo` sepa si le toca sumar los controles ahí).
  *
- * `reservar` es el lugar que `panelEnVivo` deja aparte para los controles
- * (3 o 4 según el estado del partido, más "Ver más"): controles y "Ver más"
- * nunca compiten por espacio con los eventos, pase lo que pase.
+ * `reservar` es puro parámetro de paginación genérico (ver `paginacion.ts`);
+ * `panelEnVivo` siempre llama con 0 porque los controles y "Ver más" nunca
+ * se muestran junto con una página llena de eventos -- solo aparecen en la
+ * última, que por eso mismo tiene lugar de sobra.
  */
 export function botonesDeEvento(
   pagina: number,
