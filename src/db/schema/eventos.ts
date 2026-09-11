@@ -75,9 +75,10 @@ export const eventos = pgTable(
     check('eventos_minuto_check', sql`${t.minutoCalculado} is null or ${t.minutoCalculado} >= 0`),
     // Un autogol siempre necesita saber de que lado se marco; un gol propio
     // sin jugador identificado se permite (el rival anota y no hay ficha).
+    // `gol_penal`/`gol_tiro_libre` son goles igual que `gol` a estos efectos.
     check(
       'eventos_jugador_requerido_check',
-      sql`equipo_origen = 'rival' or tipo in ('gol', 'autogol') or jugador_id is not null`,
+      sql`equipo_origen = 'rival' or tipo in ('gol', 'autogol', 'gol_penal', 'gol_tiro_libre') or jugador_id is not null`,
     ),
     // Un cambio sin los dos jugadores identificados no dice nada: "alguien
     // entró" no sirve para medir minutos. Y no puede ser la misma persona.

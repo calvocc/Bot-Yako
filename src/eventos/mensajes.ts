@@ -1,5 +1,5 @@
 import type { Boton } from '../channels/channel.types';
-import { botonesPaginados, ID_VER_MAS } from '../conversacion/pasos-comunes/paginacion';
+import { ID_VER_MAS, OPCIONES_POR_PAGINA } from '../conversacion/pasos-comunes/paginacion';
 import { describirMinuto, type Minuto } from '../partidos/minuto';
 import type { Partido } from '../partidos/partido.mapper';
 import { describirMarcador } from '../partidos/partido.mapper';
@@ -29,11 +29,11 @@ export interface EstadoPanel {
   /** Nota efímera arriba del panel: "▶️ Se inició el Tiempo 2 automáticamente." */
   aviso?: string;
   /**
-   * Página del panel de eventos que se está mostrando. 13 tipos de evento se
-   * pasan del límite de 10 filas de WhatsApp, así que se pagina con el mismo
-   * mecanismo que ya pagina jugadores (`paginacion.ts`). Los controles (Fin
-   * del tiempo, Deshacer, Ver resumen, Finalizar) solo entran en la última
-   * página; "Ver más" está en todas.
+   * Página del panel de eventos que se está mostrando. 18 tipos de evento se
+   * pasan del límite de 10 filas de WhatsApp, así que se pagina (ver
+   * `tamanosDePaginaEventos`). Los controles (Fin del tiempo, Deshacer, Ver
+   * resumen, Finalizar) solo entran en la última página; "Ver más" está en
+   * todas.
    */
   paginaEventos: number;
 }
@@ -56,12 +56,7 @@ export function panelEnVivo(estado: EstadoPanel): { texto: string; botones: Boto
 
   const lineas = [aviso, encabezado, `${reloj} · ${describirMarcador(partido)}`].filter(Boolean);
   const controles = botonesDeControl(partido);
-  // Los controles ya no reservan lugar en cada página (solo entran en la
-  // última, ver abajo), así que la paginación de eventos no les deja nada
-  // aparte: usa las 9 opciones completas + "Ver más". Con 13 tipos de
-  // evento fijos y como máximo 4 controles, la última página nunca junta
-  // más de 10 botones (13 − 9 = 4 eventos + "Ver más" + hasta 4 controles).
-  const { botones: botonesEventos, hayMas } = botonesDeEvento(paginaEventos, 0);
+  const { botones: botonesEventos, hayMas } = botonesDeEvento(paginaEventos, controles.length);
 
   // "Ver más" es lo único que se mantiene siempre visible mientras se pagina
   // -- incluso en la última página, desde donde vuelve a la primera -- así
@@ -91,24 +86,80 @@ function descripcionSinReloj(partido: Partido): string {
 }
 
 /**
+ * Cuántos eventos entran en cada página, dado que los controles (`reservar`)
+ * solo le sacan lugar a la ÚLTIMA -- las anteriores usan las
+ * `OPCIONES_POR_PAGINA` completas.
+ *
+ * A diferencia de `botonesPaginados` (que reserva lo mismo en TODAS las
+ * páginas, así que su `pagina * porPagina` siempre da el mismo tamaño), acá
+ * el tamaño de la última puede ser menor: si el total cayera justo en un
+ * múltiplo de `OPCIONES_POR_PAGINA`, la última página "normal" tendría
+ * `OPCIONES_POR_PAGINA` eventos y no dejaría lugar para los controles -- por
+ * eso se le recorta lo que haga falta y el sobrante pasa a una página
+ * extra, siempre dentro del cupo de 10 botones de WhatsApp.
+ */
+function tamanosDePaginaEventos(total: number, reservarUltima: number): number[] {
+  const normal = OPCIONES_POR_PAGINA;
+  const ultima = OPCIONES_POR_PAGINA - reservarUltima;
+
+  if (total <= ultima) return [total];
+
+  const tamanos: number[] = [];
+  let restante = total;
+
+  while (restante > ultima) {
+    if (restante - normal > 0) {
+      tamanos.push(normal);
+      restante -= normal;
+    } else {
+      // Una página normal completa no deja margen (restante - normal <= 0):
+      // se reparte en dos partes que sí entran, en vez de dejar la última
+      // con `normal` eventos y sin lugar para los controles.
+      tamanos.push(restante - ultima);
+      restante = ultima;
+    }
+  }
+
+  tamanos.push(restante);
+
+  return tamanos;
+}
+
+/** Cuántas páginas hacen falta para paginar los eventos con esta reserva. */
+export function totalPaginasEventos(reservarUltima: number): number {
+  return tamanosDePaginaEventos(EVENTOS.length, reservarUltima).length;
+}
+
+/** Avanza a la página siguiente de eventos, volviendo a la primera al pasarse. */
+export function paginaSiguienteEventos(pagina: number, reservarUltima: number): number {
+  return (pagina + 1) % totalPaginasEventos(reservarUltima);
+}
+
+/**
  * Los botones de evento de una página, con "Ver más" si sobran, y si esta
  * página ya llegó al final de la lista (`hayMas` en falso, para que
  * `panelEnVivo` sepa si le toca sumar los controles ahí).
  *
- * `reservar` es puro parámetro de paginación genérico (ver `paginacion.ts`);
- * `panelEnVivo` siempre llama con 0 porque los controles y "Ver más" nunca
- * se muestran junto con una página llena de eventos -- solo aparecen en la
- * última, que por eso mismo tiene lugar de sobra.
+ * `reservarUltima` es el lugar que `panelEnVivo` deja aparte para los
+ * controles (3 o 4 según el estado del partido) -- solo en la última
+ * página, ver `tamanosDePaginaEventos`.
  */
 export function botonesDeEvento(
   pagina: number,
-  reservar: number,
+  reservarUltima: number,
 ): { botones: Boton[]; hayMas: boolean } {
-  return botonesPaginados(
-    EVENTOS.map((e) => ({ id: `${PREFIJO_EVENTO}${e.tipo}`, texto: e.boton })),
-    pagina,
-    reservar,
-  );
+  const tamanos = tamanosDePaginaEventos(EVENTOS.length, reservarUltima);
+  const desde = tamanos.slice(0, pagina).reduce((suma, n) => suma + n, 0);
+  const trozo = EVENTOS.slice(desde, desde + (tamanos[pagina] ?? 0));
+  const hayMas = pagina < tamanos.length - 1;
+
+  const botones: Boton[] = trozo.map((e) => ({ id: `${PREFIJO_EVENTO}${e.tipo}`, texto: e.boton }));
+
+  if (hayMas) {
+    botones.push({ id: ID_VER_MAS, texto: textos.verMas });
+  }
+
+  return { botones, hayMas };
 }
 
 export function botonesDeControl(partido: Partido): Boton[] {
@@ -159,7 +210,7 @@ export function lineaDeBitacora(
 }
 
 function mueveElMarcador(tipo: TipoEvento): boolean {
-  return tipo === 'gol' || tipo === 'autogol';
+  return tipo === 'gol' || tipo === 'gol_penal' || tipo === 'gol_tiro_libre' || tipo === 'autogol';
 }
 
 function nombrarJugador(nombre: string | null, dorsal: number | null): string | null {

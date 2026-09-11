@@ -42,7 +42,7 @@ import { PartidosService } from '../partidos/partidos.service';
 import { TiemposService, type ResultadoFinTiempo } from '../partidos/tiempos.service';
 import { ResumenService } from '../resumen/resumen.service';
 import { segundosDesde } from './dedup';
-import { admiteEquipoRival, esTipoDeEvento, EVENTOS } from './evento.tipos';
+import { admiteEquipoRival, esTipoDeEvento } from './evento.tipos';
 import { EventosService, type SolicitudEvento } from './eventos.service';
 import {
   type GanchosPostPartido,
@@ -54,6 +54,7 @@ import {
 } from './post-partido.flujo';
 import {
   avisoDeDuplicado,
+  botonesDeControl,
   botonesDeOrigen,
   ID_DESHACER,
   ID_ES_OTRO,
@@ -67,6 +68,7 @@ import {
   ID_YA_ESTABA,
   lineaDeBitacora,
   origenDesdeBoton,
+  paginaSiguienteEventos,
   panelEnVivo,
   PREFIJO_EVENTO,
   PREFIJO_JUGADOR,
@@ -647,12 +649,16 @@ export class CargarFlujo {
         const seleccion = ctx.mensaje.seleccionId ?? '';
 
         if (seleccion === ID_VER_MAS) {
+          const partido = await this.partidoDe(ctx);
+
+          if (!partido) return this.partidoPerdido();
+
+          // Misma reserva que usa `panelEnVivo` al armar cada página: solo le
+          // saca lugar a la última (ver `paginaSiguienteEventos`).
+          const reservarUltima = botonesDeControl(partido).length;
           const pagina = leerNumero(ctx.datos, CLAVE_PAGINA_EVENTOS, 0);
 
-          // Misma reserva (0) que usa `panelEnVivo` al armar cada página: los
-          // controles no le sacan lugar a los eventos, así que tampoco a la
-          // cuenta de páginas.
-          ctx.datos[CLAVE_PAGINA_EVENTOS] = paginaSiguiente(pagina, EVENTOS.length, 0);
+          ctx.datos[CLAVE_PAGINA_EVENTOS] = paginaSiguienteEventos(pagina, reservarUltima);
 
           const respuesta = await this.dibujarPanel(ctx);
 

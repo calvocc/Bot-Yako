@@ -22,6 +22,22 @@ export interface DefinicionEvento {
  */
 export const EVENTOS: readonly DefinicionEvento[] = [
   { tipo: 'gol', emoji: '⚽', boton: '⚽ Gol', sustantivo: 'Gol', admiteRival: true },
+  // Variantes de gol con puntaje propio (ver PUNTOS_EVENTO en puntaje.ts):
+  // admiten rival igual que "Gol", porque sin ellos el marcador no cuadra.
+  {
+    tipo: 'gol_penal',
+    emoji: '⚽',
+    boton: '⚽ Gol de penal',
+    sustantivo: 'Gol de penal',
+    admiteRival: true,
+  },
+  {
+    tipo: 'gol_tiro_libre',
+    emoji: '⚽',
+    boton: '⚽ Gol de tiro libre',
+    sustantivo: 'Gol de tiro libre',
+    admiteRival: true,
+  },
   {
     tipo: 'asistencia',
     emoji: '🅰️',
@@ -48,6 +64,20 @@ export const EVENTOS: readonly DefinicionEvento[] = [
     sustantivo: 'Tiro al arco',
     admiteRival: false,
   },
+  {
+    tipo: 'tiro_afuera',
+    emoji: '🎯',
+    boton: '🎯 Tiro afuera',
+    sustantivo: 'Tiro afuera',
+    admiteRival: false,
+  },
+  {
+    tipo: 'pase',
+    emoji: '👟',
+    boton: '👟 Pase',
+    sustantivo: 'Pase',
+    admiteRival: false,
+  },
   { tipo: 'atajada', emoji: '🧤', boton: '🧤 Atajada', sustantivo: 'Atajada', admiteRival: false },
   { tipo: 'cambio', emoji: '🔄', boton: '🔄 Cambio', sustantivo: 'Cambio', admiteRival: false },
   {
@@ -55,6 +85,13 @@ export const EVENTOS: readonly DefinicionEvento[] = [
     emoji: '🤕',
     boton: '🤕 Falta recibida',
     sustantivo: 'Falta recibida',
+    admiteRival: false,
+  },
+  {
+    tipo: 'falta_cometida',
+    emoji: '🚫',
+    boton: '🚫 Falta cometida',
+    sustantivo: 'Falta cometida',
     admiteRival: false,
   },
   {

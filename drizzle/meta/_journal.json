@@ -120,6 +120,20 @@
       "when": 1788900000000,
       "tag": "0016_rls_tablas_faltantes",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789165010776,
+      "tag": "0017_eventos_avanzados_enum",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789165010877,
+      "tag": "0018_eventos_avanzados_reglas",
+      "breakpoints": true
     }
   ]
 }
