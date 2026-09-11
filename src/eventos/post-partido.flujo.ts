@@ -61,8 +61,12 @@ const ID_TARJETAS_LISTO = 'pp:tarjetasListo';
 const ID_AMARILLA = 'pp:amarilla';
 const ID_ROJA = 'pp:roja';
 
-/** Los botones de plantilla más "Otro jugador"/"Listo" reservan estos dos huecos. */
-const RESERVA_BOTONES_FIJOS = 2;
+/**
+ * "Listo" es el único fijo en todas las páginas. "Otro jugador" solo entra
+ * en la última (cuando ya no hay "Ver más") -- ese lugar de más es un
+ * jugador más visible por página mientras se sigue paginando la plantilla.
+ */
+const RESERVA_BOTONES_FIJOS = 1;
 
 // Cada paso pagina la plantilla por separado -- si compartieran una sola
 // clave, avanzar de página cargando goleadores dejaría a tarjetas heredando
@@ -156,19 +160,22 @@ function pasoElegirDeLaPlantilla(
       plantillaYaCargada ?? (await cfg.jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID)));
     const cargados = leerLista(ctx.datos, cfg.claveTally);
 
-    const { botones } = botonesPaginados(
+    const { botones, hayMas } = botonesPaginados(
       plantilla.map((j) => ({ id: `${PREFIJO_JUGADOR}${j.id}`, texto: describirJugador(j) })),
       pagina,
       RESERVA_BOTONES_FIJOS,
     );
 
-    botones.push(
-      { id: cfg.idOtroJugador, texto: 'Otro jugador' },
-      {
-        id: cfg.idListo,
-        texto: cargados.length > 0 ? `Listo (${cargados.length})` : cfg.textoListoSinCarga,
-      },
-    );
+    // "Otro jugador" recién aparece cuando esta página ya llegó al final de
+    // la plantilla: antes de eso ese lugar lo ocupa "Ver más".
+    if (!hayMas) {
+      botones.push({ id: cfg.idOtroJugador, texto: 'Otro jugador' });
+    }
+
+    botones.push({
+      id: cfg.idListo,
+      texto: cargados.length > 0 ? `Listo (${cargados.length})` : cfg.textoListoSinCarga,
+    });
 
     return {
       texto: [cargados.length > 0 ? `Van: ${cargados.join(', ')}.` : undefined, cfg.textoPregunta]

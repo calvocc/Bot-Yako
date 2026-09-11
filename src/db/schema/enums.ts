@@ -22,6 +22,11 @@ export const tipoEventoEnum = pgEnum('tipo_evento', [
   'falta_recibida',
   'atajada',
   'penal_atajado',
+  'gol_penal',
+  'gol_tiro_libre',
+  'tiro_afuera',
+  'pase',
+  'falta_cometida',
 ]);
 
 /**

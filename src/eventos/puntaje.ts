@@ -20,12 +20,19 @@ import type { EventoCargado } from './eventos.service';
  * este archivo con el sistema anterior.
  */
 export const PUNTOS_EVENTO: Record<Exclude<TipoEvento, 'gol'>, number> = {
+  // Variantes de gol: a diferencia de "gol", valen lo mismo sin importar la
+  // posición de quien lo hizo -- ver `puntosGol` para el caso de "gol".
+  gol_penal: 1,
+  gol_tiro_libre: 5,
   asistencia: 2,
   recuperacion: 0.5,
   rechazo: 0.5,
   regate: 0.5,
   tiro_al_arco: 0.5,
+  tiro_afuera: 0.3,
+  pase: 0.3,
   falta_recibida: 0.3,
+  falta_cometida: -0.5,
   atajada: 1,
   penal_atajado: 4,
   tarjeta_amarilla: -1,
@@ -79,7 +86,10 @@ export interface NotaJugador {
   rechazos: number;
   regates: number;
   tirosAlArco: number;
+  tirosAfuera: number;
+  pases: number;
   faltasRecibidas: number;
+  faltasCometidas: number;
   atajadas: number;
   penalesAtajados: number;
 }
@@ -140,7 +150,10 @@ export function calcularNotas(
       rechazos: 0,
       regates: 0,
       tirosAlArco: 0,
+      tirosAfuera: 0,
+      pases: 0,
       faltasRecibidas: 0,
+      faltasCometidas: 0,
       atajadas: 0,
       penalesAtajados: 0,
     };
@@ -174,7 +187,11 @@ export function calcularNotas(
       evento.tipo === 'gol' ? puntosGol(evento.jugadorPosicion) : PUNTOS_EVENTO[evento.tipo];
 
     switch (evento.tipo) {
+      // Cualquier variante de gol cuenta para el mismo total: lo que las
+      // distingue es el puntaje (arriba), no el conteo que se muestra.
       case 'gol':
+      case 'gol_penal':
+      case 'gol_tiro_libre':
         actual.goles += 1;
         break;
       case 'asistencia':
@@ -201,8 +218,17 @@ export function calcularNotas(
       case 'tiro_al_arco':
         actual.tirosAlArco += 1;
         break;
+      case 'tiro_afuera':
+        actual.tirosAfuera += 1;
+        break;
+      case 'pase':
+        actual.pases += 1;
+        break;
       case 'falta_recibida':
         actual.faltasRecibidas += 1;
+        break;
+      case 'falta_cometida':
+        actual.faltasCometidas += 1;
         break;
       case 'atajada':
         actual.atajadas += 1;
@@ -287,7 +313,10 @@ export function describirMvp(destacado: NotaJugador): string {
     contarSi(destacado.rechazos, 'rechazo', 'rechazos'),
     contarSi(destacado.regates, 'regate', 'regates'),
     contarSi(destacado.tirosAlArco, 'tiro al arco', 'tiros al arco'),
+    contarSi(destacado.tirosAfuera, 'tiro afuera', 'tiros afuera'),
+    contarSi(destacado.pases, 'pase', 'pases'),
     contarSi(destacado.faltasRecibidas, 'falta recibida', 'faltas recibidas'),
+    contarSi(destacado.faltasCometidas, 'falta cometida', 'faltas cometidas'),
     contarSi(destacado.amarillas, 'amarilla', 'amarillas'),
     contarSi(destacado.rojas, 'roja', 'rojas'),
     contarSi(destacado.autogoles, 'autogol', 'autogoles'),

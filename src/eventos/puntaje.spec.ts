@@ -114,6 +114,31 @@ describe('calcularNotas', () => {
     });
   });
 
+  it('acumula tiro afuera, pase y falta cometida', () => {
+    const notas = calcularNotas([
+      evento({ jugadorId: 'jacob', tipo: 'tiro_afuera' }),
+      evento({ jugadorId: 'jacob', tipo: 'pase' }),
+      evento({ jugadorId: 'jacob', tipo: 'falta_cometida' }),
+    ]);
+
+    expect(notas[0]).toMatchObject({
+      tirosAfuera: 1,
+      pases: 1,
+      faltasCometidas: 1,
+      puntosBrutos: 0.3 + 0.3 - 0.5,
+    });
+  });
+
+  it('un gol de penal o de tiro libre suma al mismo conteo de goles, con su propio puntaje', () => {
+    const notas = calcularNotas([
+      evento({ jugadorId: 'jacob', tipo: 'gol_penal' }),
+      evento({ jugadorId: 'jacob', tipo: 'gol_tiro_libre' }),
+    ]);
+
+    // A diferencia de "gol", ninguno de los dos depende de la posición.
+    expect(notas[0]).toMatchObject({ goles: 2, puntosBrutos: 1 + 5 });
+  });
+
   it('suma los bonos de cierre por jugador', () => {
     const bonos: Bono[] = [{ jugadorId: 'jacob', puntos: 3 }];
     const notas = calcularNotas([], [participante({})], bonos);
@@ -203,6 +228,15 @@ describe('describirMvp', () => {
 
     // 2 goles sin posición (3 c/u) + 1 asistencia (2) = 8 puntos brutos = techo exacto → nota 10.
     expect(destacado && describirMvp(destacado)).toBe('Jacob (10.0) — 2 goles, 1 asistencia');
+  });
+
+  it('un gol de penal o de tiro libre se cuenta junto al resto de los goles', () => {
+    const destacado = calcularMvp([
+      evento({ jugadorId: 'jacob', tipo: 'gol_penal' }),
+      evento({ jugadorId: 'jacob', tipo: 'gol_tiro_libre' }),
+    ]);
+
+    expect(destacado && describirMvp(destacado)).toContain('2 goles');
   });
 
   it('sin desglose si el único aporte no cuenta en ningún conteo', () => {
