@@ -566,6 +566,10 @@ export class CargarFlujo {
       ...this.opcionesElegirDeLaPlantilla(
         '¿Quiénes jugaron este partido? Toca a cada jugador, "Todos" si jugó el plantel completo, o escribe los dorsales separados por coma (10, 7, 4). "Listo" cuando termines.',
       ),
+      // A diferencia de la titular, acá vale la pena el lugar que le saca a
+      // un jugador visible: cargar post partido es más propenso a un toque
+      // de más, y sin "Ninguno" corregirlo es destildar de a uno.
+      mostrarNinguno: true,
       alConfirmar: async (ctx, elegidos) => {
         const partido = await this.partidoDe(ctx);
 

@@ -1,8 +1,9 @@
 import type { Boton } from '../channels/channel.types';
-import { botonesPaginados } from '../conversacion/pasos-comunes/paginacion';
+import { botonesPaginados, ID_VER_MAS } from '../conversacion/pasos-comunes/paginacion';
 import { describirMinuto, type Minuto } from '../partidos/minuto';
 import type { Partido } from '../partidos/partido.mapper';
 import { describirMarcador } from '../partidos/partido.mapper';
+import { textos } from '../textos/pasos-comunes';
 import { definicionDe, EVENTOS, type EquipoOrigen, type TipoEvento } from './evento.tipos';
 import type { EventoCargado, Marcador } from './eventos.service';
 
@@ -28,9 +29,11 @@ export interface EstadoPanel {
   /** Nota efímera arriba del panel: "▶️ Se inició el Tiempo 2 automáticamente." */
   aviso?: string;
   /**
-   * Página del panel de eventos que se está mostrando. 13 tipos de evento +
-   * 3 o 4 controles se pasa del límite de 10 filas de WhatsApp, así que se
-   * pagina con el mismo mecanismo que ya pagina jugadores (`paginacion.ts`).
+   * Página del panel de eventos que se está mostrando. 13 tipos de evento se
+   * pasan del límite de 10 filas de WhatsApp, así que se pagina con el mismo
+   * mecanismo que ya pagina jugadores (`paginacion.ts`). Los controles (Fin
+   * del tiempo, Deshacer, Ver resumen, Finalizar) solo entran en la última
+   * página; "Ver más" está en todas.
    */
   paginaEventos: number;
 }
@@ -53,10 +56,24 @@ export function panelEnVivo(estado: EstadoPanel): { texto: string; botones: Boto
 
   const lineas = [aviso, encabezado, `${reloj} · ${describirMarcador(partido)}`].filter(Boolean);
   const controles = botonesDeControl(partido);
+  const { botones: botonesEventos, hayMas } = botonesDeEvento(paginaEventos, controles.length);
+
+  // "Ver más" es lo único que se mantiene siempre visible mientras se pagina
+  // -- incluso en la última página, desde donde vuelve a la primera -- así
+  // que si esta página ya agotó los eventos y `botonesPaginados` no lo puso
+  // (no hay más para ver desde acá) se agrega igual.
+  const conVerMas = hayMas
+    ? botonesEventos
+    : [...botonesEventos, { id: ID_VER_MAS, texto: textos.verMas }];
+
+  // Los controles (Fin del tiempo, Deshacer, Ver resumen, Finalizar) recién
+  // entran cuando esta página llega al final de la lista de eventos: antes
+  // de eso ese lugar es para más tipos de evento.
+  const botones = hayMas ? conVerMas : [...conVerMas, ...controles];
 
   return {
     texto: lineas.join('\n'),
-    botones: [...botonesDeEvento(paginaEventos, controles.length), ...controles],
+    botones,
   };
 }
 
@@ -69,24 +86,23 @@ function descripcionSinReloj(partido: Partido): string {
 }
 
 /**
- * Los botones de evento de una página, con "Ver más" si sobran.
+ * Los botones de evento de una página, con "Ver más" si sobran, y si esta
+ * página ya llegó al final de la lista (`hayMas` en falso, para que
+ * `panelEnVivo` sepa si le toca sumar los controles ahí).
  *
- * `reservar` son los botones que `panelEnVivo` agrega aparte (los de
- * control, 3 o 4 según el estado del partido) — y se reservan en CADA
- * página, no solo en la última: el panel siempre vuelve a la página 0
- * después de cualquier acción (`CargarFlujo.datosPanel`), así que si los
- * controles solo vivieran en la última página quedarían inalcanzables en
- * la práctica — habría que tocar "Ver más" en cada turno solo para llegar
- * a "Finalizar" o "Deshacer".
+ * `reservar` es el lugar que `panelEnVivo` deja aparte para los controles
+ * (3 o 4 según el estado del partido, más "Ver más"): controles y "Ver más"
+ * nunca compiten por espacio con los eventos, pase lo que pase.
  */
-export function botonesDeEvento(pagina: number, reservar: number): Boton[] {
-  const { botones } = botonesPaginados(
+export function botonesDeEvento(
+  pagina: number,
+  reservar: number,
+): { botones: Boton[]; hayMas: boolean } {
+  return botonesPaginados(
     EVENTOS.map((e) => ({ id: `${PREFIJO_EVENTO}${e.tipo}`, texto: e.boton })),
     pagina,
     reservar,
   );
-
-  return botones;
 }
 
 export function botonesDeControl(partido: Partido): Boton[] {
