@@ -26,6 +26,15 @@ export class AyudaHandler {
         `/${comando.nombre} — ${comando.descripcion}${textos.ayuda.etiquetaRol[comando.rolMinimo]}`,
     );
 
-    return { texto: [textos.ayuda.intro(), '', ...lineas, '', textos.ayuda.cierre()].join('\n') };
+    return {
+      texto: [textos.ayuda.intro(), '', ...lineas, '', textos.ayuda.cierre()].join('\n'),
+      // Quien pide /ayuda ya está preguntando qué puede hacer: es el momento
+      // natural para sincronizar también el "/" nativo de Telegram. Sin esto,
+      // alguien a quien /permisos le cambió el rol EN EL MISMO equipo no
+      // tenía ninguna acción propia para refrescar su menú nativo -- ninguno
+      // de los otros disparadores (unirse a un equipo nuevo, crear equipo o
+      // academia) cubre ese caso.
+      actualizarMenu: true,
+    };
   }
 }

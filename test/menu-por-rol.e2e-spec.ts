@@ -151,7 +151,7 @@ describe('Menú según el rol (e2e)', () => {
     expect(adaptador.menusActualizados[0].destino.chatId).toBe(usuario.chatId);
   });
 
-  it('unirse con un código también refresca el menú; un comando cualquiera no', async () => {
+  it('unirse con un código también refresca el menú; un comando de consulta no', async () => {
     const admin = nuevoUsuario();
     const papa = nuevoUsuario();
 
@@ -167,8 +167,8 @@ describe('Menú según el rol (e2e)', () => {
     const codigo = adaptador.ultimoTexto.match(/YAKO-[A-Z0-9]+/)?.[0];
     expect(codigo).toBeDefined();
 
-    // Un comando de consulta cualquiera no dispara el refresco.
-    await procesador.procesar(textoDePrueba('/ayuda', papa));
+    // Un comando de consulta "normal" (no /ayuda) no dispara el refresco.
+    await procesador.procesar(textoDePrueba('/mishijos', papa));
     expect(adaptador.menusActualizados).toHaveLength(0);
 
     await procesador.procesar(textoDePrueba(`/unirme ${codigo!}`, papa));
@@ -177,5 +177,38 @@ describe('Menú según el rol (e2e)', () => {
     const nombres = adaptador.menusActualizados[0].comandos.map((c) => c.nombre);
     expect(nombres).toContain('nuevopartido'); // ya es Editor de Sub-9
     expect(nombres).not.toContain('permisos'); // pero no Admin
+  });
+
+  it('/ayuda también refresca el menú nativo -- la salida de alguien a quien /permisos le cambió el rol', async () => {
+    const admin = nuevoUsuario();
+    const editor = nuevoUsuario();
+
+    const academia = await app.get(AcademiasService).crear('MENU Ayuda refresca');
+    const adminId = await usuarioIdDe(admin.canalUserId);
+    const equipo = await app
+      .get(EquiposService)
+      .crear(academia.id, 'Sub-11', { cantidadTiempos: 2, minutosPorTiempo: 25 }, adminId);
+
+    const editorId = await usuarioIdDe(editor.canalUserId);
+    await membresias.asignarRol(editorId, equipo.id, 'editor');
+
+    await procesador.procesar(textoDePrueba('/ayuda', editor));
+
+    expect(adaptador.menusActualizados).toHaveLength(1);
+    let nombres = adaptador.menusActualizados[0].comandos.map((c) => c.nombre);
+    expect(nombres).toContain('nuevopartido');
+    expect(nombres).not.toContain('permisos');
+
+    // El admin lo degrada a Viewer (otro chat: /permisos no puede empujarle
+    // el refresco a él). Corriendo /ayuda de nuevo, sí se sincroniza solo.
+    await membresias.asignarRol(editorId, equipo.id, 'viewer');
+    adaptador.limpiar();
+
+    await procesador.procesar(textoDePrueba('/ayuda', editor));
+
+    expect(adaptador.menusActualizados).toHaveLength(1);
+    nombres = adaptador.menusActualizados[0].comandos.map((c) => c.nombre);
+    expect(nombres).not.toContain('nuevopartido');
+    expect(nombres).toContain('stats');
   });
 });
