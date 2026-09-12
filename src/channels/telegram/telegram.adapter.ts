@@ -2,7 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Telegraf } from 'telegraf';
 import { TypedConfigService } from '../../config/config.service';
 import type { ChannelAdapter } from '../channel-adapter.interface';
-import type { Boton, Canal, DestinoMensaje, MensajeEnviado, RespuestaBot } from '../channel.types';
+import type {
+  Boton,
+  Canal,
+  ComandoDeMenu,
+  DestinoMensaje,
+  MensajeEnviado,
+  RespuestaBot,
+} from '../channel.types';
 import { LIMITE_BYTES_ID_BOTON } from '../channel.types';
 
 /**
@@ -91,6 +98,28 @@ export class TelegramAdapter implements ChannelAdapter {
       // Un acuse vencido no debe abortar el manejo del evento en sí.
       this.logger.debug(
         `No se pudo acusar recibo de ${acuseId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  /**
+   * Menú "/" por chat (RF: cada quien ve solo lo que puede hacer). En un chat
+   * privado `chat_id` es el propio usuario, así que alcanza con el scope
+   * `chat` -- no hace falta `chat_member`, pensado para diferenciar miembros
+   * dentro de un mismo grupo.
+   */
+  async actualizarMenu(destino: DestinoMensaje, comandos: readonly ComandoDeMenu[]): Promise<void> {
+    try {
+      await this.bot.telegram.setMyCommands(
+        comandos.map((comando) => ({ command: comando.nombre, description: comando.descripcion })),
+        { scope: { type: 'chat', chat_id: destino.chatId } },
+      );
+    } catch (error) {
+      // Un menú desactualizado no es motivo para que la respuesta real falle.
+      this.logger.debug(
+        `No se pudo actualizar el menú de ${destino.chatId}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );

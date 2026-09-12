@@ -1,4 +1,5 @@
 import type { MensajeEntrante, RespuestaBot } from '../channels/channel.types';
+import { cumpleRol, type Rol } from '../identidad/roles';
 import { textos as textosComunes } from '../textos/comunes';
 
 /**
@@ -67,6 +68,21 @@ export const COMANDOS: readonly DefinicionComando[] = [
   },
   { nombre: 'stats', descripcion: '📊 Estadísticas de un jugador', rolMinimo: 'viewer' },
   { nombre: 'tabla', descripcion: '📋 Resumen del equipo en la temporada', rolMinimo: 'viewer' },
+  {
+    nombre: 'nuevoentrenamiento',
+    descripcion: '🏃 Crear un entrenamiento (o hacerlo recurrente)',
+    rolMinimo: 'editor',
+  },
+  {
+    nombre: 'asistencia',
+    descripcion: '✅ Tomar asistencia del entrenamiento',
+    rolMinimo: 'editor',
+  },
+  {
+    nombre: 'asistencias',
+    descripcion: '📋 Ver la asistencia a entrenamientos',
+    rolMinimo: 'viewer',
+  },
   { nombre: 'cancelar', descripcion: '🚫 Salir de lo que estés haciendo', rolMinimo: 'cualquiera' },
 ];
 
@@ -163,4 +179,30 @@ export function comandosDisponibles(registrados: readonly string[]): DefinicionC
   return COMANDOS.filter(
     (comando) => comando.visible !== false && activos.has(comando.nombre.toLowerCase()),
   );
+}
+
+/**
+ * Como `comandosDisponibles`, pero además filtrado por lo que el usuario
+ * puede hacer hoy: un comando con `rolMinimo` distinto de `cualquiera` solo
+ * se ofrece si alcanza ese rol en al menos uno de sus equipos.
+ *
+ * Sin equipos (cuenta nueva, o `usuarioId` ausente) esto deja solo lo que es
+ * `cualquiera` -- exactamente lo que alguien puede hacer antes de crear o
+ * unirse a una academia. Es la base tanto de `/ayuda` como del menú nativo
+ * de Telegram (por chat, ver `ChannelAdapter.actualizarMenu`).
+ */
+export function comandosParaUsuario(
+  registrados: readonly string[],
+  equiposDelUsuario: readonly { rol: Rol }[],
+): DefinicionComando[] {
+  return comandosDisponibles(registrados).filter((comando) => {
+    if (comando.rolMinimo === 'cualquiera') return true;
+
+    // Recién acá `rolMinimo` quedó angosto a `Rol`: capturarlo en una
+    // constante evita que se pierda el estrechamiento al entrar al closure
+    // de `some`, algo que TypeScript no propaga solo.
+    const minimo = comando.rolMinimo;
+
+    return equiposDelUsuario.some((equipo) => cumpleRol(equipo.rol, minimo));
+  });
 }

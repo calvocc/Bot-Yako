@@ -5,4 +5,5 @@ export * from './invitaciones';
 export * from './competencias';
 export * from './partidos';
 export * from './eventos';
+export * from './entrenamientos';
 export * from './conversacion';

@@ -3,12 +3,29 @@ import { AyudaHandler } from '../conversacion/ayuda.handler';
 import { FlowEngine } from '../conversacion/flow-engine.service';
 import { FlowRegistry } from '../conversacion/flow-registry.service';
 import type { EstadoSesion } from '../conversacion/flow.types';
+import type { ResolvedorUsuario } from '../conversacion/resolvedor-usuario';
 import { Router } from '../conversacion/router.service';
 import type { SesionStore } from '../conversacion/sesion.store';
+import type { MembresiasService } from '../identidad/membresias.service';
 import { ChannelRegistry } from './channel.registry';
 import type { Canal } from './channel.types';
 import { ProcesadorMensajes } from './procesador-mensajes.service';
 import { FakeChannelAdapter, seleccionDePrueba, textoDePrueba } from './testing/fake.adapter';
+
+/**
+ * Un admin de un equipo cualquiera: estos tests ejercitan el registro y
+ * despacho de comandos (dedup, errores, `/cancelar`), no el filtrado por rol
+ * -- ese tiene su propio spec (`ayuda.handler.spec.ts`). Con este rol fijo,
+ * `/ayuda` sigue mostrando cualquier comando que un test registre, como antes
+ * de que `comandosParaUsuario` empezara a filtrar por equipos reales.
+ */
+const usuarioDePrueba = 'usuario-de-prueba';
+const resolvedorFijo: ResolvedorUsuario = {
+  resolverUsuario: () => Promise.resolve(usuarioDePrueba),
+};
+const membresiasAdmin = {
+  equiposDe: () => Promise.resolve([{ rol: 'admin' }]),
+} as unknown as MembresiasService;
 
 class SesionesEnMemoria {
   private readonly datos = new Map<string, EstadoSesion>();
@@ -61,10 +78,19 @@ function armar(canal: Canal = 'telegram', redis: RedisService = redisCaido) {
   const motor = new FlowEngine(registro, new SesionesEnMemoria() as unknown as SesionStore);
   const router = new Router(motor);
 
-  const ayuda = new AyudaHandler(router);
-  router.registrarComando('ayuda', { tipo: 'respuesta', ejecutar: () => ayuda.ejecutar() });
+  const ayuda = new AyudaHandler(router, membresiasAdmin);
+  router.registrarComando('ayuda', {
+    tipo: 'respuesta',
+    ejecutar: (_ctx, usuarioId) => ayuda.ejecutar(usuarioId),
+  });
 
-  const procesador = new ProcesadorMensajes(canales, router, redis);
+  const procesador = new ProcesadorMensajes(
+    canales,
+    router,
+    redis,
+    membresiasAdmin,
+    resolvedorFijo,
+  );
 
   return { adaptador, procesador, router, registro, motor, canales };
 }
