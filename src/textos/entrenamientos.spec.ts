@@ -1,4 +1,4 @@
-import { hoyLocal } from '../partidos/fechas';
+import { hoyLocal, sumarDias } from '../partidos/fechas';
 import { textos } from './entrenamientos';
 
 describe('nuevoEntrenamiento.creadoPuntual', () => {
@@ -22,6 +22,32 @@ describe('nuevoEntrenamiento.creadoRecurrente', () => {
     expect(texto).toContain('Sub-11');
     expect(texto).toContain('Martes, Jueves');
     expect(texto).toContain('hoy');
+  });
+});
+
+describe('nuevoEntrenamiento.creadaSinPrimeraSesion', () => {
+  it('nombra la próxima fecha, no solo "cuando llegue uno de esos días"', () => {
+    const proxima = sumarDias(hoyLocal(), 3);
+    const texto = textos.nuevoEntrenamiento.creadaSinPrimeraSesion(
+      'Sub-11',
+      'Martes, Jueves',
+      proxima,
+    );
+
+    expect(texto).toContain('Sub-11');
+    expect(texto).toContain('Martes, Jueves');
+    expect(texto).toContain('Todavía no hay sesión de hoy');
+    expect(texto).toContain('/asistencia');
+  });
+});
+
+describe('asistencia.sinPendientesConRecurrencia', () => {
+  it('avisa la próxima fecha y no sugiere crear otra', () => {
+    const texto = textos.asistencia.sinPendientesConRecurrencia(sumarDias(hoyLocal(), 2));
+
+    expect(texto).toContain('Ya tenés una recurrencia activa');
+    expect(texto).toContain('la próxima se crea sola');
+    expect(texto).not.toContain('Crea uno con /nuevoentrenamiento');
   });
 });
 
