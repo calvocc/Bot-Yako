@@ -74,7 +74,12 @@ export class OnboardingFlujo {
           claveEquipoId: CLAVE_EQUIPO_ID,
           alTerminar: (_ctx, cargados) => ({
             tipo: 'finalizar',
-            respuesta: respuestaPlantillaLista(cargados, CIERRE),
+            respuesta: {
+              ...respuestaPlantillaLista(cargados, CIERRE),
+              // Recién creó su academia y quedó admin del primer equipo: su
+              // menú se queda corto hasta que se refresque.
+              actualizarMenu: true,
+            },
           }),
         }),
       ],

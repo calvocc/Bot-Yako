@@ -19,6 +19,9 @@ export function mensajeDeCanje(resultado: ResultadoCanje | CanjeConRol): Respues
       return {
         texto: textos.canje.ok(ETIQUETA_ROL_CORTA[resultado.rol], resultado.equipoNombre),
         botones: [botonComando('ayuda', textosComunes.botonAyuda())],
+        // Recién ganó acceso a un equipo nuevo: su menú (nativo y /ayuda) se
+        // queda corto hasta que se refresque.
+        actualizarMenu: true,
       };
 
     case 'ya_eras_miembro':
@@ -31,6 +34,9 @@ export function mensajeDeCanje(resultado: ResultadoCanje | CanjeConRol): Respues
       return {
         texto: textos.canje.okJugador(resultado.jugadorNombre, resultado.equipoNombre),
         botones: [botonComando('ayuda', textosComunes.botonAyuda())],
+        // Igual que 'ok': recién quedó vinculado a un jugador (Frente B), y
+        // eso también le suma equipos a `equiposDe`.
+        actualizarMenu: true,
       };
 
     case 'ya_vinculado_jugador':

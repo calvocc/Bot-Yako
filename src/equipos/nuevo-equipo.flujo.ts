@@ -58,10 +58,15 @@ export class NuevoEquipoFlujo {
           claveEquipoId: CLAVE_EQUIPO_ID,
           alTerminar: (ctx, cargados) => ({
             tipo: 'finalizar',
-            respuesta: respuestaPlantillaLista(
-              cargados,
-              `Equipo "${leerTexto(ctx.datos, CLAVE_NOMBRE)}" listo. Invita a los papás con /invitar.`,
-            ),
+            respuesta: {
+              ...respuestaPlantillaLista(
+                cargados,
+                `Equipo "${leerTexto(ctx.datos, CLAVE_NOMBRE)}" listo. Invita a los papás con /invitar.`,
+              ),
+              // Quedó admin de un equipo nuevo: su menú se queda corto hasta
+              // que se refresque.
+              actualizarMenu: true,
+            },
           }),
         }),
       ],

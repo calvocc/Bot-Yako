@@ -22,7 +22,7 @@ export class ConversacionModule implements OnModuleInit {
   onModuleInit(): void {
     this.router.registrarComando('ayuda', {
       tipo: 'respuesta',
-      ejecutar: () => this.ayuda.ejecutar(),
+      ejecutar: (_ctx, usuarioId) => this.ayuda.ejecutar(usuarioId),
     });
 
     // Los demás comandos se registran en las fases siguientes, desde el módulo

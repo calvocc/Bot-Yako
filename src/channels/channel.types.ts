@@ -71,6 +71,21 @@ export interface RespuestaBot {
    * cronica reenviable. Sin esto habria que elegir entre las dos cosas.
    */
   adicionales?: MensajeAdicional[];
+  /**
+   * Señal neutral de "lo que este usuario puede hacer cambió" (se unió a un
+   * equipo, creó una academia) -- ningún flujo de dominio sabe nada de
+   * Telegram, así que no llama a `setMyCommands` directo. La procesa
+   * `ProcesadorMensajes`, que recalcula el menú del usuario y se lo pasa al
+   * adaptador via `ChannelAdapter.actualizarMenu`. Un canal sin ese concepto
+   * (o sin nada que refrescar) simplemente la ignora.
+   */
+  actualizarMenu?: boolean;
+}
+
+/** Lo mínimo que un adaptador necesita para publicar un comando en su menú nativo. */
+export interface ComandoDeMenu {
+  nombre: string;
+  descripcion: string;
 }
 
 /**

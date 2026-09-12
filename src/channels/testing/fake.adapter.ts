@@ -2,6 +2,7 @@ import type { ChannelAdapter } from '../channel-adapter.interface';
 import type {
   Boton,
   Canal,
+  ComandoDeMenu,
   DestinoMensaje,
   MensajeEntrante,
   MensajeEnviado,
@@ -15,6 +16,11 @@ export interface EnvioCapturado {
   fueEdicion: boolean;
 }
 
+export interface MenuActualizado {
+  destino: DestinoMensaje;
+  comandos: readonly ComandoDeMenu[];
+}
+
 /**
  * Adaptador de pruebas: en lugar de hablar con una plataforma, guarda lo que se
  * habría enviado.
@@ -25,6 +31,7 @@ export interface EnvioCapturado {
 export class FakeChannelAdapter implements ChannelAdapter {
   readonly enviados: EnvioCapturado[] = [];
   readonly acuses: string[] = [];
+  readonly menusActualizados: MenuActualizado[] = [];
 
   private contador = 0;
 
@@ -45,6 +52,11 @@ export class FakeChannelAdapter implements ChannelAdapter {
 
   acusarRecibo(acuseId: string): Promise<void> {
     this.acuses.push(acuseId);
+    return Promise.resolve();
+  }
+
+  actualizarMenu(destino: DestinoMensaje, comandos: readonly ComandoDeMenu[]): Promise<void> {
+    this.menusActualizados.push({ destino, comandos });
     return Promise.resolve();
   }
 
@@ -71,6 +83,7 @@ export class FakeChannelAdapter implements ChannelAdapter {
   limpiar(): void {
     this.enviados.length = 0;
     this.acuses.length = 0;
+    this.menusActualizados.length = 0;
   }
 }
 

@@ -1,7 +1,9 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { RedisService } from '../core/redis/redis.service';
+import { comandosParaUsuario } from '../conversacion/comandos';
 import { RESOLVEDOR_USUARIO, type ResolvedorUsuario } from '../conversacion/resolvedor-usuario';
 import { Router } from '../conversacion/router.service';
+import { MembresiasService } from '../identidad/membresias.service';
 import type { ChannelAdapter } from './channel-adapter.interface';
 import { ChannelRegistry } from './channel.registry';
 import { claveReferencia, type Canal, type MensajeEntrante } from './channel.types';
@@ -24,6 +26,7 @@ export class ProcesadorMensajes {
     private readonly canales: ChannelRegistry,
     private readonly router: Router,
     private readonly redis: RedisService,
+    private readonly membresias: MembresiasService,
     @Optional()
     @Inject(RESOLVEDOR_USUARIO)
     private readonly resolvedor?: ResolvedorUsuario,
@@ -64,6 +67,13 @@ export class ProcesadorMensajes {
         // vive en el chat, mientras que el panel se edita en el sitio.
         for (const extra of adicionales ?? []) {
           await adaptador.enviar(destino, { ...extra, editarMensajeId: undefined });
+        }
+
+        if (principal.actualizarMenu && adaptador.actualizarMenu && usuarioId) {
+          const equipos = await this.membresias.equiposDe(usuarioId);
+          const comandos = comandosParaUsuario(this.router.comandosRegistrados, equipos);
+
+          await adaptador.actualizarMenu(destino, comandos);
         }
       }
     } catch (error) {

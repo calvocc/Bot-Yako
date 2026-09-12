@@ -1,4 +1,10 @@
-import type { DestinoMensaje, Canal, MensajeEnviado, RespuestaBot } from './channel.types';
+import type {
+  ComandoDeMenu,
+  DestinoMensaje,
+  Canal,
+  MensajeEnviado,
+  RespuestaBot,
+} from './channel.types';
 
 /**
  * Puerto de salida hacia un canal de mensajeria.
@@ -20,6 +26,15 @@ export interface ChannelAdapter {
    * En canales sin este concepto es un no-op.
    */
   acusarRecibo(acuseId: string, texto?: string): Promise<void>;
+
+  /**
+   * Refresca el menú nativo del canal para ESE chat puntual, con los
+   * comandos que le corresponden ahora a quien lo usa (`RespuestaBot.actualizarMenu`,
+   * via `ProcesadorMensajes`). Opcional: solo Telegram tiene este concepto de
+   * menú por chat (`setMyCommands` con `scope: 'chat'`); WhatsApp no lo
+   * implementa.
+   */
+  actualizarMenu?(destino: DestinoMensaje, comandos: readonly ComandoDeMenu[]): Promise<void>;
 }
 
 /** Token de inyeccion para la lista de adaptadores registrados. */
