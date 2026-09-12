@@ -1,4 +1,5 @@
 import { textos as comunes } from './comunes';
+import { textos as entrenamientos } from './entrenamientos';
 import { textos as equipos } from './equipos';
 import { textos as estadisticas } from './estadisticas';
 import { textos as invitaciones } from './invitaciones';
@@ -37,5 +38,6 @@ export const textos = {
   partidos,
   resumen,
   estadisticas,
+  entrenamientos,
   router,
 };

@@ -67,6 +67,21 @@ export const COMANDOS: readonly DefinicionComando[] = [
   },
   { nombre: 'stats', descripcion: '📊 Estadísticas de un jugador', rolMinimo: 'viewer' },
   { nombre: 'tabla', descripcion: '📋 Resumen del equipo en la temporada', rolMinimo: 'viewer' },
+  {
+    nombre: 'nuevoentrenamiento',
+    descripcion: '🏃 Crear un entrenamiento (o hacerlo recurrente)',
+    rolMinimo: 'editor',
+  },
+  {
+    nombre: 'asistencia',
+    descripcion: '✅ Tomar asistencia del entrenamiento',
+    rolMinimo: 'editor',
+  },
+  {
+    nombre: 'asistencias',
+    descripcion: '📋 Ver la asistencia a entrenamientos',
+    rolMinimo: 'viewer',
+  },
   { nombre: 'cancelar', descripcion: '🚫 Salir de lo que estés haciendo', rolMinimo: 'cualquiera' },
 ];
 

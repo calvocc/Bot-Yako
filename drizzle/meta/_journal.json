@@ -134,6 +134,13 @@
       "when": 1789165010877,
       "tag": "0018_eventos_avanzados_reglas",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789237926582,
+      "tag": "0019_good_marrow",
+      "breakpoints": true
     }
   ]
 }
