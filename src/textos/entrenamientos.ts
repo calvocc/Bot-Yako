@@ -34,14 +34,15 @@ export const textos = {
       ].join('\n'),
 
     /**
-     * La fecha ancla no cayó en ninguno de los días marcados (ej. eligieron
-     * "hoy" pero solo entrenan martes y jueves): la regla queda creada igual,
-     * y la primera sesión se materializa sola el primer día que corresponda.
+     * Hoy no cae en ninguno de los días marcados (ej. hoy es viernes y
+     * eligieron Martes/Jueves): la regla queda creada igual, y la primera
+     * sesión se materializa sola cuando llegue ese día -- se lo decimos
+     * explícito para que no vuelva a intentar /asistencia antes de tiempo.
      */
-    creadaSinPrimeraSesion: (equipoNombre: string, diasTexto: string) =>
+    creadaSinPrimeraSesion: (equipoNombre: string, diasTexto: string, proximaFecha: string) =>
       [
         `Entrenamiento recurrente creado ✅ ${equipoNombre} — ${diasTexto}`,
-        'La primera sesión se crea sola cuando llegue uno de esos días; ese día usa /asistencia.',
+        `Todavía no hay sesión de hoy. La próxima se crea sola ${describirFecha(proximaFecha)}; ese día ya podés usar /asistencia.`,
       ].join('\n'),
   },
 
@@ -49,6 +50,13 @@ export const textos = {
     preguntaEquipo: '¿De qué equipo tomas asistencia?',
     sinPendientes: () =>
       'No hay ningún entrenamiento sin asistencia. Crea uno con /nuevoentrenamiento.',
+    /**
+     * A diferencia de `sinPendientes`, acá ya existe una recurrencia activa
+     * -- decirle que cree una con `/nuevoentrenamiento` sería mal consejo
+     * (duplicaría la regla en vez de arreglar algo).
+     */
+    sinPendientesConRecurrencia: (proximaFecha: string) =>
+      `Todavía no hay ninguna sesión de hoy para tomar asistencia. Ya tenés una recurrencia activa -- la próxima se crea sola ${describirFecha(proximaFecha)}; ese día ya podés usar /asistencia. No hace falta crear otra con /nuevoentrenamiento.`,
     preguntaCual: () => '¿De cuál entrenamiento tomas asistencia?',
     tocaUno: () => 'Toca uno de los entrenamientos:',
 

@@ -121,12 +121,12 @@ describe('Asistencia a entrenamientos, conversación completa (e2e)', () => {
       const { equipo, decir, tocar } = await escenario('Puntual');
 
       await decir('/nuevoentrenamiento');
-      expect(adaptador.ultimoTexto).toContain('¿Qué día es el entrenamiento?');
-
-      await tocar(adaptador.ultimosBotones[0].id); // Hoy
       expect(adaptador.ultimoTexto).toContain('¿Se repite todas las semanas?');
 
       await tocar('rec:no');
+      expect(adaptador.ultimoTexto).toContain('¿Qué día es el entrenamiento?');
+
+      await tocar(adaptador.ultimosBotones[0].id); // Hoy
       expect(adaptador.ultimoTexto).toContain('Entrenamiento creado ✅ Sub-11');
 
       const pendientes = await entrenamientos.pendientesDeAsistencia(equipo.id);
@@ -134,13 +134,12 @@ describe('Asistencia a entrenamientos, conversación completa (e2e)', () => {
       expect(pendientes[0]).toMatchObject({ equipoId: equipo.id, fecha: hoyLocal() });
     });
 
-    it('crea una regla recurrente y materializa de una la sesión de hoy', async () => {
+    it('crea una regla recurrente y materializa de una la sesión de hoy, sin preguntar fecha', async () => {
       const { equipo, decir, tocar } = await escenario('Recurrente');
       const hoyDia = new Date(`${hoyLocal()}T00:00:00Z`).getUTCDay();
       const otroDia = (hoyDia + 1) % 7;
 
       await decir('/nuevoentrenamiento');
-      await tocar(adaptador.ultimosBotones[0].id); // Hoy
       await tocar('rec:si');
       expect(adaptador.ultimoTexto).toContain('¿Qué días entrenan?');
 
@@ -156,6 +155,21 @@ describe('Asistencia a entrenamientos, conversación completa (e2e)', () => {
       const pendientes = await entrenamientos.pendientesDeAsistencia(equipo.id);
       expect(pendientes).toHaveLength(1);
       expect(pendientes[0].fecha).toBe(hoyLocal());
+    });
+
+    it('regla recurrente cuyos días NO incluyen hoy: no materializa nada, y lo dice sin sugerir /asistencia todavía', async () => {
+      const { decir, tocar } = await escenario('Recurrente sin hoy');
+      const hoyDia = new Date(`${hoyLocal()}T00:00:00Z`).getUTCDay();
+      const otroDia = (hoyDia + 1) % 7; // nunca coincide con hoy
+
+      await decir('/nuevoentrenamiento');
+      await tocar('rec:si');
+      await tocar(`dia:${otroDia}`);
+      await tocar('sm:listo');
+
+      expect(adaptador.ultimoTexto).toContain('Entrenamiento recurrente creado ✅ Sub-11');
+      expect(adaptador.ultimoTexto).toContain('Todavía no hay sesión de hoy');
+      expect(adaptador.ultimoTexto).toContain('La próxima se crea sola');
     });
 
     it('un Viewer no puede crear entrenamientos', async () => {
@@ -196,6 +210,24 @@ describe('Asistencia a entrenamientos, conversación completa (e2e)', () => {
       await decir('/asistencia');
 
       expect(adaptador.ultimoTexto).toContain('No hay ningún entrenamiento sin asistencia');
+    });
+
+    it('con una recurrencia activa que hoy no le toca, avisa la próxima fecha en vez de sugerir crear otra (bug reportado)', async () => {
+      const { equipo, usuarioId, decir } = await escenario('Recurrencia futura');
+      const hoyDia = new Date(`${hoyLocal()}T00:00:00Z`).getUTCDay();
+      const otroDia = (hoyDia + 1) % 7; // nunca coincide con hoy
+
+      // Mismo escenario que reportó el usuario: crea la recurrencia con
+      // /nuevoentrenamiento, pero para un día que no es hoy.
+      await entrenamientos.crearRecurrente(equipo.id, [otroDia], usuarioId);
+
+      await decir('/asistencia');
+
+      expect(adaptador.ultimoTexto).toContain('Ya tenés una recurrencia activa');
+      expect(adaptador.ultimoTexto).toContain('la próxima se crea sola');
+      // El bug era justamente que decía esto -- correr /nuevoentrenamiento
+      // de nuevo solo duplicaría la regla, no arregla nada.
+      expect(adaptador.ultimoTexto).not.toContain('Crea uno con /nuevoentrenamiento');
     });
 
     it('con más de un entrenamiento pendiente, pregunta cuál', async () => {

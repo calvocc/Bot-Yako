@@ -9,7 +9,7 @@ import {
   jugadores,
 } from '../db/schema';
 import { JugadoresService } from '../jugadores/jugadores.service';
-import { hoyLocal } from '../partidos/fechas';
+import { hoyLocal, sumarDias } from '../partidos/fechas';
 
 export interface Entrenamiento {
   id: string;
@@ -152,6 +152,43 @@ export class EntrenamientosService {
     if (!regla) return null;
 
     return this.materializar(equipoId, hoy, usuarioId, regla.id);
+  }
+
+  /**
+   * La fecha en que alguna regla recurrente activa de este equipo va a
+   * materializar sola su próxima sesión (hoy inclusive), o `null` si no hay
+   * ninguna regla activa. Es lo que le permite a `/asistencia` decir "ya
+   * tenés una recurrencia, la próxima es tal día" en vez del genérico "no
+   * hay nada, creá uno nuevo" -- que sería mal consejo si la regla ya existe.
+   */
+  async proximaFechaRecurrente(equipoId: string, hoy: string = hoyLocal()): Promise<string | null> {
+    const reglas = await this.db.db
+      .select({ diaSemana: entrenamientoRecurrenteDias.diaSemana })
+      .from(entrenamientosRecurrentes)
+      .innerJoin(
+        entrenamientoRecurrenteDias,
+        eq(entrenamientoRecurrenteDias.recurrenteId, entrenamientosRecurrentes.id),
+      )
+      .where(
+        and(
+          eq(entrenamientosRecurrentes.equipoId, equipoId),
+          eq(entrenamientosRecurrentes.activo, true),
+        ),
+      );
+
+    if (reglas.length === 0) return null;
+
+    const dias = new Set(reglas.map((r) => r.diaSemana));
+
+    // Como máximo una vuelta a la semana: si `dias` no está vacío, alguna de
+    // las próximas 7 fechas (hoy incluido) cae en uno de esos días.
+    for (let i = 0; i < 7; i++) {
+      const candidata = sumarDias(hoy, i);
+
+      if (dias.has(diaSemanaDe(candidata))) return candidata;
+    }
+
+    return null; // Defensivo: no debería alcanzarse con `dias` no vacío.
   }
 
   /** Sesiones de un equipo sin asistencia tomada todavía, más recientes primero. */

@@ -17,12 +17,11 @@ export const FLUJO_NUEVO_ENTRENAMIENTO = 'nuevo-entrenamiento';
 
 const PASOS = {
   equipo: 'equipo',
-  fecha: 'fecha',
   recurrente: 'recurrente',
+  fecha: 'fecha',
   dias: 'dias',
 } as const;
 
-const CLAVE_FECHA = 'fecha';
 const PREFIJO_FECHA = 'fe:';
 const ID_SOLO_ESTA_VEZ = 'rec:no';
 const ID_SE_REPITE = 'rec:si';
@@ -33,8 +32,13 @@ const NOMBRES_DIA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Vier
 
 /**
  * `/nuevoentrenamiento`: crea una sesión puntual o una regla recurrente
- * (equipo + días de la semana). Mismo esqueleto que `NuevoPartidoFlujo`:
- * selector de equipo reusado, fecha con los mismos botones Hoy/Ayer/Mañana.
+ * (equipo + días de la semana).
+ *
+ * Se pregunta primero si se repite y recién después la fecha -- y solo en el
+ * camino puntual: una recurrencia se define por sus días de la semana, no
+ * por una fecha puntual, así que pedirla ahí no aporta nada y confundía
+ * ("elegí Hoy" antes de elegir Martes/Jueves hacía pensar que hoy quedaba
+ * una sesión armada, aunque hoy no fuera ninguno de esos días).
  */
 @Injectable()
 export class NuevoEntrenamientoFlujo {
@@ -49,17 +53,43 @@ export class NuevoEntrenamientoFlujo {
       pasoInicial: PASOS.equipo,
       pasos: [
         pasoSelectorEquipo(PASOS.equipo, this.membresias, {
-          siguiente: PASOS.fecha,
+          siguiente: PASOS.recurrente,
           rolMinimo: 'editor',
           pregunta: textos.nuevoEntrenamiento.preguntaEquipo,
         }),
-        this.pasoFecha(),
         this.pasoRecurrente(),
+        this.pasoFecha(),
         this.pasoDias(),
       ],
     };
   }
 
+  private pasoRecurrente(): Paso {
+    return {
+      id: PASOS.recurrente,
+
+      entrar: (): Promise<Entrada> =>
+        Promise.resolve({
+          respuesta: {
+            texto: textos.nuevoEntrenamiento.preguntaRecurrente(),
+            botones: [
+              { id: ID_SOLO_ESTA_VEZ, texto: textos.nuevoEntrenamiento.botonSoloEstaVez },
+              { id: ID_SE_REPITE, texto: textos.nuevoEntrenamiento.botonSeRepite },
+            ],
+          },
+        }),
+
+      recibir: (ctx: ContextoFlujo): Promise<Transicion> => {
+        if (ctx.mensaje.seleccionId === ID_SE_REPITE) {
+          return Promise.resolve({ tipo: 'ir', pasoId: PASOS.dias });
+        }
+
+        return Promise.resolve({ tipo: 'ir', pasoId: PASOS.fecha });
+      },
+    };
+  }
+
+  /** Solo en el camino puntual ("solo esta vez"). */
   private pasoFecha(): Paso {
     return {
       id: PASOS.fecha,
@@ -98,36 +128,7 @@ export class NuevoEntrenamientoFlujo {
           });
         }
 
-        return Promise.resolve({
-          tipo: 'ir',
-          pasoId: PASOS.recurrente,
-          datos: { [CLAVE_FECHA]: fecha },
-        });
-      },
-    };
-  }
-
-  private pasoRecurrente(): Paso {
-    return {
-      id: PASOS.recurrente,
-
-      entrar: (): Promise<Entrada> =>
-        Promise.resolve({
-          respuesta: {
-            texto: textos.nuevoEntrenamiento.preguntaRecurrente(),
-            botones: [
-              { id: ID_SOLO_ESTA_VEZ, texto: textos.nuevoEntrenamiento.botonSoloEstaVez },
-              { id: ID_SE_REPITE, texto: textos.nuevoEntrenamiento.botonSeRepite },
-            ],
-          },
-        }),
-
-      recibir: (ctx: ContextoFlujo): Promise<Transicion> => {
-        if (ctx.mensaje.seleccionId === ID_SE_REPITE) {
-          return Promise.resolve({ tipo: 'ir', pasoId: PASOS.dias });
-        }
-
-        return this.crearPuntual(ctx);
+        return this.crearPuntual(ctx, fecha);
       },
     };
   }
@@ -144,7 +145,7 @@ export class NuevoEntrenamientoFlujo {
     });
   }
 
-  private async crearPuntual(ctx: ContextoFlujo): Promise<Transicion> {
+  private async crearPuntual(ctx: ContextoFlujo, fecha: string): Promise<Transicion> {
     const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
     const puede = ctx.usuarioId
       ? await this.membresias.puede(ctx.usuarioId, equipoId, 'editor')
@@ -152,7 +153,6 @@ export class NuevoEntrenamientoFlujo {
 
     if (!puede) return this.sinPermiso();
 
-    const fecha = leerTexto(ctx.datos, CLAVE_FECHA, hoyLocal());
     const equipoNombre = leerTexto(ctx.datos, CLAVE_EQUIPO_NOMBRE, 'Tu equipo');
 
     await this.entrenamientos.crearPuntual(equipoId, fecha, ctx.usuarioId ?? '');
@@ -171,25 +171,46 @@ export class NuevoEntrenamientoFlujo {
 
     if (!puede) return this.sinPermiso();
 
-    const fecha = leerTexto(ctx.datos, CLAVE_FECHA, hoyLocal());
     const equipoNombre = leerTexto(ctx.datos, CLAVE_EQUIPO_NOMBRE, 'Tu equipo');
     const diasSemana = elegidos
       .map((id) => Number(id.slice(PREFIJO_DIA.length)))
       .sort((a, b) => a - b);
     const diasTexto = diasSemana.map((dia) => NOMBRES_DIA[dia]).join(', ');
 
+    // El ancla siempre es hoy: una recurrencia se define por sus días de la
+    // semana, no por una fecha puntual que ya no se le pide al usuario acá.
+    const hoy = hoyLocal();
     const { entrenamiento } = await this.entrenamientos.crearRecurrente(
       equipoId,
       diasSemana,
       ctx.usuarioId ?? '',
-      fecha,
+      hoy,
     );
 
-    const texto = entrenamiento
-      ? textos.nuevoEntrenamiento.creadoRecurrente(equipoNombre, diasTexto, fecha)
-      : textos.nuevoEntrenamiento.creadaSinPrimeraSesion(equipoNombre, diasTexto);
+    if (entrenamiento) {
+      return {
+        tipo: 'finalizar',
+        respuesta: {
+          texto: textos.nuevoEntrenamiento.creadoRecurrente(equipoNombre, diasTexto, hoy),
+        },
+      };
+    }
 
-    return { tipo: 'finalizar', respuesta: { texto } };
+    // Hoy no es uno de los días elegidos: la regla queda creada igual, y
+    // acá sí vale la pena decir cuándo es la próxima -- sin esto, alguien
+    // que corre /asistencia el mismo día ve "no hay nada" sin saber por qué.
+    const proxima = await this.entrenamientos.proximaFechaRecurrente(equipoId, hoy);
+
+    return {
+      tipo: 'finalizar',
+      respuesta: {
+        texto: textos.nuevoEntrenamiento.creadaSinPrimeraSesion(
+          equipoNombre,
+          diasTexto,
+          proxima ?? hoy,
+        ),
+      },
+    };
   }
 
   private sinPermiso(): Transicion {

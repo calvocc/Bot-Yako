@@ -83,12 +83,15 @@ export class AsistenciaFlujo {
         const pendientes = await this.entrenamientos.pendientesDeAsistencia(equipoId);
 
         if (pendientes.length === 0) {
-          return {
-            transicion: {
-              tipo: 'finalizar',
-              respuesta: { texto: textos.asistencia.sinPendientes() },
-            },
-          };
+          // Si ya hay una recurrencia activa que todavía no le tocaba a hoy,
+          // decir "crea uno con /nuevoentrenamiento" sería mal consejo -- ya
+          // existe, correr ese comando de nuevo solo duplicaría la regla.
+          const proxima = await this.entrenamientos.proximaFechaRecurrente(equipoId);
+          const texto = proxima
+            ? textos.asistencia.sinPendientesConRecurrencia(proxima)
+            : textos.asistencia.sinPendientes();
+
+          return { transicion: { tipo: 'finalizar', respuesta: { texto } } };
         }
 
         if (pendientes.length === 1) {
