@@ -22,22 +22,6 @@ export interface DefinicionEvento {
  */
 export const EVENTOS: readonly DefinicionEvento[] = [
   { tipo: 'gol', emoji: '⚽', boton: '⚽ Gol', sustantivo: 'Gol', admiteRival: true },
-  // Variantes de gol con puntaje propio (ver PUNTOS_EVENTO en puntaje.ts):
-  // admiten rival igual que "Gol", porque sin ellos el marcador no cuadra.
-  {
-    tipo: 'gol_penal',
-    emoji: '⚽',
-    boton: '⚽ Gol de penal',
-    sustantivo: 'Gol de penal',
-    admiteRival: true,
-  },
-  {
-    tipo: 'gol_tiro_libre',
-    emoji: '⚽',
-    boton: '⚽ Gol de tiro libre',
-    sustantivo: 'Gol de tiro libre',
-    admiteRival: true,
-  },
   {
     tipo: 'asistencia',
     emoji: '🅰️',
@@ -115,6 +99,25 @@ export const EVENTOS: readonly DefinicionEvento[] = [
     boton: '🥅 Penal atajado',
     sustantivo: 'Penal atajado',
     admiteRival: false,
+  },
+  // Variantes de gol con puntaje propio (ver PUNTOS_EVENTO en puntaje.ts):
+  // admiten rival igual que "Gol", porque sin ellos el marcador no cuadra.
+  // Van al final a propósito, no junto a "Gol": son mucho menos frecuentes
+  // que un gol de juego, así que no se ganan el lugar preferencial del
+  // principio -- y quedan justo entre las últimas opciones de la página 2.
+  {
+    tipo: 'gol_penal',
+    emoji: '⚽',
+    boton: '⚽ Gol de penal',
+    sustantivo: 'Gol de penal',
+    admiteRival: true,
+  },
+  {
+    tipo: 'gol_tiro_libre',
+    emoji: '⚽',
+    boton: '⚽ Gol de tiro libre',
+    sustantivo: 'Gol de tiro libre',
+    admiteRival: true,
   },
 ];
 

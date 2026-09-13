@@ -92,11 +92,13 @@ function descripcionSinReloj(partido: Partido): string {
  *
  * A diferencia de `botonesPaginados` (que reserva lo mismo en TODAS las
  * páginas, así que su `pagina * porPagina` siempre da el mismo tamaño), acá
- * el tamaño de la última puede ser menor: si el total cayera justo en un
- * múltiplo de `OPCIONES_POR_PAGINA`, la última página "normal" tendría
- * `OPCIONES_POR_PAGINA` eventos y no dejaría lugar para los controles -- por
- * eso se le recorta lo que haga falta y el sobrante pasa a una página
- * extra, siempre dentro del cupo de 10 botones de WhatsApp.
+ * el tamaño de la última puede ser menor -- o incluso cero: si el total cae
+ * justo en un múltiplo de `OPCIONES_POR_PAGINA`, llenar esa página del todo
+ * no dejaría lugar para los controles en ninguna página siguiente, así que
+ * se corta ahí y los controles se van a una página aparte, sin eventos
+ * (`botonesDeEvento`/`panelEnVivo` ya arman bien una página así). El resto
+ * de los casos reparten el sobrante en una página extra, siempre dentro del
+ * cupo de 10 botones de WhatsApp.
  */
 function tamanosDePaginaEventos(total: number, reservarUltima: number): number[] {
   const normal = OPCIONES_POR_PAGINA;
@@ -108,6 +110,14 @@ function tamanosDePaginaEventos(total: number, reservarUltima: number): number[]
   let restante = total;
 
   while (restante > ultima) {
+    if (restante === normal) {
+      // Justo un múltiplo de `normal`: se toma la página completa y se
+      // corta acá -- ver el comentario de la función.
+      tamanos.push(normal);
+      restante = 0;
+      break;
+    }
+
     if (restante - normal > 0) {
       tamanos.push(normal);
       restante -= normal;
