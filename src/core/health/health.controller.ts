@@ -19,7 +19,7 @@ type EstadoSalud = {
 };
 
 /**
- * Healthcheck para Railway/Render.
+ * Healthcheck para el orquestador (Dokploy/Docker).
  *
  * Postgres caido es fatal; Redis caido solo degrada, asi que el endpoint sigue
  * respondiendo 200 y el balanceador no saca el servicio de rotacion por una

@@ -1,43 +1,61 @@
 # Despliegue
 
-Yako corre como un servicio Node en **Railway**, con Postgres en **Supabase** y Redis en **Upstash**.
+Yako corre como un contenedor Docker en un **VPS propio administrado con Dokploy**, con Postgres
+en **Supabase** y Redis en **Upstash**.
 
 | Recurso | Dónde |
 |---|---|
-| Servicio | Railway · proyecto `3r-connect-crm-api` · servicio `yako-bot` |
-| URL pública | `https://yako-bot-production.up.railway.app` |
+| Servicio | Dokploy · aplicación `yako-bot` (comparte VPS con otros proyectos) |
+| URL pública | El dominio que se asigne en Dokploy (ver más abajo) |
 | Base de datos | Supabase · proyecto `yako` (`hooyfaxknoetfmweazmy`, región `us-east-1`) |
 | Redis | Upstash (pendiente de crear — el bot funciona sin él) |
 
-> El servicio quedó dentro de un proyecto llamado `3r-connect-crm-api` porque el plan gratuito de
-> Railway no permitía crear uno nuevo, y ese proyecto estaba vacío. Conviene renombrarlo a `yako-bot`
-> desde el panel.
-
 ```
-Telegram ──webhook──▶ Railway (servicio yako-bot) ──▶ Supabase (Postgres)
-                                                  └──▶ Upstash (Redis, opcional)
+Telegram ──webhook──▶ Dokploy/VPS (contenedor yako-bot) ──▶ Supabase (Postgres)
+                                                        └──▶ Upstash (Redis, opcional)
 ```
 
-Railway sigue la rama `main`: cada merge dispara un despliegue.
+Dokploy sigue la rama `main`: cada push a esa rama dispara un rebuild y redeploy del contenedor.
+
+> Migrado desde Railway (plan gratuito agotado). Supabase y Upstash no cambian: solo cambia dónde
+> corre el proceso Node.
+
+---
+
+## Cómo se construye la imagen
+
+El repo trae un `Dockerfile` multi-stage (build con `pnpm build`, runtime solo con dependencias de
+producción) y `docker/entrypoint.sh`, que:
+
+1. Corre las migraciones (`tsx src/db/migrate.ts`) contra `DATABASE_MIGRATION_URL`.
+2. Si fallan, el contenedor termina con código distinto de cero y Dokploy no promueve el
+   despliegue — la versión anterior sigue sirviendo. Es el mismo comportamiento que el
+   pre-deploy command de Railway, pero implementado dentro del contenedor porque Dokploy no tiene
+   un paso equivalente separado del arranque.
+3. Si migran bien, arranca `node dist/main`.
+
+`docker-compose.yml` en la raíz **no** se usa para producción: es solo Postgres y Redis para
+desarrollo local (`docker compose up -d` + `pnpm start:dev` fuera de Docker).
 
 ---
 
 ## Variables de entorno
 
+Las mismas que antes; nada cambió a nivel de aplicación.
+
 | Variable | Obligatoria | De dónde sale |
 |---|:---:|---|
 | `NODE_ENV` | — | `production` |
-| `PORT` | — | La inyecta Railway |
+| `PORT` | — | `3000` (el que expone el `Dockerfile`; coincidir con el puerto configurado en Dokploy) |
 | `DATABASE_URL` | ✅ | Supabase → Settings → Database → Connection string → **Transaction pooler** (puerto 6543) |
 | `DATABASE_MIGRATION_URL` | ✅ | La misma pantalla → **Direct connection** (puerto 5432) |
 | `TELEGRAM_BOT_TOKEN` | ✅ | BotFather |
 | `TELEGRAM_WEBHOOK_SECRET` | ✅ | Cadena aleatoria: `openssl rand -hex 32` |
-| `TELEGRAM_WEBHOOK_URL` | — | El dominio público de Railway |
+| `TELEGRAM_WEBHOOK_URL` | — | El dominio público que se configure en Dokploy |
 | `REDIS_URL` | — | Upstash → la URL `rediss://…` |
 
 Las cuatro obligatorias se validan al arrancar: si falta alguna, el proceso no levanta y el log dice
-cuál. Es deliberado — es preferible un despliegue que falla claro a un bot a medio configurar
-respondiéndole mal a la gente en mitad de un partido.
+cuál.
 
 ### Por qué dos URLs, y por qué las dos van por el pooler
 
@@ -47,8 +65,8 @@ cortas pero no soporta prepared statements — por eso el cliente va con `prepar
 para ejecutar DDL.
 
 > **No uses la conexión directa (`db.<ref>.supabase.co`).** En el plan gratuito de Supabase ese host
-> resuelve **solo a IPv6**, y desde Railway no es alcanzable: el despliegue se queda ~40 segundos
-> intentando conectar y falla por timeout. El pooler sí tiene IPv4.
+> resuelve **solo a IPv6**. Si el VPS de Dokploy no tiene salida IPv6, el despliegue se cuelga
+> intentando conectar y falla por timeout — usa siempre el pooler, que tiene IPv4.
 >
 > Ambas URLs usan el host `aws-0-us-east-1.pooler.supabase.com` y el usuario
 > `postgres.<ref-del-proyecto>`. Si el host no es el correcto, el error es explícito:
@@ -64,64 +82,69 @@ fuente de verdad: la detección de goles duplicados vive en Postgres desde la Fa
 Postgres. Exigirlo solo lograría que una caída de la caché tumbara el bot.
 
 `degradado` está reservado para cuando algo que **esperábamos** que funcione no funciona: un Redis
-configurado que deja de responder. No haberlo configurado es una decisión, no una avería — y marcarla
-como tal convertía el estado normal del servicio en una alarma permanente.
+configurado que deja de responder. No haberlo configurado es una decisión, no una avería.
 
 ---
 
-## Estado
+## Puesta en marcha en Dokploy
 
-El servicio está **desplegado y funcionando**. El arranque deja esta traza:
+Asumiendo que Dokploy ya está corriendo en el VPS (como con los otros proyectos):
+
+### 1. Crear la aplicación
+
+1. En el panel de Dokploy, **Create Application** (puede ir en un proyecto propio o en uno que
+   agrupe varios bots, como se prefiera organizar).
+2. **Source**: conectar el repositorio `calvocc/bot-yako`, rama `main`.
+3. **Build type**: `Dockerfile` (usa el `Dockerfile` de la raíz del repo, no hace falta configurar
+   nada más — no usa Nixpacks ni buildpacks).
+4. **Puerto del contenedor**: `3000` (el que expone el `Dockerfile`).
+
+### 2. Variables de entorno
+
+Cargar en la sección **Environment** las mismas variables de la tabla de arriba, con los valores de
+Supabase y BotFather. `TELEGRAM_WEBHOOK_URL` se completa después de asignar el dominio (paso
+siguiente).
+
+### 3. Dominio
+
+En **Domains**, agregar el dominio o subdominio para este bot (ej. `yako-bot.tudominio.com`) y
+dejar que Dokploy emita el certificado TLS (Let's Encrypt vía Traefik, automático). Apuntar el
+DNS del subdominio al VPS si todavía no lo está.
+
+Con el dominio ya activo, volver a **Environment** y setear `TELEGRAM_WEBHOOK_URL` con esa URL
+completa (`https://yako-bot.tudominio.com`), y redeploy.
+
+### 4. Health check
+
+Configurar el health check de Dokploy contra `GET /health` (el `Dockerfile` ya trae un
+`HEALTHCHECK` de Docker equivalente, pero Dokploy puede usar el suyo propio para las alertas del
+panel).
+
+### 5. Deploy
+
+Disparar el primer deploy manual desde el panel. El log del contenedor debe mostrar:
 
 ```
 Aplicando migraciones... → Migraciones aplicadas.
 Mapped {/health, GET} · Mapped {/webhook/telegram, POST}
-Webhook registrado en https://yako-bot-production.up.railway.app
-Yako escuchando en el puerto 8080
+Webhook registrado en https://<tu-dominio>
+Yako escuchando en el puerto 3000
 ```
 
-### Pendientes
+A partir de ahí, cada push a `main` dispara un rebuild automático (configurable en **Deployments →
+Auto Deploy** dentro de Dokploy).
 
-1. **Rotar las credenciales.** El token del bot y la contraseña de la base se compartieron por chat
-   durante la puesta en marcha, así que hay que darlos por comprometidos: `/revoke` en BotFather y
-   *Reset database password* en Supabase. Después se actualizan en Railway → Variables.
-2. **Redis en Upstash** (opcional, y hoy no aporta gran cosa). Ahorra una consulta a Postgres por
-   toque de botón, de las ~25-30 que hace cargar un gol; el peso real está en la latencia de región,
-   no en la caché. Revisarlo si algún día hace falta pub/sub para sincronizar paneles, rate limiting,
-   o si crece la carga.
-3. **Rama por defecto en GitHub.** Settings → General → Default branch: cambiar a `main`. Después se
-   puede borrar `claude/football-stats-bot-i95v3b`, cuyos commits ya viven en las ramas de fase.
-4. **Apuntar Railway a `main`.** El servicio sigue `fase-1-canal-y-motor` para haber podido validar
-   el pipeline antes del merge. Una vez mergeados los PR, se cambia en Settings → Source.
+### 6. Supabase y Upstash
 
----
+No cambian. Si es la primera vez que se configuran, ver las notas originales:
 
-## Puesta en marcha
+- **Supabase**: proyecto y migraciones ya existen. Las cadenas de conexión están en
+  Settings → Database → Connection string (reemplazar `[YOUR-PASSWORD]` por la contraseña real).
+- **Upstash**: crear cuenta en [upstash.com](https://upstash.com), base Redis nueva, región
+  `us-east-1`, copiar la URL `rediss://…`. El plan gratuito (256 MB, 500.000 comandos/mes) sobra
+  para este bot.
 
-### 1. Supabase
-
-Proyecto creado y migraciones aplicadas. Para obtener las cadenas de conexión:
-**Settings → Database → Connection string**, y copiar las dos variantes de la tabla de arriba.
-
-Al copiarlas hay que reemplazar `[YOUR-PASSWORD]` por la contraseña de la base de datos.
-
-### 2. Upstash (Redis)
-
-1. Crear cuenta en [upstash.com](https://upstash.com) y una base **Redis** nueva.
-2. Región `us-east-1`, para que quede cerca de Railway y Supabase.
-3. Copiar la URL que empieza con `rediss://` (con doble `s`: es la que usa TLS).
-
-El plan gratuito da 256 MB y 500.000 comandos al mes. Yako consume muy poco: solo trabaja durante los
-partidos, y son unos pocos comandos por evento.
-
-### 3. Railway
-
-El proyecto y el servicio ya están creados y conectados al repositorio. Falta cargar los secretos:
-**Variables** en el servicio, y pegar los valores de la tabla.
-
-El servicio redespliega solo al guardar las variables.
-
-### 4. Webhook de Telegram
+### 7. Webhook de Telegram
 
 No hay que hacer nada a mano: al arrancar, el bot registra el webhook contra
 `TELEGRAM_WEBHOOK_URL` pasando el `TELEGRAM_WEBHOOK_SECRET`. En el log aparece
@@ -133,14 +156,19 @@ Para comprobarlo desde fuera:
 curl "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"
 ```
 
-Debe mostrar la URL de Railway y `pending_update_count` en 0, sin `last_error_message`.
+Debe mostrar el dominio de Dokploy y `pending_update_count` en 0, sin `last_error_message`.
+
+### 8. Dar de baja Railway
+
+Una vez confirmado que el bot responde bien desde Dokploy (`/health` y `/ayuda` en Telegram),
+eliminar el servicio viejo en Railway para no dejarlo huérfano con secretos vivos.
 
 ---
 
 ## Comprobar que quedó bien
 
 ```bash
-curl https://<dominio-railway>/health
+curl https://<tu-dominio>/health
 ```
 
 - `{"estado":"ok", "redis":"no_configurado"}` — lo normal hoy: no hay Redis y no hace falta.
@@ -155,13 +183,14 @@ Y la prueba de verdad: escribirle `/ayuda` al bot en Telegram.
 
 ## Migraciones
 
-Corren **antes** de cada despliegue, con el comando pre-deploy `pnpm db:migrate`. Si una migración
-falla, Railway no promueve la versión nueva y la anterior sigue sirviendo.
+Corren **dentro del contenedor, antes de arrancar el servidor** (`docker/entrypoint.sh`). Si una
+migración falla, el contenedor no llega a levantar `node dist/main` y Dokploy no promueve el
+despliegue — la versión anterior sigue corriendo.
 
-> El esquema inicial se aplicó directamente sobre Supabase, así que las cuatro migraciones quedaron
-> registradas a mano en `drizzle.__drizzle_migrations`. Sin ese registro, el primer `db:migrate`
-> intentaría crear todo de nuevo y fallaría. De aquí en adelante el flujo es el normal: Drizzle
-> aplica solo lo pendiente.
+> El esquema inicial se aplicó directamente sobre Supabase, así que las cuatro primeras migraciones
+> quedaron registradas a mano en `drizzle.__drizzle_migrations`. De ahí en adelante el flujo es el
+> normal: el runner aplica solo lo pendiente (ver el comentario en `src/db/migrate.ts` sobre por qué
+> no se usa el migrador estándar de drizzle-orm).
 
 Al cambiar el esquema en `src/db/schema/`:
 
@@ -182,6 +211,11 @@ Hay que revisar el SQL generado antes de commitearlo, sobre todo si toca datos e
   de tiempo constante y responde 401 si no coincide. Sin esto cualquiera podría inyectar mensajes
   falsos y cargar goles haciéndose pasar por otra persona.
 - **Si un token se expone** (por ejemplo, al pegarlo en un chat), hay que revocarlo con `/revoke` en
-  BotFather. Invalida el viejo en el acto y entrega uno nuevo, que se actualiza en Railway.
+  BotFather. Invalida el viejo en el acto y entrega uno nuevo, que se actualiza en Dokploy →
+  Environment.
 - **RLS activo en todas las tablas**, sin policies: el backend accede como dueño de las tablas, y
   cualquier otra credencial que se filtre no lee nada.
+- **Rotar las credenciales compartidas durante la puesta en marcha original** sigue pendiente: el
+  token del bot y la contraseña de la base se compartieron por chat, así que hay que darlos por
+  comprometidos (`/revoke` en BotFather, *Reset database password* en Supabase) y actualizar los
+  valores en Dokploy.

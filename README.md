@@ -16,7 +16,7 @@ reescribir la lógica de producto (ver [ADR-0002](docs/adr/0002-motor-conversaci
 | [Arquitectura](docs/yako-arquitectura.md) | Cómo se organiza el backend |
 | [Revisión de documentos](docs/revision-documentos.md) | Qué se corrigió del diseño original y por qué |
 | [ADRs](docs/adr/) | Las decisiones de fondo, razonadas |
-| [Despliegue](docs/despliegue.md) | Railway, Supabase, Upstash y variables de entorno |
+| [Despliegue](docs/despliegue.md) | Dokploy, Supabase, Upstash y variables de entorno |
 
 ## Stack
 
@@ -62,7 +62,8 @@ commitearlo.
 
 ## Estado
 
-Desplegado en `https://yako-bot-production.up.railway.app`.
+Migrando de Railway a un VPS propio con Dokploy — ver [Despliegue](docs/despliegue.md) para el
+paso a paso (`Dockerfile` + `docker/entrypoint.sh` en la raíz del repo).
 
 | Fase | Estado |
 |---|---|

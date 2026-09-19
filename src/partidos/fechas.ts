@@ -3,7 +3,7 @@
  *
  * La columna `partidos.fecha` es un `date` sin hora: representa el día en que
  * se jugó, no un instante. Y "hoy" tiene que ser hoy en Colombia, no en el
- * servidor: con Railway en UTC, un partido del domingo por la noche se
+ * servidor: con el contenedor en UTC, un partido del domingo por la noche se
  * guardaría como lunes.
  */
 
