@@ -107,9 +107,18 @@ siguiente).
 
 ### 3. Dominio
 
-En **Domains**, agregar el dominio o subdominio para este bot (ej. `yako-bot.tudominio.com`) y
-dejar que Dokploy emita el certificado TLS (Let's Encrypt vía Traefik, automático). Apuntar el
-DNS del subdominio al VPS si todavía no lo está.
+**En Cloudflare** (DNS del dominio), crear un registro `A` para el subdominio elegido (ej.
+`yako-bot`) apuntando a la IP del VPS, y ponerlo en **"DNS only"** (nube gris, no naranja) mientras
+Dokploy emite el certificado. Con el proxy de Cloudflare activado (nube naranja), el reto HTTP-01
+que usa Let's Encrypt/Traefik dentro de Dokploy no llega al VPS y la emisión del certificado falla.
+Una vez el certificado está emitido y el dominio responde en HTTPS, se puede volver a activar el
+proxy naranja si se quiere (y pasar el modo SSL/TLS de Cloudflare a **Full (strict)**, nunca
+"Flexible" — con "Flexible" Cloudflare le habla al VPS por HTTP plano y el webhook de Telegram, que
+exige HTTPS, dejaría de funcionar).
+
+**En Dokploy**, en **Domains**, agregar ese mismo dominio o subdominio para la aplicación y dejar
+que emita el certificado TLS (Let's Encrypt vía Traefik, automático) — solo funciona una vez el DNS
+ya resuelve hacia el VPS.
 
 Con el dominio ya activo, volver a **Environment** y setear `TELEGRAM_WEBHOOK_URL` con esa URL
 completa (`https://yako-bot.tudominio.com`), y redeploy.
