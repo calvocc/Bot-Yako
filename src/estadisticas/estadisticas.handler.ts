@@ -8,6 +8,9 @@ import {
   formatearListaJugadores,
   JugadoresService,
 } from '../jugadores/jugadores.service';
+import { AlineacionService } from '../partidos/alineacion.service';
+import { PartidosService } from '../partidos/partidos.service';
+import { TiemposService } from '../partidos/tiempos.service';
 import { textos as textosComunes } from '../textos/comunes';
 import { textos } from '../textos/estadisticas';
 import {
@@ -46,6 +49,9 @@ export class EstadisticasHandler {
     private readonly membresias: MembresiasService,
     private readonly jugadores: JugadoresService,
     private readonly estadisticas: EstadisticasService,
+    private readonly partidos: PartidosService,
+    private readonly tiempos: TiemposService,
+    private readonly alineacion: AlineacionService,
   ) {}
 
   async stats(argumento: string | undefined, usuarioId?: string): Promise<RespuestaBot> {
@@ -77,16 +83,24 @@ export class EstadisticasHandler {
       equipos.map(async (equipo) => ({
         equipo,
         stats: await this.estadisticas.deJugador(equipo.equipoId, nombre),
+        plantilla: await this.jugadores.listar(equipo.equipoId, true),
       })),
     );
 
     const bloques: string[] = [];
-    const encontrados: EstadisticaJugador[] = [];
+    const encontrados: { stat: EstadisticaJugador; esArquero: boolean }[] = [];
 
-    for (const { equipo, stats } of porEquipo) {
+    for (const { equipo, stats, plantilla } of porEquipo) {
       for (const stat of stats) {
-        bloques.push(this.lineaJugador(equipo.equipoNombre, stat));
-        encontrados.push(stat);
+        const esArquero = plantilla.find((j) => j.id === stat.jugadorId)?.posicion === 'arquero';
+        const minutos = await this.minutosDeTemporada(
+          equipo.equipoId,
+          stat.jugadorId,
+          stat.temporada,
+        );
+
+        bloques.push(this.lineaJugador(equipo.equipoNombre, stat, { ...minutos, esArquero }));
+        encontrados.push({ stat, esArquero });
       }
     }
 
@@ -109,35 +123,86 @@ export class EstadisticasHandler {
    * un equipo al que no tiene acceso, aunque comparta persona con uno de los
    * suyos.
    */
-  private totalesPorPersona(encontrados: EstadisticaJugador[]): string[] {
-    const porPersona = new Map<string, EstadisticaJugador[]>();
+  private totalesPorPersona(
+    encontrados: { stat: EstadisticaJugador; esArquero: boolean }[],
+  ): string[] {
+    const porPersona = new Map<string, { stat: EstadisticaJugador; esArquero: boolean }[]>();
 
-    for (const stat of encontrados) {
-      if (!stat.personaId) continue;
-      const grupo = porPersona.get(stat.personaId) ?? [];
-      grupo.push(stat);
-      porPersona.set(stat.personaId, grupo);
+    for (const encontrado of encontrados) {
+      if (!encontrado.stat.personaId) continue;
+      const grupo = porPersona.get(encontrado.stat.personaId) ?? [];
+      grupo.push(encontrado);
+      porPersona.set(encontrado.stat.personaId, grupo);
     }
 
     const bloques: string[] = [];
+    const suma = (
+      grupo: { stat: EstadisticaJugador; esArquero: boolean }[],
+      campo: (s: EstadisticaJugador) => number,
+    ): number => grupo.reduce((acc, e) => acc + campo(e.stat), 0);
 
     for (const grupo of porPersona.values()) {
       if (grupo.length < 2) continue;
 
       bloques.push(
         textos.totalPersona({
-          nombre: grupo[0].nombre,
-          temporada: grupo[0].temporada,
+          nombre: grupo[0].stat.nombre,
+          temporada: grupo[0].stat.temporada,
           equipos: grupo.length,
-          partidosJugados: grupo.reduce((acc, s) => acc + s.partidosJugados, 0),
-          goles: grupo.reduce((acc, s) => acc + s.goles, 0),
-          asistencias: grupo.reduce((acc, s) => acc + s.asistencias, 0),
-          amarillas: grupo.reduce((acc, s) => acc + s.amarillas, 0),
+          partidosJugados: suma(grupo, (s) => s.partidosJugados),
+          goles: suma(grupo, (s) => s.goles),
+          asistencias: suma(grupo, (s) => s.asistencias),
+          tirosAlArco: suma(grupo, (s) => s.tirosAlArco),
+          regates: suma(grupo, (s) => s.regates),
+          faltasRecibidas: suma(grupo, (s) => s.faltasRecibidas),
+          recuperaciones: suma(grupo, (s) => s.recuperaciones),
+          rechazos: suma(grupo, (s) => s.rechazos),
+          atajadas: suma(grupo, (s) => s.atajadas),
+          penalesAtajados: suma(grupo, (s) => s.penalesAtajados),
+          amarillas: suma(grupo, (s) => s.amarillas),
+          rojas: suma(grupo, (s) => s.rojas),
+          autogoles: suma(grupo, (s) => s.autogoles),
+          esArquero: grupo.some((e) => e.esArquero),
         }),
       );
     }
 
     return bloques;
+  }
+
+  /**
+   * Minutos del jugador en la temporada, sumando partido por partido solo
+   * donde corrió un reloj (`datosDeParticipacion` devuelve vacío sin
+   * `minutoFinal` o sin titulares, como un post partido). Se acota a los
+   * últimos 60 cerrados: una temporada real no los supera y cada partido
+   * cuesta dos consultas chicas.
+   */
+  private async minutosDeTemporada(
+    equipoId: string,
+    jugadorId: string,
+    temporada: number,
+  ): Promise<{ minutos: number; partidosConReloj: number }> {
+    const cerrados = await this.partidos.cerradosDe(equipoId, 60);
+    const deLaTemporada = cerrados.filter((p) => p.fecha.startsWith(String(temporada)));
+
+    const porPartido = await Promise.all(
+      deLaTemporada.map(async (partido) => {
+        const contexto = await this.tiempos.contextoDeCarga(partido);
+        const { minutos } = await this.alineacion.datosDeParticipacion(
+          partido.id,
+          contexto.minuto.minuto,
+        );
+
+        return minutos.size > 0 ? (minutos.get(jugadorId) ?? 0) : null;
+      }),
+    );
+
+    const conocidos = porPartido.filter((m): m is number => m !== null);
+
+    return {
+      minutos: conocidos.reduce((acc, m) => acc + m, 0),
+      partidosConReloj: conocidos.length,
+    };
   }
 
   /**
@@ -221,7 +286,14 @@ export class EstadisticasHandler {
         return { texto: textos.sinEstadisticas(jugador.nombre, temporadaActual()) };
       }
 
-      return { texto: this.lineaJugador(equipo.equipoNombre, fila) };
+      const minutos = await this.minutosDeTemporada(equipo.equipoId, jugador.id, fila.temporada);
+
+      return {
+        texto: this.lineaJugador(equipo.equipoNombre, fila, {
+          ...minutos,
+          esArquero: jugador.posicion === 'arquero',
+        }),
+      };
     }
 
     return { texto: textosComunes.noEncontre('a ese jugador entre tus equipos') };
@@ -253,16 +325,32 @@ export class EstadisticasHandler {
     return { texto: bloques.join('\n\n') };
   }
 
-  private lineaJugador(equipoNombre: string, stat: EstadisticaJugador): string {
+  private lineaJugador(
+    equipoNombre: string,
+    stat: EstadisticaJugador,
+    extras: { minutos: number; partidosConReloj: number; esArquero: boolean },
+  ): string {
     return textos.lineaJugador({
       nombre: stat.nombre,
       dorsal: stat.dorsal,
       equipoNombre,
       temporada: stat.temporada,
       partidosJugados: stat.partidosJugados,
+      minutos: extras.minutos,
+      partidosConReloj: extras.partidosConReloj,
       goles: stat.goles,
       asistencias: stat.asistencias,
+      tirosAlArco: stat.tirosAlArco,
+      regates: stat.regates,
+      faltasRecibidas: stat.faltasRecibidas,
+      recuperaciones: stat.recuperaciones,
+      rechazos: stat.rechazos,
+      atajadas: stat.atajadas,
+      penalesAtajados: stat.penalesAtajados,
       amarillas: stat.amarillas,
+      rojas: stat.rojas,
+      autogoles: stat.autogoles,
+      esArquero: extras.esArquero,
     });
   }
 

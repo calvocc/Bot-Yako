@@ -44,38 +44,74 @@ describe('estadisticas.sinJugadores', () => {
   });
 });
 
+const fichaBase = {
+  nombre: 'Jacob',
+  dorsal: 10 as number | null,
+  equipoNombre: 'Sub-11',
+  temporada: 2026,
+  partidosJugados: 5,
+  minutos: 300,
+  partidosConReloj: 5,
+  goles: 4,
+  asistencias: 2,
+  tirosAlArco: 12,
+  regates: 5,
+  faltasRecibidas: 3,
+  recuperaciones: 9,
+  rechazos: 4,
+  atajadas: 0,
+  penalesAtajados: 0,
+  amarillas: 1,
+  rojas: 0,
+  autogoles: 0,
+  esArquero: false,
+};
+
 describe('estadisticas.lineaJugador', () => {
-  it('incluye dorsal cuando existe', () => {
-    const texto = textos.lineaJugador({
-      nombre: 'Jacob',
-      dorsal: 10,
-      equipoNombre: 'Sub-11',
-      temporada: 2026,
-      partidosJugados: 5,
-      goles: 4,
-      asistencias: 2,
-      amarillas: 1,
-    });
+  it('arma la ficha por grupos con eficiencia y minutos', () => {
+    const texto = textos.lineaJugador(fichaBase);
 
     expect(texto).toContain('📊 Jacob #10 — Sub-11 · temporada 2026');
-    expect(texto).toContain('Partidos jugados: 5');
-    expect(texto).toContain('Goles: 4  ·  Asistencias: 2  ·  Amarillas: 1');
+    expect(texto).toContain('🏟️ PARTICIPACIÓN');
+    expect(texto).toContain('5 partidos · 300 min');
+    expect(texto).toContain('⚽ ATAQUE');
+    expect(texto).toContain('Goles: 4 · Asistencias: 2');
+    expect(texto).toContain('0.80 G/PJ');
+    expect(texto).toContain("contribuciones/90'");
+    expect(texto).toContain('🛡️ DEFENSA');
+    expect(texto).toContain('🟨 DISCIPLINA');
+    // Jugador de campo sin atajadas: sin grupo portería.
+    expect(texto).not.toContain('🧤 PORTERÍA');
   });
 
   it('omite el dorsal cuando es null', () => {
-    const texto = textos.lineaJugador({
-      nombre: 'Jacob',
-      dorsal: null,
-      equipoNombre: 'Sub-11',
-      temporada: 2026,
-      partidosJugados: 5,
-      goles: 4,
-      asistencias: 2,
-      amarillas: 1,
-    });
+    const texto = textos.lineaJugador({ ...fichaBase, dorsal: null });
 
     expect(texto).toContain('📊 Jacob — Sub-11');
-    expect(texto).not.toContain('#');
+    expect(texto).not.toContain('#10');
+  });
+
+  it('sin reloj avisa y no calcula per-90', () => {
+    const texto = textos.lineaJugador({
+      ...fichaBase,
+      minutos: 0,
+      partidosConReloj: 0,
+      recuperaciones: 0,
+      rechazos: 0,
+      amarillas: 0,
+    });
+
+    expect(texto).toContain('sin registro de minutos');
+    expect(texto).not.toContain("90'");
+    expect(texto).not.toContain('🛡️ DEFENSA');
+    expect(texto).not.toContain('🟨 DISCIPLINA');
+  });
+
+  it('muestra portería solo para arquero o con intervenciones', () => {
+    expect(textos.lineaJugador({ ...fichaBase, esArquero: true })).toContain('🧤 PORTERÍA');
+    expect(textos.lineaJugador({ ...fichaBase, atajadas: 2, penalesAtajados: 1 })).toContain(
+      '🧤 PORTERÍA',
+    );
   });
 });
 
