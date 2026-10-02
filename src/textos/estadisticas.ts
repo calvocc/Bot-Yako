@@ -28,11 +28,12 @@ export const textos = {
   eligeEquipo: () => '🏷️ ¿De qué equipo quieres ver estadísticas?\n\nToca uno 👇',
   /**
    * `/stats` sin nombre con un solo equipo, o tras elegir equipo con un
-   * botón: plantilla con un botón por jugador, para no tener que escribir
-   * el nombre. Todavía se puede escribir `/stats seguido de un nombre`.
+   * botón: solo los botones, uno por jugador, sin repetir la lista en el
+   * texto —los botones ya son la lista y el texto queda alineado a la
+   * izquierda. Todavía se puede escribir `/stats seguido de un nombre`.
    */
-  elegirJugador: (equipoNombre: string, cuerpo: string) =>
-    `📋 ${equipoNombre}:\n\n${cuerpo}\n\nToca un jugador para ver sus estadísticas 👇`,
+  elegirJugador: (equipoNombre: string) =>
+    `📋 ${equipoNombre}:\n\nToca un jugador para ver sus estadísticas 👇`,
   /** Plantilla vacía: sin jugadores no hay botones que ofrecer. */
   listadoJugadores: (equipoNombre: string, cuerpo: string) =>
     `📋 ${equipoNombre}:\n\n${cuerpo}\n\nEscribe /stats seguido de un nombre para ver sus estadísticas.`,
@@ -45,26 +46,20 @@ export const textos = {
   sinPartidosJugador: (nombre: string, equipoNombre: string) =>
     `📅 ${nombre} todavía no jugó ningún partido cerrado con ${equipoNombre}.`,
 
-  /** `📅 Partidos` de la ficha: últimos partidos con su mini-línea. */
-  listaPartidosJugador: (
-    nombre: string,
-    dorsal: number | null,
-    equipoNombre: string,
-    lineas: string[],
-  ) => {
+  /**
+   * `📅 Partidos` de la ficha: solo la invitación a tocar, sin lista en el
+   * texto —cada botón ya lleva fecha, rival y minutos del partido.
+   */
+  listaPartidosJugador: (nombre: string, dorsal: number | null, equipoNombre: string) => {
     const dorsalTexto = dorsal !== null ? ` #${dorsal}` : '';
 
-    return [`📅 Partidos de ${nombre}${dorsalTexto} — ${equipoNombre}`, '', ...lineas].join('\n');
+    return `📅 Partidos de ${nombre}${dorsalTexto} — ${equipoNombre}\n\nToca un partido para ver el detalle 👇`;
   },
-
-  /** Una línea por partido: fecha corta, rival y minutos (o `s/reloj`). */
-  lineaPartidoJugado: (datos: { fecha: string; rival: string; minutos: number | null }) =>
-    `${fechaCorta(datos.fecha)} · vs ${datos.rival} · ⏱️ ${datos.minutos === null ? 's/reloj' : `${datos.minutos}'`}`,
 
   /**
    * Detalle de un partido del jugador: misma ficha que `lineaJugador` con
-   * PJ=1 y los minutos de ese partido (o aviso sin reloj). Los promedios
-   * sobre un partido son el dato del partido y el per-90, su ritmo.
+   * PJ=1 y los minutos de ese partido (o aviso sin reloj). El ritmo sobre
+   * un partido dice si aportó uno o más goles en ese partido.
    */
   detallePartidoJugador: (datos: {
     nombre: string;
@@ -101,7 +96,7 @@ export const textos = {
       `⚽ ${datos.nombre}${dorsal} — ${fechaLarga(datos.fecha)} · vs ${datos.rival}`,
       '',
       ...bloqueParticipacion(ficha),
-      ...bloqueAtaque(ficha),
+      ...bloqueAtaque(ficha, 'en el partido'),
       ...bloqueDefensa(ficha),
       ...bloquePorteria(ficha),
       ...bloqueDisciplina(ficha),
@@ -109,11 +104,11 @@ export const textos = {
   },
 
   /**
-   * Ficha completa de un jugador: grupos por categoría más línea de
-   * eficiencia. Los grupos secundarios se omiten en cero para que la ficha
-   * siga compacta en el teléfono; la base (PJ/goles/asistencias) siempre se
-   * muestra. `minutos`/`partidosConReloj` son ausentes en el bloque Total,
-   * que agrega filas ya traídas sin recalcular minutos por equipo.
+   * Ficha completa de un jugador: grupos por categoría en lenguaje simple,
+   * sin promedios técnicos. Los grupos de defensa y portería se omiten en
+   * cero para que la ficha siga compacta en el teléfono; disciplina siempre
+   * se muestra. `minutos`/`partidosConReloj` son ausentes en el bloque
+   * Total, que agrega filas ya traídas sin recalcular minutos por equipo.
    */
   lineaJugador: (datos: {
     nombre: string;
@@ -143,10 +138,10 @@ export const textos = {
     const dorsal = datos.dorsal !== null ? ` #${datos.dorsal}` : '';
 
     return [
-      `📊 ${datos.nombre}${dorsal} — ${datos.equipoNombre} · temporada ${datos.temporada}`,
+      `📊 ${datos.nombre}${dorsal} — ${datos.equipoNombre} · Temporada ${datos.temporada}`,
       '',
       ...bloqueParticipacion(datos),
-      ...bloqueAtaque(datos),
+      ...bloqueAtaque(datos, 'en total'),
       ...bloqueDefensa(datos),
       ...bloquePorteria(datos),
       ...bloqueDisciplina(datos),
@@ -183,7 +178,7 @@ export const textos = {
       `🧮 Total en la academia — ${datos.nombre} · temporada ${datos.temporada} (${datos.equipos} equipos)`,
       '',
       ...bloqueParticipacion(datos),
-      ...bloqueAtaque(datos),
+      ...bloqueAtaque(datos, 'en total'),
       ...bloqueDefensa(datos),
       ...bloquePorteria(datos),
       ...bloqueDisciplina(datos),
@@ -233,77 +228,70 @@ export const textos = {
   },
 };
 
-/** `2026-09-14` → `14/09` / `14/09/2026`: corto para botones y líneas. */
-function fechaCorta(fecha: string): string {
-  const [, mes, dia] = fecha.split('-');
-
-  return dia && mes ? `${dia}/${mes}` : fecha;
-}
-
+/** `2026-09-14` → `14/09/2026`: fecha larga del encabezado del detalle. */
 function fechaLarga(fecha: string): string {
   const [anio, mes, dia] = fecha.split('-');
 
   return dia && mes && anio ? `${dia}/${mes}/${anio}` : fecha;
 }
 
-/** Promedio con 2 decimales (`0.75`); `—` si no hay divisor honesto. */
-function promedio(numerador: number, divisor: number): string {
-  if (divisor <= 0) return '—';
-
-  return (numerador / divisor).toFixed(2);
-}
-
 /**
- * Minutos solo sobre partidos con reloj: un post partido nunca corrió uno,
- * así que mezclarlos inflaría el denominador del per-90 con minutos que
- * nadie midió.
+ * `1 partido` / `3 partidos`: el singular solo cuando es exactamente 1
+ * (el 0 va en plural, como en "0 goles").
  */
-function lineaMinutos(datos: CamposFicha): string {
-  const minutos = datos.minutos ?? 0;
-  const conReloj = datos.partidosConReloj ?? 0;
-
-  if (conReloj > 0 && conReloj >= datos.partidosJugados) {
-    return `${datos.partidosJugados} partidos · ${minutos} min`;
-  }
-
-  if (conReloj === 0) return `${datos.partidosJugados} partidos · sin registro de minutos`;
-
-  return `${datos.partidosJugados} partidos · ${minutos} min (reloj en ${conReloj})`;
+function plural(cantidad: number, singular: string, pluralPalabra: string): string {
+  return cantidad === 1 ? `1 ${singular}` : `${cantidad} ${pluralPalabra}`;
 }
 
 function bloqueParticipacion(datos: CamposFicha): string[] {
-  return ['🏟️ PARTICIPACIÓN', lineaMinutos(datos), ''];
-}
+  const lineas = ['🏟️ PARTICIPACIÓN', plural(datos.partidosJugados, 'partido', 'partidos')];
 
-function bloqueAtaque(datos: CamposFicha): string[] {
-  const lineas = [
-    '⚽ ATAQUE',
-    `Goles: ${datos.goles} · Asistencias: ${datos.asistencias}`,
-    `📈 ${promedio(datos.goles, datos.partidosJugados)} G/PJ · ${promedio(datos.goles + datos.asistencias, datos.partidosJugados)} contribuciones/PJ${lineaPor90(datos)}`,
-  ];
+  // El bloque Total agrega filas ya traídas y no trae minutos: ahí no se
+  // menciona el reloj en vez de afirmar algo ("sin registro") que no se
+  // midió. `pases` y `faltasCometidas` se siguen guardando pero no se
+  // muestran: la ficha enseña lo que se lee de un vistazo.
+  if (datos.minutos !== undefined || datos.partidosConReloj !== undefined) {
+    const conReloj = datos.partidosConReloj ?? 0;
 
-  if (
-    datos.tirosAlArco > 0 ||
-    datos.tirosAfuera > 0 ||
-    datos.regates > 0 ||
-    datos.faltasRecibidas > 0 ||
-    datos.pases > 0
-  ) {
     lineas.push(
-      `🎯 Tiros: ${datos.tirosAlArco} (+${datos.tirosAfuera} afuera) · 🤹 Regates: ${datos.regates} · 🤕 Faltas recibidas: ${datos.faltasRecibidas} · 👟 Pases: ${datos.pases}`,
+      conReloj > 0
+        ? `⏱️ ${datos.minutos ?? 0} min registrados en ${plural(conReloj, 'partido', 'partidos')}`
+        : '⏱️ sin registro de minutos',
     );
   }
 
   return [...lineas, ''];
 }
 
-/** Contribuciones por 90' solo sobre minutos medidos; sin reloj no hay per-90 honesto. */
-function lineaPor90(datos: CamposFicha): string {
-  const minutos = datos.minutos ?? 0;
+function bloqueAtaque(datos: CamposFicha, ambito: 'en total' | 'en el partido'): string[] {
+  const aportes = datos.goles + datos.asistencias;
 
-  if (minutos <= 0) return '';
+  return [
+    '⚽ ATAQUE',
+    `⚽ ${plural(datos.goles, 'gol', 'goles')} · 🅰️ ${plural(datos.asistencias, 'asistencia', 'asistencias')}`,
+    `🔥 ${plural(aportes, 'aporte', 'aportes')} de gol ${ambito}`,
+    ...lineaRitmo(datos, aportes),
+    `🎯 ${plural(datos.tirosAlArco + datos.tirosAfuera, 'tiro', 'tiros')} · 🤹 ${plural(datos.regates, 'regate', 'regates')} · 🤕 ${plural(datos.faltasRecibidas, 'falta recibida', 'faltas recibidas')}`,
+    '',
+  ];
+}
 
-  return ` · ${(((datos.goles + datos.asistencias) / minutos) * 90).toFixed(2)} contribuciones/90'`;
+/**
+ * Ritmo de aporte en palabras, sin decimales: cada cuántos partidos cae un
+ * gol en el que participó directamente. Sin aportes no hay ritmo que contar.
+ */
+function lineaRitmo(datos: CamposFicha, aportes: number): string[] {
+  if (aportes === 0 || datos.partidosJugados === 0) return [];
+
+  const cada = datos.partidosJugados / aportes;
+
+  if (cada >= 2) {
+    return [`📈 Participó directamente en un gol cada ${Math.round(cada)} partidos`];
+  }
+
+  if (cada >= 1) return ['📈 Un aporte de gol por partido'];
+
+  return ['📈 Más de un aporte de gol por partido'];
 }
 
 function bloqueDefensa(datos: CamposFicha): string[] {
@@ -311,7 +299,7 @@ function bloqueDefensa(datos: CamposFicha): string[] {
 
   return [
     '🛡️ DEFENSA',
-    `🔄 Recuperaciones: ${datos.recuperaciones} · 🧹 Rechazos: ${datos.rechazos}`,
+    `🔄 ${plural(datos.recuperaciones, 'recuperación', 'recuperaciones')} · 🧹 ${plural(datos.rechazos, 'rechazo', 'rechazos')}`,
     '',
   ];
 }
@@ -325,23 +313,15 @@ function bloquePorteria(datos: CamposFicha): string[] {
 
   return [
     '🧤 PORTERÍA',
-    `🧤 Atajadas: ${datos.atajadas} · 🥅 Penales atajados: ${datos.penalesAtajados}`,
+    `🧤 ${plural(datos.atajadas, 'atajada', 'atajadas')} · 🥅 ${plural(datos.penalesAtajados, 'penal atajado', 'penales atajados')}`,
     '',
   ];
 }
 
+/** Disciplina siempre visible: un "0 amarillas · 0 rojas" también informa. */
 function bloqueDisciplina(datos: CamposFicha): string[] {
-  if (
-    datos.amarillas === 0 &&
-    datos.rojas === 0 &&
-    datos.autogoles === 0 &&
-    datos.faltasCometidas === 0
-  ) {
-    return [];
-  }
-
   return [
     '🟨 DISCIPLINA',
-    `🟨 Amarillas: ${datos.amarillas} · 🟥 Rojas: ${datos.rojas} · 🙃 Autogoles: ${datos.autogoles} · 🚫 Faltas cometidas: ${datos.faltasCometidas}`,
+    `🟨 ${plural(datos.amarillas, 'amarilla', 'amarillas')} · 🟥 ${plural(datos.rojas, 'roja', 'rojas')} · 🙃 ${plural(datos.autogoles, 'autogol', 'autogoles')}`,
   ];
 }

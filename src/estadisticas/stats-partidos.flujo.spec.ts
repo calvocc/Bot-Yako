@@ -109,15 +109,17 @@ describe('StatsPartidosFlujo', () => {
     expect(flujoDe().construir().id).toBe(FLUJO_STATS_PARTIDOS);
   });
 
-  it('la lista muestra los partidos del jugador con botones', async () => {
+  it('la lista es solo botones: el texto invita y el rótulo lleva fecha, rival y minutos', async () => {
     const [lista] = flujoDe().construir().pasos;
     const entrada = await lista.entrar(ctxLista());
 
     if (!('respuesta' in entrada)) throw new Error('esperaba respuesta');
 
     expect(entrada.respuesta.texto).toContain('📅 Partidos de Jacob #10 — Sub-11');
-    expect(entrada.respuesta.texto).toContain("14/09 · vs Tigres · ⏱️ 58'");
+    expect(entrada.respuesta.texto).toContain('Toca un partido');
+    expect(entrada.respuesta.texto).not.toContain('Tigres');
     expect(entrada.respuesta.botones?.map((b) => b.id)).toEqual(['pp:p1']);
+    expect(entrada.respuesta.botones?.map((b) => b.texto)).toEqual(["14/09 Tigres 58'"]);
   });
 
   it('sin ficha en sus equipos finaliza sin mostrar nada', async () => {

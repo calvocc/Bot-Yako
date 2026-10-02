@@ -345,25 +345,28 @@ Si el usuario pertenece a más de un equipo, cada uno de estos comandos primero 
 
 `/stats [jugador]` — con nombre busca directo; sin nombre no hay que escribir:
 primero ofrece los equipos con botones (si hay más de uno) y después un botón
-por jugador de la plantilla. La ficha agrupa por categoría (participación,
-ataque, defensa, portería solo si ataja, disciplina) con promedios G/PJ y
-per-90 sobre minutos medidos, y el botón `📅 Partidos` abre los últimos
-partidos con detalle por partido.
+por jugador de la plantilla, sin repetir la lista en el texto. La ficha agrupa
+por categoría (participación, ataque, defensa, portería solo si ataja,
+disciplina) en lenguaje simple con minutos medidos y ritmo de aporte en
+palabras, y el botón `📅 Partidos` abre los últimos partidos con detalle por
+partido.
 ```
 User: /stats Jacob
-Bot: 📊 Jacob #10 — Ringo Amaya Sub-11 · temporada 2026
+Bot: 📊 Jacob #10 — Ringo Amaya Sub-11 · Temporada 2026
 
      🏟️ PARTICIPACIÓN
-     8 partidos · 512 min
+     8 partidos
+     ⏱️ 512 min registrados en 8 partidos
      ⚽ ATAQUE
-     Goles: 6 · Asistencias: 2
-     📈 0.75 G/PJ · 1.00 contribuciones/PJ · …
+     ⚽ 6 goles · 🅰️ 2 asistencias
+     🔥 8 aportes de gol en total
+     📈 Un aporte de gol por partido
      [📅 Partidos]
 
 User: /stats
 Bot: 🏷️ ¿De qué equipo quieres ver estadísticas?
      [Sub-11] [Sub-13]
-Bot: 📋 Sub-11: … Toca un jugador para ver sus estadísticas 👇
+Bot: 📋 Sub-11: Toca un jugador para ver sus estadísticas 👇
      [#10 Jacob] [#7 Andrés]
 ```
 

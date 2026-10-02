@@ -386,10 +386,12 @@ describe('Estadísticas (e2e)', () => {
       const respuesta = await handler.stats(undefined, admin);
 
       expect(respuesta.texto).toContain('📋 Sub-11:');
-      expect(respuesta.texto).toContain('• #10 Jacob');
-      expect(respuesta.texto).toContain('• #7 Andrés');
+      // Sin lista duplicada en el texto: los nombres viven solo en los botones.
+      expect(respuesta.texto).not.toContain('Jacob');
+      expect(respuesta.texto).not.toContain('Andrés');
       expect(respuesta.texto).toContain('Toca un jugador');
       // `listar` ordena por dorsal: Andrés (#7) va antes que Jacob (#10).
+      expect(respuesta.botones?.map((b) => b.texto)).toEqual(['#7 Andrés', '#10 Jacob']);
       expect(respuesta.botones?.map((b) => b.id)).toEqual([
         `cmd:stats:jugador:${andres.id}`,
         `cmd:stats:jugador:${jacob.id}`,
@@ -427,7 +429,7 @@ describe('Estadísticas (e2e)', () => {
       const detalle = await handler.stats(`jugador:${jacobSub13.id}`, admin);
 
       expect(detalle.texto).toContain('📊 Jacob Restrepo #9 — Sub-13');
-      expect(detalle.texto).toContain('Goles: 2');
+      expect(detalle.texto).toContain('⚽ 2 goles');
 
       // La ficha del otro equipo no se mezcla: eligiendo su botón sale su bloque.
       await partidoConGoles(equipo.id, admin, '2026-09-11', jacobSub11.id, 1);
@@ -435,7 +437,7 @@ describe('Estadísticas (e2e)', () => {
       const otro = await handler.stats(`jugador:${jacobSub11.id}`, admin);
 
       expect(otro.texto).toContain('📊 Jacob #10 — Sub-11');
-      expect(otro.texto).toContain('Goles: 1');
+      expect(otro.texto).toContain('⚽ 1 gol');
     });
 
     it('/stats sin nombre y sin plantilla cargada lo dice, sin romper', async () => {
@@ -526,10 +528,10 @@ describe('Estadísticas (e2e)', () => {
       // ...más el bloque de total, que sí suma entre los dos.
       expect(respuesta.texto).toContain('🧮 Total en la academia');
       expect(respuesta.texto).toContain('(2 equipos)');
-      expect(respuesta.texto).toContain('Goles: 3');
+      expect(respuesta.texto).toContain('⚽ 3 goles');
     });
 
-    it('/stats muestra tiro_afuera, pase y falta_cometida (migración 0020)', async () => {
+    it('la migración 0020 llega al servicio y tiro_afuera suma en los tiros de /stats', async () => {
       const { equipo, admin } = await escenario('Eventos sin agregar');
       const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
 
@@ -557,11 +559,20 @@ describe('Estadísticas (e2e)', () => {
       }
       await partidos.cerrar(partido.id, admin, { propio: 0, rival: 1 });
 
+      // La ficha ya no muestra pases ni faltas cometidas, así que la
+      // migración se verifica en la fila del servicio; en la ficha los
+      // tiros de afuera suman dentro del total de tiros.
+      const [fila] = await estadisticas.deJugador(equipo.id, 'Jacob');
+
+      expect(fila.tirosAfuera).toBe(2);
+      expect(fila.pases).toBe(1);
+      expect(fila.faltasCometidas).toBe(1);
+
       const respuesta = await handler.stats('Jacob', admin);
 
-      expect(respuesta.texto).toContain('Tiros: 0 (+2 afuera)');
-      expect(respuesta.texto).toContain('Pases: 1');
-      expect(respuesta.texto).toContain('Faltas cometidas: 1');
+      expect(respuesta.texto).toContain('🎯 2 tiros');
+      expect(respuesta.texto).not.toContain('Pases');
+      expect(respuesta.texto).not.toContain('cometidas');
     });
 
     it('/stats de un jugador sin ficha en otro equipo no muestra bloque "Total"', async () => {
@@ -597,7 +608,7 @@ describe('Estadísticas (e2e)', () => {
 
       await procesador.procesar(textoDePrueba('/stats Jacob', canalViewer));
       expect(adaptador.ultimoTexto).toContain('📊 Jacob #10');
-      expect(adaptador.ultimoTexto).toContain('Goles: 3');
+      expect(adaptador.ultimoTexto).toContain('⚽ 3 goles');
 
       adaptador.limpiar();
       await procesador.procesar(textoDePrueba('/tabla', canalViewer));
@@ -646,17 +657,20 @@ describe('Estadísticas (e2e)', () => {
       await procesador.procesar(seleccionDePrueba(botonPartidos!.id, canal));
 
       expect(adaptador.ultimoTexto).toContain('📅 Partidos de Jacob #10 — Sub-11');
-      expect(adaptador.ultimoTexto).toContain('01/07 · vs Rival');
+      // Sin lista en el texto: el partido vive en el botón, con fecha y rival.
+      expect(adaptador.ultimoTexto).not.toContain('vs Rival');
 
       const botonPartido = adaptador.ultimosBotones.find((b) => b.id.startsWith('pp:'));
 
       expect(botonPartido).toBeDefined();
+      expect(botonPartido!.texto).toContain('01/07');
+      expect(botonPartido!.texto).toContain('Rival');
 
       // El detalle muestra el desglose del partido con volver.
       await procesador.procesar(seleccionDePrueba(botonPartido!.id, canal));
 
       expect(adaptador.ultimoTexto).toContain('⚽ Jacob #10 — 01/07/2026 · vs Rival');
-      expect(adaptador.ultimoTexto).toContain('Goles: 2');
+      expect(adaptador.ultimoTexto).toContain('⚽ 2 goles');
       expect(adaptador.ultimosBotones.map((b) => b.id)).toEqual(['pp:volver', 'pp:ficha']);
 
       // Volver a la ficha cierra el flujo con el resumen.

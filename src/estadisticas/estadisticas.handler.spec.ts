@@ -171,6 +171,9 @@ describe('EstadisticasHandler.stats por botones', () => {
 
     expect(respuesta.texto).toContain('📋 Sub-11:');
     expect(respuesta.texto).toContain('Toca un jugador');
+    // Sin lista duplicada en el texto: los nombres viven solo en los botones.
+    expect(respuesta.texto).not.toContain('Jacob');
+    expect(respuesta.texto).not.toContain('Andrés');
     expect(respuesta.botones?.map((b) => b.id)).toEqual([
       `cmd:stats:jugador:${JACOB_1}`,
       `cmd:stats:jugador:${ANDRES_1}`,
@@ -233,7 +236,7 @@ describe('EstadisticasHandler.stats por botones', () => {
     const respuesta = await handler.stats(`jugador:${JACOB_1}`, 'user-1');
 
     expect(respuesta.texto).toContain('📊 Jacob #10 — Sub-11');
-    expect(respuesta.texto).toContain('Goles: 6');
+    expect(respuesta.texto).toContain('⚽ 6 goles · 🅰️ 2 asistencias');
   });
 
   it('elegir jugador sin estadísticas cargadas lo dice', async () => {
@@ -260,7 +263,7 @@ describe('EstadisticasHandler.stats por botones', () => {
     expect(respuesta.texto).toContain('No encontré a ese jugador entre tus equipos');
   });
 
-  it('la ficha trae grupos, eficiencia y minutos cuando hay reloj', async () => {
+  it('la ficha trae grupos, minutos y ritmo cuando hay reloj', async () => {
     const handler = handlerDe({
       equipos: [equipo(EQUIPO_1, 'Sub-11')],
       plantillas: { [EQUIPO_1]: [jugador(JACOB_1, 'Jacob', 10)] },
@@ -272,18 +275,20 @@ describe('EstadisticasHandler.stats por botones', () => {
     const respuesta = await handler.stats(`jugador:${JACOB_1}`, 'user-1');
 
     expect(respuesta.texto).toContain('🏟️ PARTICIPACIÓN');
-    expect(respuesta.texto).toContain('8 partidos · 58 min');
+    expect(respuesta.texto).toContain('8 partidos');
+    expect(respuesta.texto).toContain('⏱️ 58 min registrados en 1 partido');
     expect(respuesta.texto).toContain('⚽ ATAQUE');
-    expect(respuesta.texto).toContain('0.75 G/PJ');
-    expect(respuesta.texto).toContain("contribuciones/90'");
-    // Sin nada en defensa ni portería esos grupos no aparecen (la fila trae
-    // 1 amarilla, así que disciplina sí sale).
+    expect(respuesta.texto).toContain('⚽ 6 goles · 🅰️ 2 asistencias');
+    expect(respuesta.texto).toContain('🔥 8 aportes de gol en total');
+    expect(respuesta.texto).toContain('📈 Un aporte de gol por partido');
+    // Sin nada en defensa ni portería esos grupos no aparecen; disciplina
+    // sale siempre, aunque la fila solo traiga 1 amarilla.
     expect(respuesta.texto).not.toContain('🛡️ DEFENSA');
     expect(respuesta.texto).not.toContain('🧤 PORTERÍA');
-    expect(respuesta.texto).toContain('🟨 DISCIPLINA');
+    expect(respuesta.texto).toContain('🟨 1 amarilla · 🟥 0 rojas · 🙃 0 autogoles');
   });
 
-  it('sin reloj avisa que no hay minutos y no inventa per-90', async () => {
+  it('sin reloj avisa que no hay minutos, sin tecnicismos', async () => {
     const handler = handlerDe({
       equipos: [equipo(EQUIPO_1, 'Sub-11')],
       plantillas: { [EQUIPO_1]: [jugador(JACOB_1, 'Jacob', 10)] },
@@ -292,9 +297,10 @@ describe('EstadisticasHandler.stats por botones', () => {
 
     const respuesta = await handler.stats(`jugador:${JACOB_1}`, 'user-1');
 
-    expect(respuesta.texto).toContain('sin registro de minutos');
+    expect(respuesta.texto).toContain('⏱️ sin registro de minutos');
     expect(respuesta.texto).not.toContain("90'");
-    expect(respuesta.texto).toContain('0.75 G/PJ');
+    expect(respuesta.texto).not.toContain('G/PJ');
+    expect(respuesta.texto).toContain('⚽ 6 goles · 🅰️ 2 asistencias');
   });
 
   it('el grupo portería sale solo con atajadas o posición de arquero', async () => {
@@ -308,6 +314,6 @@ describe('EstadisticasHandler.stats por botones', () => {
     const respuesta = await handler.stats(`jugador:${JACOB_1}`, 'user-1');
 
     expect(respuesta.texto).toContain('🧤 PORTERÍA');
-    expect(respuesta.texto).toContain('Atajadas: 7');
+    expect(respuesta.texto).toContain('🧤 7 atajadas · 🥅 1 penal atajado');
   });
 });
