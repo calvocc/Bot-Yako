@@ -46,21 +46,15 @@ export const textos = {
   sinPartidosJugador: (nombre: string, equipoNombre: string) =>
     `📅 ${nombre} todavía no jugó ningún partido cerrado con ${equipoNombre}.`,
 
-  /** `📅 Partidos` de la ficha: últimos partidos con su mini-línea. */
-  listaPartidosJugador: (
-    nombre: string,
-    dorsal: number | null,
-    equipoNombre: string,
-    lineas: string[],
-  ) => {
+  /**
+   * `📅 Partidos` de la ficha: solo la invitación a tocar, sin lista en el
+   * texto —cada botón ya lleva fecha, rival y minutos del partido.
+   */
+  listaPartidosJugador: (nombre: string, dorsal: number | null, equipoNombre: string) => {
     const dorsalTexto = dorsal !== null ? ` #${dorsal}` : '';
 
-    return [`📅 Partidos de ${nombre}${dorsalTexto} — ${equipoNombre}`, '', ...lineas].join('\n');
+    return `📅 Partidos de ${nombre}${dorsalTexto} — ${equipoNombre}\n\nToca un partido para ver el detalle 👇`;
   },
-
-  /** Una línea por partido: fecha corta, rival y minutos (o `s/reloj`). */
-  lineaPartidoJugado: (datos: { fecha: string; rival: string; minutos: number | null }) =>
-    `${fechaCorta(datos.fecha)} · vs ${datos.rival} · ⏱️ ${datos.minutos === null ? 's/reloj' : `${datos.minutos}'`}`,
 
   /**
    * Detalle de un partido del jugador: misma ficha que `lineaJugador` con
@@ -234,13 +228,7 @@ export const textos = {
   },
 };
 
-/** `2026-09-14` → `14/09` / `14/09/2026`: corto para botones y líneas. */
-function fechaCorta(fecha: string): string {
-  const [, mes, dia] = fecha.split('-');
-
-  return dia && mes ? `${dia}/${mes}` : fecha;
-}
-
+/** `2026-09-14` → `14/09/2026`: fecha larga del encabezado del detalle. */
 function fechaLarga(fecha: string): string {
   const [anio, mes, dia] = fecha.split('-');
 

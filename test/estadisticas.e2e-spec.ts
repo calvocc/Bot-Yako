@@ -429,7 +429,7 @@ describe('Estadísticas (e2e)', () => {
       const detalle = await handler.stats(`jugador:${jacobSub13.id}`, admin);
 
       expect(detalle.texto).toContain('📊 Jacob Restrepo #9 — Sub-13');
-      expect(detalle.texto).toContain('Goles: 2');
+      expect(detalle.texto).toContain('⚽ 2 goles');
 
       // La ficha del otro equipo no se mezcla: eligiendo su botón sale su bloque.
       await partidoConGoles(equipo.id, admin, '2026-09-11', jacobSub11.id, 1);
@@ -437,7 +437,7 @@ describe('Estadísticas (e2e)', () => {
       const otro = await handler.stats(`jugador:${jacobSub11.id}`, admin);
 
       expect(otro.texto).toContain('📊 Jacob #10 — Sub-11');
-      expect(otro.texto).toContain('Goles: 1');
+      expect(otro.texto).toContain('⚽ 1 gol');
     });
 
     it('/stats sin nombre y sin plantilla cargada lo dice, sin romper', async () => {
@@ -608,7 +608,7 @@ describe('Estadísticas (e2e)', () => {
 
       await procesador.procesar(textoDePrueba('/stats Jacob', canalViewer));
       expect(adaptador.ultimoTexto).toContain('📊 Jacob #10');
-      expect(adaptador.ultimoTexto).toContain('Goles: 3');
+      expect(adaptador.ultimoTexto).toContain('⚽ 3 goles');
 
       adaptador.limpiar();
       await procesador.procesar(textoDePrueba('/tabla', canalViewer));
@@ -657,17 +657,20 @@ describe('Estadísticas (e2e)', () => {
       await procesador.procesar(seleccionDePrueba(botonPartidos!.id, canal));
 
       expect(adaptador.ultimoTexto).toContain('📅 Partidos de Jacob #10 — Sub-11');
-      expect(adaptador.ultimoTexto).toContain('01/07 · vs Rival');
+      // Sin lista en el texto: el partido vive en el botón, con fecha y rival.
+      expect(adaptador.ultimoTexto).not.toContain('vs Rival');
 
       const botonPartido = adaptador.ultimosBotones.find((b) => b.id.startsWith('pp:'));
 
       expect(botonPartido).toBeDefined();
+      expect(botonPartido!.texto).toContain('01/07');
+      expect(botonPartido!.texto).toContain('Rival');
 
       // El detalle muestra el desglose del partido con volver.
       await procesador.procesar(seleccionDePrueba(botonPartido!.id, canal));
 
       expect(adaptador.ultimoTexto).toContain('⚽ Jacob #10 — 01/07/2026 · vs Rival');
-      expect(adaptador.ultimoTexto).toContain('Goles: 2');
+      expect(adaptador.ultimoTexto).toContain('⚽ 2 goles');
       expect(adaptador.ultimosBotones.map((b) => b.id)).toEqual(['pp:volver', 'pp:ficha']);
 
       // Volver a la ficha cierra el flujo con el resumen.

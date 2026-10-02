@@ -34,8 +34,9 @@ interface PartidoJugado {
 }
 
 /**
- * `📅 Partidos` de la ficha (`/stats`): últimos partidos del jugador con su
- * mini-línea, y detalle completo al tocar uno.
+ * `📅 Partidos` de la ficha (`/stats`): un botón por cada último partido
+ * del jugador (fecha, rival y minutos en el rótulo), y detalle completo al
+ * tocar uno.
  *
  * Entra con `{equipoId, jugadorId}` ya resueltos (botón `cmd:statspartidos:`
  * de la ficha) y arranca directo en la lista, sin re-preguntar nada. Los
@@ -94,15 +95,10 @@ export class StatsPartidosFlujo {
 
         return {
           respuesta: {
-            texto: textos.listaPartidosJugador(
-              jugador.nombre,
-              jugador.dorsal,
-              equipo.equipoNombre,
-              jugados.map((j) => this.lineaPartido(j)),
-            ),
+            texto: textos.listaPartidosJugador(jugador.nombre, jugador.dorsal, equipo.equipoNombre),
             botones: jugados.map((j) => ({
               id: `${PREFIJO_PARTIDO}${j.partido.id}`,
-              texto: recortar(`${fechaCorta(j.partido.fecha)} ${j.partido.rival}`),
+              texto: recortar(rotuloPartido(j)),
             })),
           },
         };
@@ -281,14 +277,6 @@ export class StatsPartidosFlujo {
       }));
   }
 
-  private lineaPartido(jugado: PartidoJugado): string {
-    return textos.lineaPartidoJugado({
-      fecha: jugado.partido.fecha,
-      rival: jugado.partido.rival,
-      minutos: jugado.minutos,
-    });
-  }
-
   private async repetirLista(ctx: ContextoFlujo): Promise<RespuestaBot> {
     const entrada = await this.pasoLista().entrar(ctx);
 
@@ -304,6 +292,17 @@ export class StatsPartidosFlujo {
 
     return { texto: textosComunes.noEncontre('ese partido entre los cerrados') };
   }
+}
+
+/**
+ * Rótulo del botón con lo que antes decía la mini-línea: fecha corta, rival
+ * y minutos (`14/09 Tigres 58'`), o fecha y rival si no corrió reloj. El
+ * botón ya es la lista: el texto solo invita a tocar.
+ */
+function rotuloPartido(jugado: PartidoJugado): string {
+  const base = `${fechaCorta(jugado.partido.fecha)} ${jugado.partido.rival}`;
+
+  return jugado.minutos === null ? base : `${base} ${jugado.minutos}'`;
 }
 
 /** `2026-09-14` → `14/09`: corto para el rótulo del botón (límite 20). */

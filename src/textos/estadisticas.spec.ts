@@ -29,24 +29,13 @@ describe('estadisticas.elegirJugador', () => {
 });
 
 describe('estadisticas.listaPartidosJugador', () => {
-  it('encabeza con nombre, dorsal y equipo más las líneas', () => {
-    const texto = textos.listaPartidosJugador('Jacob', 10, 'Sub-11', [
-      "14/09 · vs Tigres · ⏱️ 58'",
-    ]);
+  it('solo invita a tocar: la lista vive en los botones, no en el texto', () => {
+    const texto = textos.listaPartidosJugador('Jacob', 10, 'Sub-11');
 
     expect(texto).toContain('📅 Partidos de Jacob #10 — Sub-11');
-    expect(texto).toContain("14/09 · vs Tigres · ⏱️ 58'");
-  });
-});
-
-describe('estadisticas.lineaPartidoJugado', () => {
-  it('acorta la fecha y dice s/reloj sin minutos', () => {
-    expect(textos.lineaPartidoJugado({ fecha: '2026-09-14', rival: 'Tigres', minutos: 58 })).toBe(
-      "14/09 · vs Tigres · ⏱️ 58'",
-    );
-    expect(textos.lineaPartidoJugado({ fecha: '2026-09-14', rival: 'Tigres', minutos: null })).toBe(
-      '14/09 · vs Tigres · ⏱️ s/reloj',
-    );
+    expect(texto).toContain('Toca un partido');
+    expect(texto).not.toContain('Tigres');
+    expect(texto).not.toContain('14/09');
   });
 });
 
