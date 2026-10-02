@@ -55,8 +55,10 @@ const fichaBase = {
   goles: 4,
   asistencias: 2,
   tirosAlArco: 12,
+  tirosAfuera: 4,
   regates: 5,
   faltasRecibidas: 3,
+  pases: 30,
   recuperaciones: 9,
   rechazos: 4,
   atajadas: 0,
@@ -64,6 +66,7 @@ const fichaBase = {
   amarillas: 1,
   rojas: 0,
   autogoles: 0,
+  faltasCometidas: 2,
   esArquero: false,
 };
 
@@ -76,6 +79,9 @@ describe('estadisticas.lineaJugador', () => {
     expect(texto).toContain('5 partidos · 300 min');
     expect(texto).toContain('⚽ ATAQUE');
     expect(texto).toContain('Goles: 4 · Asistencias: 2');
+    expect(texto).toContain('Tiros: 12 (+4 afuera)');
+    expect(texto).toContain('Pases: 30');
+    expect(texto).toContain('Faltas cometidas: 2');
     expect(texto).toContain('0.80 G/PJ');
     expect(texto).toContain("contribuciones/90'");
     expect(texto).toContain('🛡️ DEFENSA');
@@ -99,6 +105,7 @@ describe('estadisticas.lineaJugador', () => {
       recuperaciones: 0,
       rechazos: 0,
       amarillas: 0,
+      faltasCometidas: 0,
     });
 
     expect(texto).toContain('sin registro de minutos');

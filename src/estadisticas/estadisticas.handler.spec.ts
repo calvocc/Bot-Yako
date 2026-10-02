@@ -66,6 +66,9 @@ function fila(jugadorId: string, equipoId: string, nombre: string): EstadisticaJ
     faltasRecibidas: 0,
     atajadas: 0,
     penalesAtajados: 0,
+    tirosAfuera: 0,
+    pases: 0,
+    faltasCometidas: 0,
   };
 }
 

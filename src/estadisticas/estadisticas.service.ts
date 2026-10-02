@@ -31,6 +31,9 @@ export interface EstadisticaJugador {
   faltasRecibidas: number;
   atajadas: number;
   penalesAtajados: number;
+  tirosAfuera: number;
+  pases: number;
+  faltasCometidas: number;
 }
 
 export interface EstadisticaEquipo {
@@ -235,6 +238,9 @@ function mapearEstadisticaJugador(fila: Record<string, unknown>): EstadisticaJug
     faltasRecibidas: Number(fila.faltas_recibidas),
     atajadas: Number(fila.atajadas),
     penalesAtajados: Number(fila.penales_atajados),
+    tirosAfuera: Number(fila.tiros_afuera),
+    pases: Number(fila.pases),
+    faltasCometidas: Number(fila.faltas_cometidas),
   };
 }
 
