@@ -3,7 +3,11 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { AcademiasService } from '../src/academias/academias.service';
 import { ChannelRegistry } from '../src/channels/channel.registry';
 import { ProcesadorMensajes } from '../src/channels/procesador-mensajes.service';
-import { FakeChannelAdapter, textoDePrueba } from '../src/channels/testing/fake.adapter';
+import {
+  FakeChannelAdapter,
+  seleccionDePrueba,
+  textoDePrueba,
+} from '../src/channels/testing/fake.adapter';
 import { CompetenciasService } from '../src/competencias/competencias.service';
 import { ConfigModule } from '../src/config/config.module';
 import { ConversacionModule } from '../src/conversacion/conversacion.module';
@@ -605,6 +609,62 @@ describe('Estadísticas (e2e)', () => {
       expect(await eventos.delPartido((await partidos.recientesDe(equipo.id))[0].id)).toHaveLength(
         3,
       );
+    });
+
+    it('📅 Partidos lleva de la ficha a la lista y al detalle por botones', async () => {
+      const { equipo, admin } = await escenario('Partidos botones');
+      const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
+
+      await partidoConGoles(equipo.id, admin, '2026-07-01', jacob.id, 2);
+
+      const canal = nuevoCanal();
+      const usuarioId = await identidad.resolverUsuario(textoDePrueba('', canal));
+
+      await membresias.asignarRol(usuarioId, equipo.id, 'viewer');
+
+      // Un solo equipo: /stats va directo a la plantilla con botones.
+      await procesador.procesar(textoDePrueba('/stats', canal));
+
+      const botonJugador = adaptador.ultimosBotones.find(
+        (b) => b.id === `cmd:stats:jugador:${jacob.id}`,
+      );
+
+      expect(botonJugador).toBeDefined();
+
+      // La ficha trae el botón 📅 Partidos.
+      await procesador.procesar(seleccionDePrueba(botonJugador!.id, canal));
+
+      expect(adaptador.ultimoTexto).toContain('📊 Jacob #10 — Sub-11');
+
+      const botonPartidos = adaptador.ultimosBotones.find((b) =>
+        b.id.startsWith('cmd:statspartidos:'),
+      );
+
+      expect(botonPartidos).toBeDefined();
+
+      // La lista trae un botón por partido jugado.
+      await procesador.procesar(seleccionDePrueba(botonPartidos!.id, canal));
+
+      expect(adaptador.ultimoTexto).toContain('📅 Partidos de Jacob #10 — Sub-11');
+      expect(adaptador.ultimoTexto).toContain('01/07 · vs Rival');
+
+      const botonPartido = adaptador.ultimosBotones.find((b) => b.id.startsWith('pp:'));
+
+      expect(botonPartido).toBeDefined();
+
+      // El detalle muestra el desglose del partido con volver.
+      await procesador.procesar(seleccionDePrueba(botonPartido!.id, canal));
+
+      expect(adaptador.ultimoTexto).toContain('⚽ Jacob #10 — 01/07/2026 · vs Rival');
+      expect(adaptador.ultimoTexto).toContain('Goles: 2');
+      expect(adaptador.ultimosBotones.map((b) => b.id)).toEqual(['pp:volver', 'pp:ficha']);
+
+      // Volver a la ficha cierra el flujo con el resumen.
+      const volver = adaptador.ultimosBotones.find((b) => b.id === 'pp:ficha');
+
+      await procesador.procesar(seleccionDePrueba(volver!.id, canal));
+
+      expect(adaptador.ultimoTexto).toContain('📊 Jacob #10 — Sub-11');
     });
 
     it('un usuario sin ningún equipo lo dice, sin romper la conversación', async () => {

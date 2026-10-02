@@ -28,6 +28,64 @@ describe('estadisticas.elegirJugador', () => {
   });
 });
 
+describe('estadisticas.listaPartidosJugador', () => {
+  it('encabeza con nombre, dorsal y equipo más las líneas', () => {
+    const texto = textos.listaPartidosJugador('Jacob', 10, 'Sub-11', [
+      "14/09 · vs Tigres · ⏱️ 58'",
+    ]);
+
+    expect(texto).toContain('📅 Partidos de Jacob #10 — Sub-11');
+    expect(texto).toContain("14/09 · vs Tigres · ⏱️ 58'");
+  });
+});
+
+describe('estadisticas.lineaPartidoJugado', () => {
+  it('acorta la fecha y dice s/reloj sin minutos', () => {
+    expect(textos.lineaPartidoJugado({ fecha: '2026-09-14', rival: 'Tigres', minutos: 58 })).toBe(
+      "14/09 · vs Tigres · ⏱️ 58'",
+    );
+    expect(textos.lineaPartidoJugado({ fecha: '2026-09-14', rival: 'Tigres', minutos: null })).toBe(
+      '14/09 · vs Tigres · ⏱️ s/reloj',
+    );
+  });
+});
+
+describe('estadisticas.detallePartidoJugador', () => {
+  it('reutiliza los grupos con PJ=1 y el ritmo del partido', () => {
+    const texto = textos.detallePartidoJugador({
+      nombre: 'Jacob',
+      dorsal: 10,
+      fecha: '2026-09-14',
+      rival: 'Tigres',
+      minutos: 58,
+      goles: 2,
+      asistencias: 1,
+      tirosAlArco: 4,
+      tirosAfuera: 1,
+      regates: 2,
+      faltasRecibidas: 1,
+      pases: 10,
+      recuperaciones: 2,
+      rechazos: 1,
+      atajadas: 0,
+      penalesAtajados: 0,
+      amarillas: 0,
+      rojas: 0,
+      autogoles: 0,
+      faltasCometidas: 0,
+      esArquero: false,
+    });
+
+    expect(texto).toContain('⚽ Jacob #10 — 14/09/2026 · vs Tigres');
+    expect(texto).toContain('1 partidos · 58 min');
+    expect(texto).toContain('Goles: 2 · Asistencias: 1');
+    expect(texto).toContain('Tiros: 4 (+1 afuera)');
+    expect(texto).toContain('🛡️ DEFENSA');
+    expect(texto).not.toContain('🧤 PORTERÍA');
+    expect(texto).not.toContain('🟨 DISCIPLINA');
+  });
+});
+
 describe('estadisticas.sinEstadisticas', () => {
   it('dice de quién y de qué temporada no hay nada cargado', () => {
     const texto = textos.sinEstadisticas('Jacob', 2026);

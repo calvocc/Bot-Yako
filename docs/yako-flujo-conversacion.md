@@ -345,12 +345,20 @@ Si el usuario pertenece a más de un equipo, cada uno de estos comandos primero 
 
 `/stats [jugador]` — con nombre busca directo; sin nombre no hay que escribir:
 primero ofrece los equipos con botones (si hay más de uno) y después un botón
-por jugador de la plantilla.
+por jugador de la plantilla. La ficha agrupa por categoría (participación,
+ataque, defensa, portería solo si ataja, disciplina) con promedios G/PJ y
+per-90 sobre minutos medidos, y el botón `📅 Partidos` abre los últimos
+partidos con detalle por partido.
 ```
 User: /stats Jacob
 Bot: 📊 Jacob #10 — Ringo Amaya Sub-11 · temporada 2026
-     Partidos jugados: 8
-     Goles: 6  ·  Asistencias: 2  ·  Amarillas: 1
+
+     🏟️ PARTICIPACIÓN
+     8 partidos · 512 min
+     ⚽ ATAQUE
+     Goles: 6 · Asistencias: 2
+     📈 0.75 G/PJ · 1.00 contribuciones/PJ · …
+     [📅 Partidos]
 
 User: /stats
 Bot: 🏷️ ¿De qué equipo quieres ver estadísticas?

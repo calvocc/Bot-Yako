@@ -41,6 +41,73 @@ export const textos = {
   sinEstadisticas: (nombre: string, temporada: number) =>
     `📊 ${nombre} — temporada ${temporada}\nTodavía no tiene estadísticas cargadas.`,
 
+  /** El jugador no participó en ningún cerrado: no hay lista de partidos. */
+  sinPartidosJugador: (nombre: string, equipoNombre: string) =>
+    `📅 ${nombre} todavía no jugó ningún partido cerrado con ${equipoNombre}.`,
+
+  /** `📅 Partidos` de la ficha: últimos partidos con su mini-línea. */
+  listaPartidosJugador: (
+    nombre: string,
+    dorsal: number | null,
+    equipoNombre: string,
+    lineas: string[],
+  ) => {
+    const dorsalTexto = dorsal !== null ? ` #${dorsal}` : '';
+
+    return [`📅 Partidos de ${nombre}${dorsalTexto} — ${equipoNombre}`, '', ...lineas].join('\n');
+  },
+
+  /** Una línea por partido: fecha corta, rival y minutos (o `s/reloj`). */
+  lineaPartidoJugado: (datos: { fecha: string; rival: string; minutos: number | null }) =>
+    `${fechaCorta(datos.fecha)} · vs ${datos.rival} · ⏱️ ${datos.minutos === null ? 's/reloj' : `${datos.minutos}'`}`,
+
+  /**
+   * Detalle de un partido del jugador: misma ficha que `lineaJugador` con
+   * PJ=1 y los minutos de ese partido (o aviso sin reloj). Los promedios
+   * sobre un partido son el dato del partido y el per-90, su ritmo.
+   */
+  detallePartidoJugador: (datos: {
+    nombre: string;
+    dorsal: number | null;
+    fecha: string;
+    rival: string;
+    minutos: number | null;
+    goles: number;
+    asistencias: number;
+    tirosAlArco: number;
+    tirosAfuera: number;
+    regates: number;
+    faltasRecibidas: number;
+    pases: number;
+    recuperaciones: number;
+    rechazos: number;
+    atajadas: number;
+    penalesAtajados: number;
+    amarillas: number;
+    rojas: number;
+    autogoles: number;
+    faltasCometidas: number;
+    esArquero: boolean;
+  }): string => {
+    const dorsal = datos.dorsal !== null ? ` #${datos.dorsal}` : '';
+    const ficha: CamposFicha = {
+      ...datos,
+      partidosJugados: 1,
+      minutos: datos.minutos ?? 0,
+      partidosConReloj: datos.minutos === null ? 0 : 1,
+    };
+
+    return [
+      `⚽ ${datos.nombre}${dorsal} — ${fechaLarga(datos.fecha)} · vs ${datos.rival}`,
+      '',
+      ...bloqueParticipacion(ficha),
+      ...bloqueAtaque(ficha),
+      ...bloqueDefensa(ficha),
+      ...bloquePorteria(ficha),
+      ...bloqueDisciplina(ficha),
+    ].join('\n');
+  },
+
   /**
    * Ficha completa de un jugador: grupos por categoría más línea de
    * eficiencia. Los grupos secundarios se omiten en cero para que la ficha
@@ -165,6 +232,19 @@ export const textos = {
     return `🏆 ${datos.nombre}: ${datos.partidosJugados} partidos · ${datos.ganados}G ${datos.empatados}E ${datos.perdidos}P${golLinea}`;
   },
 };
+
+/** `2026-09-14` → `14/09` / `14/09/2026`: corto para botones y líneas. */
+function fechaCorta(fecha: string): string {
+  const [, mes, dia] = fecha.split('-');
+
+  return dia && mes ? `${dia}/${mes}` : fecha;
+}
+
+function fechaLarga(fecha: string): string {
+  const [anio, mes, dia] = fecha.split('-');
+
+  return dia && mes && anio ? `${dia}/${mes}/${anio}` : fecha;
+}
 
 /** Promedio con 2 decimales (`0.75`); `—` si no hay divisor honesto. */
 function promedio(numerador: number, divisor: number): string {
