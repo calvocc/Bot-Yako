@@ -1,30 +1,32 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Test } from '@nestjs/testing';
 import { DbService } from '../../db/db.service';
 import { RedisService } from '../redis/redis.service';
-import { HealthController } from './health.controller';
+import { HealthController, versionDeApp } from './health.controller';
+
+const construir = async (
+  postgresOk: boolean,
+  redis: { configurado: boolean; responde?: boolean },
+) => {
+  const modulo = await Test.createTestingModule({
+    controllers: [HealthController],
+    providers: [
+      { provide: DbService, useValue: { ping: jest.fn().mockResolvedValue(postgresOk) } },
+      {
+        provide: RedisService,
+        useValue: {
+          configurado: redis.configurado,
+          ping: jest.fn().mockResolvedValue(redis.responde ?? false),
+        },
+      },
+    ],
+  }).compile();
+
+  return modulo.get(HealthController);
+};
 
 describe('HealthController', () => {
-  const construir = async (
-    postgresOk: boolean,
-    redis: { configurado: boolean; responde?: boolean },
-  ) => {
-    const modulo = await Test.createTestingModule({
-      controllers: [HealthController],
-      providers: [
-        { provide: DbService, useValue: { ping: jest.fn().mockResolvedValue(postgresOk) } },
-        {
-          provide: RedisService,
-          useValue: {
-            configurado: redis.configurado,
-            ping: jest.fn().mockResolvedValue(redis.responde ?? false),
-          },
-        },
-      ],
-    }).compile();
-
-    return modulo.get(HealthController);
-  };
-
   it('reporta ok cuando Postgres y Redis responden', async () => {
     const controller = await construir(true, { configurado: true, responde: true });
 
@@ -77,5 +79,38 @@ describe('HealthController', () => {
       postgres: 'caido',
       redis: 'ok',
     });
+  });
+});
+
+describe('versionDeApp', () => {
+  const anterior = process.env.APP_VERSION;
+
+  afterEach(() => {
+    if (anterior === undefined) delete process.env.APP_VERSION;
+    else process.env.APP_VERSION = anterior;
+  });
+
+  it('APP_VERSION manda sobre todo lo demás', () => {
+    process.env.APP_VERSION = 'v9.9.9';
+
+    expect(versionDeApp()).toBe('v9.9.9');
+  });
+
+  it('sin APP_VERSION lee la version de package.json, no 0.0.0', () => {
+    delete process.env.APP_VERSION;
+
+    const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')) as {
+      version: string;
+    };
+
+    expect(versionDeApp()).toBe(pkg.version);
+    expect(versionDeApp()).not.toBe('0.0.0');
+  });
+
+  it('/health expone esa versión', async () => {
+    delete process.env.APP_VERSION;
+    const controller = await construir(true, { configurado: false });
+
+    await expect(controller.check()).resolves.toMatchObject({ version: versionDeApp() });
   });
 });
