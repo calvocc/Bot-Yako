@@ -1,6 +1,6 @@
 {
   "name": "yako-bot",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Yako — bot de estadisticas de futbol base (Telegram, preparado para WhatsApp)",
   "license": "UNLICENSED",
   "private": true,
