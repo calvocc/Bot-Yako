@@ -1,7 +1,10 @@
-import type { EventoCargado } from '../eventos/eventos.service';
+import type { EventosService, EventoCargado } from '../eventos/eventos.service';
 import type { Bono, JugadorParticipante } from '../eventos/puntaje';
+import type { Jugador, JugadoresService } from '../jugadores/jugadores.service';
+import type { AlineacionService } from '../partidos/alineacion.service';
 import type { Partido } from '../partidos/partido.mapper';
-import { componerResumen } from './resumen.service';
+import type { TiemposService } from '../partidos/tiempos.service';
+import { componerResumen, ResumenService } from './resumen.service';
 
 const partido = (parcial: Partial<Partido> = {}): Partido => ({
   id: 'p1',
@@ -201,5 +204,34 @@ describe('componerResumen', () => {
 
     // nota = 6 + (3/8)×4 = 7.5.
     expect(texto).toContain('#7 Andrés: 7.5');
+  });
+});
+
+describe('ResumenService.notasDe', () => {
+  it('devuelve las notas con el mismo cálculo del resumen', async () => {
+    const servicio = new ResumenService(
+      {
+        delPartido: () => Promise.resolve([gol('Jacob', 23)]),
+      } as unknown as EventosService,
+      {
+        datosDeParticipacion: () =>
+          Promise.resolve({ participantes: ['Jacob'], minutos: new Map() }),
+      } as unknown as AlineacionService,
+      {
+        contextoDeCarga: () => Promise.resolve({ minuto: { minuto: 50 } }),
+      } as unknown as TiemposService,
+      {
+        listar: () =>
+          Promise.resolve([
+            { id: 'Jacob', nombre: 'Jacob', dorsal: 10, posicion: null } as Jugador,
+          ]),
+      } as unknown as JugadoresService,
+    );
+
+    const notas = await servicio.notasDe(partido());
+
+    // Un gol sin posición vale 3 puntos brutos; sin minutos no hay bonos.
+    expect(notas).toHaveLength(1);
+    expect(notas[0]).toMatchObject({ nombre: 'Jacob', goles: 1, puntosBrutos: 3 });
   });
 });

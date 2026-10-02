@@ -218,90 +218,141 @@ describe('estadisticas.lineaJugador', () => {
   });
 });
 
-describe('estadisticas.bloqueEquipo', () => {
-  it('pluraliza "perdidos" salvo cuando es 1', () => {
-    const base = {
-      equipoNombre: 'Sub-11',
-      temporada: 2026,
-      partidosJugados: 3,
-      ganados: 1,
-      empatados: 1,
-      golesFavor: 5,
-      goleador: null,
-    };
+describe('estadisticas.eligeEquipoTabla', () => {
+  it('pide tocar un equipo para ver su tabla', () => {
+    const texto = textos.eligeEquipoTabla();
 
-    expect(textos.bloqueEquipo({ ...base, perdidos: 1 })).toContain('1 perdido');
-    expect(textos.bloqueEquipo({ ...base, perdidos: 2 })).toContain('2 perdidos');
-  });
-
-  it('incluye al goleador cuando lo hay', () => {
-    const texto = textos.bloqueEquipo({
-      equipoNombre: 'Sub-11',
-      temporada: 2026,
-      partidosJugados: 3,
-      ganados: 1,
-      empatados: 1,
-      perdidos: 1,
-      golesFavor: 5,
-      goleador: { nombre: 'Jacob', goles: 4 },
-    });
-
-    expect(texto).toContain('Goleador: Jacob (4)');
-  });
-
-  it('omite la línea de goleador cuando no hay', () => {
-    const texto = textos.bloqueEquipo({
-      equipoNombre: 'Sub-11',
-      temporada: 2026,
-      partidosJugados: 0,
-      ganados: 0,
-      empatados: 0,
-      perdidos: 0,
-      golesFavor: 0,
-      goleador: null,
-    });
-
-    expect(texto).not.toContain('Goleador');
+    expect(texto).toContain('¿De qué equipo quieres ver la tabla?');
   });
 });
 
-describe('estadisticas.lineaCompetencia', () => {
-  it('incluye el nombre del campeonato y el resultado', () => {
-    const texto = textos.lineaCompetencia({
-      nombre: 'Liga del Atlántico',
-      partidosJugados: 10,
-      ganados: 6,
-      empatados: 2,
-      perdidos: 2,
-      goleador: null,
-    });
+const equipoBase = {
+  equipoNombre: '2015 Azul',
+  temporada: 2026,
+  partidosJugados: 9,
+  ganados: 2,
+  empatados: 3,
+  perdidos: 4,
+  golesFavor: 15,
+  golesContra: 18,
+};
 
-    expect(texto).toBe('🏆 Liga del Atlántico: 10 partidos · 6G 2E 2P');
+describe('estadisticas.fichaEquipo', () => {
+  it('arma resultados y goles en lenguaje simple, con diferencia y promedio', () => {
+    const texto = textos.fichaEquipo(equipoBase).join('\n');
+
+    expect(texto).toContain('📋 2015 Azul — Temporada 2026');
+    expect(texto).toContain('🏟️ RESULTADOS');
+    expect(texto).toContain('9 partidos · 🟢 2 ganados · 🟡 3 empates · 🔴 4 perdidos');
+    expect(texto).toContain('⚽ GOLES');
+    expect(texto).toContain('15 goles a favor · 18 en contra · 📊 Diferencia: -3');
+    expect(texto).toContain('📈 Promedio: 1.7 goles por partido');
   });
 
-  it('incluye al goleador del campeonato cuando lo hay', () => {
-    const texto = textos.lineaCompetencia({
-      nombre: 'Copa Relámpago',
-      partidosJugados: 3,
-      ganados: 2,
-      empatados: 1,
-      perdidos: 0,
-      goleador: { nombre: 'Jacob', goles: 5 },
-    });
+  it('pluraliza en singular y marca la diferencia positiva con +', () => {
+    const texto = textos
+      .fichaEquipo({
+        ...equipoBase,
+        partidosJugados: 1,
+        ganados: 1,
+        empatados: 0,
+        perdidos: 0,
+        golesFavor: 3,
+        golesContra: 1,
+      })
+      .join('\n');
 
-    expect(texto).toContain('Goleador: Jacob (5)');
+    expect(texto).toContain('1 partido · 🟢 1 ganado · 🟡 0 empates · 🔴 0 perdidos');
+    expect(texto).toContain('📊 Diferencia: +2');
+    expect(texto).toContain('📈 Promedio: 3.0 goles por partido');
+  });
+});
+
+describe('estadisticas.bloqueCampeonato', () => {
+  it('arma el bloque con goleador y MVP', () => {
+    const texto = textos
+      .bloqueCampeonato({
+        nombre: 'Liga DBS Clausura',
+        partidosJugados: 5,
+        ganados: 1,
+        empatados: 2,
+        perdidos: 2,
+        golesFavor: 9,
+        goleador: { nombre: 'Jacob Calvo', goles: 3 },
+        mvp: { nombre: 'Andrés', puntos: 12.5 },
+      })
+      .join('\n');
+
+    expect(texto).toContain('🏆 Liga DBS Clausura');
+    expect(texto).toContain('5 partidos · 🟢 1G · 🟡 2E · 🔴 2P');
+    expect(texto).toContain('⚽ 9 goles a favor');
+    expect(texto).toContain('🥇 Goleador: Jacob Calvo (3 goles)');
+    expect(texto).toContain('⭐ MVP: Andrés (12.5 pts)');
   });
 
-  it('acepta "Sin competencia" como nombre del grupo sin campeonato', () => {
-    const texto = textos.lineaCompetencia({
-      nombre: 'Sin competencia',
-      partidosJugados: 2,
-      ganados: 1,
-      empatados: 0,
-      perdidos: 1,
-      goleador: null,
-    });
+  it('omite goleador y MVP cuando no hay, sin decimales colgando en puntos exactos', () => {
+    const texto = textos
+      .bloqueCampeonato({
+        nombre: 'Sin competencia',
+        partidosJugados: 2,
+        ganados: 1,
+        empatados: 0,
+        perdidos: 1,
+        golesFavor: 1,
+        goleador: null,
+        mvp: { nombre: 'Jacob', puntos: 12 },
+      })
+      .join('\n');
 
-    expect(texto).toContain('🏆 Sin competencia: 2 partidos');
+    expect(texto).toContain('🏆 Sin competencia');
+    expect(texto).toContain('⚽ 1 gol a favor');
+    expect(texto).not.toContain('Goleador');
+    expect(texto).toContain('⭐ MVP: Jacob (12 pts)');
+  });
+});
+
+const agregadoBase = {
+  goles: 15,
+  asistencias: 8,
+  tirosAlArco: 30,
+  tirosAfuera: 10,
+  regates: 12,
+  recuperaciones: 20,
+  rechazos: 18,
+  atajadas: 5,
+  penalesAtajados: 1,
+  amarillas: 3,
+  rojas: 0,
+  autogoles: 1,
+};
+
+describe('estadisticas.aportesEquipo', () => {
+  it('suma aportes con tiros combinados', () => {
+    const texto = textos.aportesEquipo(agregadoBase).join('\n');
+
+    expect(texto).toContain('👥 APORTES DEL EQUIPO');
+    expect(texto).toContain('⚽ 15 goles · 🅰️ 8 asistencias');
+    expect(texto).toContain('🎯 40 tiros · 🤹 12 regates');
+    expect(texto).toContain('🔄 20 recuperaciones · 🧹 18 rechazos');
+  });
+});
+
+describe('estadisticas.porteriaEquipo', () => {
+  it('muestra atajadas solo cuando hubo intervenciones', () => {
+    expect(textos.porteriaEquipo(agregadoBase).join('\n')).toContain(
+      '🧤 5 atajadas · 🥅 1 penal atajado',
+    );
+    expect(textos.porteriaEquipo({ atajadas: 0, penalesAtajados: 0 })).toEqual([]);
+  });
+});
+
+describe('estadisticas.disciplinaEquipo', () => {
+  it('siempre se muestra, aunque sea todo cero', () => {
+    const texto = textos.disciplinaEquipo(agregadoBase).join('\n');
+
+    expect(texto).toContain('🟨 3 amarillas · 🟥 0 rojas · 🙃 1 autogol');
+    expect(textos.disciplinaEquipo({ amarillas: 0, rojas: 0, autogoles: 0 }).join('\n')).toContain(
+      '🟨 0 amarillas',
+    );
   });
 });

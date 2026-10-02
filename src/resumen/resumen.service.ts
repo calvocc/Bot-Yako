@@ -6,6 +6,7 @@ import {
   esDestacable,
   type Bono,
   type JugadorParticipante,
+  type NotaJugador,
 } from '../eventos/puntaje';
 import { JugadoresService, type Jugador } from '../jugadores/jugadores.service';
 import { AlineacionService } from '../partidos/alineacion.service';
@@ -40,6 +41,27 @@ export class ResumenService {
   ) {}
 
   async generar(partido: Partido, equipoNombre: string): Promise<string> {
+    const { cargados, participantes, bonos } = await this.base(partido);
+
+    return componerResumen({ partido, equipoNombre, eventos: cargados, participantes, bonos });
+  }
+
+  /**
+   * Notas del partido con el mismo cálculo del resumen (eventos, nota base
+   * por participar y bonos de cierre): las usa el MVP por campeonato de
+   * `/tabla`, que suma los puntos brutos partido por partido.
+   */
+  async notasDe(partido: Partido): Promise<NotaJugador[]> {
+    const { cargados, participantes, bonos } = await this.base(partido);
+
+    return calcularNotas(cargados, participantes, bonos);
+  }
+
+  private async base(partido: Partido): Promise<{
+    cargados: EventoCargado[];
+    participantes: JugadorParticipante[];
+    bonos: Bono[];
+  }> {
     // La plantilla y el minuto final se piden una sola vez acá, en paralelo
     // con los eventos -- son independientes entre sí, y el minuto final hace
     // falta antes de poder pedir minutos jugados.
@@ -59,10 +81,12 @@ export class ResumenService {
     );
 
     const porId = new Map(plantilla.map((j) => [j.id, j]));
-    const participantes = this.participantesDesde(ids, porId);
-    const bonos = this.bonosDesde(partido, minutoFinal, minutos, porId);
 
-    return componerResumen({ partido, equipoNombre, eventos: cargados, participantes, bonos });
+    return {
+      cargados,
+      participantes: this.participantesDesde(ids, porId),
+      bonos: this.bonosDesde(partido, minutoFinal, minutos, porId),
+    };
   }
 
   /**

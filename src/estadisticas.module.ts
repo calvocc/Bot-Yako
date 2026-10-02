@@ -41,7 +41,7 @@ export class EstadisticasModule implements OnModuleInit {
 
     this.router.registrarComando('tabla', {
       tipo: 'respuesta',
-      ejecutar: (_ctx, usuarioId) => this.handler.tabla(usuarioId),
+      ejecutar: (ctx, usuarioId) => this.handler.tabla(ctx.argumento, usuarioId),
     });
 
     // Atajo interno, solo alcanzable por el botón `📅 Partidos` de la ficha

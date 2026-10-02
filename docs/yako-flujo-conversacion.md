@@ -370,11 +370,28 @@ Bot: 📋 Sub-11: Toca un jugador para ver sus estadísticas 👇
      [#10 Jacob] [#7 Andrés]
 ```
 
-`/tabla`
+`/tabla` — sin más muestra la ficha del equipo directo si pertenece a uno
+solo; si pertenece a varios, primero los ofrece con botones y enseña solo el
+elegido.
 ```
-Bot: 📋 Ringo Amaya Sub-11 — temporada 2026
-     8 partidos · 5 ganados · 2 empates · 1 perdido
-     Goles a favor: 22 · Goleador: Jacob (6)
+User: /tabla
+Bot: 📋 Ringo Amaya Sub-11 — Temporada 2026
+
+     🏟️ RESULTADOS
+     8 partidos · 🟢 5 ganados · 🟡 2 empates · 🔴 1 perdido
+     ⚽ GOLES
+     22 goles a favor · 9 en contra · 📊 Diferencia: +13
+     📈 Promedio: 2.8 goles por partido
+     🏆 POR CAMPEONATO
+     🏆 Liga
+     8 partidos · 🟢 5G · 🟡 2E · 🔴 1P
+     ⚽ 22 goles a favor
+     🥇 Goleador: Jacob (6 goles)
+     ⭐ MVP: Jacob (21 pts)
+     👥 APORTES DEL EQUIPO
+     ⚽ 22 goles · 🅰️ 10 asistencias
+     🟨 DISCIPLINA
+     🟨 2 amarillas · 🟥 0 rojas · 🙃 0 autogoles
 ```
 
 `/partidos` — lista los últimos partidos del equipo y su estado (pendiente / en vivo / cerrado).
