@@ -296,6 +296,9 @@ export class EstadisticasHandler {
           ...minutos,
           esArquero: jugador.posicion === 'arquero',
         }),
+        // `cmd:statspartidos:<jugadorId>` (56 bytes, límite 64): el flujo
+        // resuelve el equipo escaneando los del usuario.
+        botones: [botonComando('statspartidos', '📅 Partidos', jugador.id)],
       };
     }
 
