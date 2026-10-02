@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Controller, Get, HttpCode, HttpStatus } from '@nestjs/common';
 import { DbService } from '../../db/db.service';
 import { RedisService } from '../redis/redis.service';
@@ -19,7 +21,7 @@ type EstadoSalud = {
 };
 
 /**
- * Healthcheck para Railway/Render.
+ * Healthcheck para Dokploy.
  *
  * Postgres caido es fatal; Redis caido solo degrada, asi que el endpoint sigue
  * respondiendo 200 y el balanceador no saca el servicio de rotacion por una
@@ -46,7 +48,7 @@ export class HealthController {
       estado: postgresOk && redis !== 'caido' ? 'ok' : 'degradado',
       postgres: postgresOk ? 'ok' : 'caido',
       redis,
-      version: process.env.npm_package_version ?? '0.0.0',
+      version: versionDeApp(),
       tiempoActivoSegundos: Math.round(process.uptime()),
     };
   }
@@ -58,4 +60,29 @@ export class HealthController {
 
     return (await this.redis.ping()) ? 'ok' : 'caido';
   }
+}
+
+/**
+ * Versión que reporta `/health`.
+ *
+ * `npm_package_version` solo existe cuando el proceso lo lanza npm/pnpm; en
+ * Docker (`node dist/main`) nunca está, y por eso producción reportaba
+ * `0.0.0`. El orden es: `APP_VERSION` (permite fijarla por despliegue sin
+ * tocar código), la `version` de `package.json` —que viaja en la imagen
+ * porque el Dockerfile la copia— y `0.0.0` como último recurso.
+ */
+export function versionDeApp(): string {
+  if (process.env.APP_VERSION) return process.env.APP_VERSION;
+
+  try {
+    const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')) as {
+      version?: unknown;
+    };
+
+    if (typeof pkg.version === 'string' && pkg.version) return pkg.version;
+  } catch {
+    // Sin package.json legible no hay nada que leer: último recurso abajo.
+  }
+
+  return '0.0.0';
 }
