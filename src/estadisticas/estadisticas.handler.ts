@@ -153,8 +153,10 @@ export class EstadisticasHandler {
           goles: suma(grupo, (s) => s.goles),
           asistencias: suma(grupo, (s) => s.asistencias),
           tirosAlArco: suma(grupo, (s) => s.tirosAlArco),
+          tirosAfuera: suma(grupo, (s) => s.tirosAfuera),
           regates: suma(grupo, (s) => s.regates),
           faltasRecibidas: suma(grupo, (s) => s.faltasRecibidas),
+          pases: suma(grupo, (s) => s.pases),
           recuperaciones: suma(grupo, (s) => s.recuperaciones),
           rechazos: suma(grupo, (s) => s.rechazos),
           atajadas: suma(grupo, (s) => s.atajadas),
@@ -162,6 +164,7 @@ export class EstadisticasHandler {
           amarillas: suma(grupo, (s) => s.amarillas),
           rojas: suma(grupo, (s) => s.rojas),
           autogoles: suma(grupo, (s) => s.autogoles),
+          faltasCometidas: suma(grupo, (s) => s.faltasCometidas),
           esArquero: grupo.some((e) => e.esArquero),
         }),
       );
@@ -341,8 +344,10 @@ export class EstadisticasHandler {
       goles: stat.goles,
       asistencias: stat.asistencias,
       tirosAlArco: stat.tirosAlArco,
+      tirosAfuera: stat.tirosAfuera,
       regates: stat.regates,
       faltasRecibidas: stat.faltasRecibidas,
+      pases: stat.pases,
       recuperaciones: stat.recuperaciones,
       rechazos: stat.rechazos,
       atajadas: stat.atajadas,
@@ -350,6 +355,7 @@ export class EstadisticasHandler {
       amarillas: stat.amarillas,
       rojas: stat.rojas,
       autogoles: stat.autogoles,
+      faltasCometidas: stat.faltasCometidas,
       esArquero: extras.esArquero,
     });
   }

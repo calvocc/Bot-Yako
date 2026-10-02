@@ -525,6 +525,41 @@ describe('Estadísticas (e2e)', () => {
       expect(respuesta.texto).toContain('Goles: 3');
     });
 
+    it('/stats muestra tiro_afuera, pase y falta_cometida (migración 0020)', async () => {
+      const { equipo, admin } = await escenario('Eventos sin agregar');
+      const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
+
+      const partido = await partidos.crear({
+        equipoId: equipo.id,
+        rival: 'Rival',
+        fecha: '2026-10-01',
+        formato: { cantidadTiempos: 2, minutosPorTiempo: 25 },
+        creadoPor: admin,
+      });
+
+      await tiempos.iniciarEnVivo(partido.id, admin, [jacob.id]);
+
+      for (const tipo of ['tiro_afuera', 'tiro_afuera', 'pase', 'falta_cometida'] as const) {
+        await eventos.registrar({
+          partidoId: partido.id,
+          tipo,
+          equipoOrigen: 'propio',
+          jugadorId: jacob.id,
+          reportadoPor: admin,
+          // Dos tiros iguales seguidos los tomaría por carga duplicada (mismo
+          // `forzar` que usa `partidoConGoles` para varios goles legítimos).
+          forzar: true,
+        });
+      }
+      await partidos.cerrar(partido.id, admin, { propio: 0, rival: 1 });
+
+      const respuesta = await handler.stats('Jacob', admin);
+
+      expect(respuesta.texto).toContain('Tiros: 0 (+2 afuera)');
+      expect(respuesta.texto).toContain('Pases: 1');
+      expect(respuesta.texto).toContain('Faltas cometidas: 1');
+    });
+
     it('/stats de un jugador sin ficha en otro equipo no muestra bloque "Total"', async () => {
       const { equipo, admin } = await escenario('Sin total');
       const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);

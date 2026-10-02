@@ -8,8 +8,10 @@ interface CamposFicha {
   goles: number;
   asistencias: number;
   tirosAlArco: number;
+  tirosAfuera: number;
   regates: number;
   faltasRecibidas: number;
+  pases: number;
   recuperaciones: number;
   rechazos: number;
   atajadas: number;
@@ -17,6 +19,7 @@ interface CamposFicha {
   amarillas: number;
   rojas: number;
   autogoles: number;
+  faltasCometidas: number;
   esArquero: boolean;
 }
 
@@ -56,8 +59,10 @@ export const textos = {
     goles: number;
     asistencias: number;
     tirosAlArco: number;
+    tirosAfuera: number;
     regates: number;
     faltasRecibidas: number;
+    pases: number;
     recuperaciones: number;
     rechazos: number;
     atajadas: number;
@@ -65,6 +70,7 @@ export const textos = {
     amarillas: number;
     rojas: number;
     autogoles: number;
+    faltasCometidas: number;
     esArquero: boolean;
   }): string => {
     const dorsal = datos.dorsal !== null ? ` #${datos.dorsal}` : '';
@@ -92,8 +98,10 @@ export const textos = {
     goles: number;
     asistencias: number;
     tirosAlArco: number;
+    tirosAfuera: number;
     regates: number;
     faltasRecibidas: number;
+    pases: number;
     recuperaciones: number;
     rechazos: number;
     atajadas: number;
@@ -101,6 +109,7 @@ export const textos = {
     amarillas: number;
     rojas: number;
     autogoles: number;
+    faltasCometidas: number;
     esArquero: boolean;
   }): string => {
     return [
@@ -193,9 +202,15 @@ function bloqueAtaque(datos: CamposFicha): string[] {
     `📈 ${promedio(datos.goles, datos.partidosJugados)} G/PJ · ${promedio(datos.goles + datos.asistencias, datos.partidosJugados)} contribuciones/PJ${lineaPor90(datos)}`,
   ];
 
-  if (datos.tirosAlArco > 0 || datos.regates > 0 || datos.faltasRecibidas > 0) {
+  if (
+    datos.tirosAlArco > 0 ||
+    datos.tirosAfuera > 0 ||
+    datos.regates > 0 ||
+    datos.faltasRecibidas > 0 ||
+    datos.pases > 0
+  ) {
     lineas.push(
-      `🎯 Tiros: ${datos.tirosAlArco} · 🤹 Regates: ${datos.regates} · 🤕 Faltas recibidas: ${datos.faltasRecibidas}`,
+      `🎯 Tiros: ${datos.tirosAlArco} (+${datos.tirosAfuera} afuera) · 🤹 Regates: ${datos.regates} · 🤕 Faltas recibidas: ${datos.faltasRecibidas} · 👟 Pases: ${datos.pases}`,
     );
   }
 
@@ -236,10 +251,17 @@ function bloquePorteria(datos: CamposFicha): string[] {
 }
 
 function bloqueDisciplina(datos: CamposFicha): string[] {
-  if (datos.amarillas === 0 && datos.rojas === 0 && datos.autogoles === 0) return [];
+  if (
+    datos.amarillas === 0 &&
+    datos.rojas === 0 &&
+    datos.autogoles === 0 &&
+    datos.faltasCometidas === 0
+  ) {
+    return [];
+  }
 
   return [
     '🟨 DISCIPLINA',
-    `🟨 Amarillas: ${datos.amarillas} · 🟥 Rojas: ${datos.rojas} · 🙃 Autogoles: ${datos.autogoles}`,
+    `🟨 Amarillas: ${datos.amarillas} · 🟥 Rojas: ${datos.rojas} · 🙃 Autogoles: ${datos.autogoles} · 🚫 Faltas cometidas: ${datos.faltasCometidas}`,
   ];
 }
