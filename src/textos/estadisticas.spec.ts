@@ -10,6 +10,34 @@ describe('estadisticas.listadoJugadores', () => {
   });
 });
 
+describe('estadisticas.eligeEquipo', () => {
+  it('pide tocar un equipo', () => {
+    const texto = textos.eligeEquipo();
+
+    expect(texto).toContain('¿De qué equipo quieres ver estadísticas?');
+  });
+});
+
+describe('estadisticas.elegirJugador', () => {
+  it('incluye el equipo, el cuerpo y la invitación a tocar un jugador', () => {
+    const texto = textos.elegirJugador('Sub-11', '• #10 Jacob\n• #7 Andrés');
+
+    expect(texto).toContain('📋 Sub-11:');
+    expect(texto).toContain('• #10 Jacob');
+    expect(texto).toContain('Toca un jugador');
+  });
+});
+
+describe('estadisticas.sinEstadisticas', () => {
+  it('dice de quién y de qué temporada no hay nada cargado', () => {
+    const texto = textos.sinEstadisticas('Jacob', 2026);
+
+    expect(texto).toContain('Jacob');
+    expect(texto).toContain('2026');
+    expect(texto).toContain('Todavía no tiene estadísticas cargadas');
+  });
+});
+
 describe('estadisticas.sinJugadores', () => {
   it('avisa que el equipo no tiene plantilla cargada', () => {
     expect(textos.sinJugadores()).toBe('Sin jugadores en este equipo todavía.');

@@ -1,9 +1,21 @@
 /** Textos de `/stats` y `/tabla`. */
 export const textos = {
-  /** `/stats` sin nombre: plantilla de un equipo, con la invitación a pedir el detalle de alguien. */
+  /** `/stats` sin nombre con 2+ equipos: primero se elige el equipo con botones. */
+  eligeEquipo: () => '🏷️ ¿De qué equipo quieres ver estadísticas?\n\nToca uno 👇',
+  /**
+   * `/stats` sin nombre con un solo equipo, o tras elegir equipo con un
+   * botón: plantilla con un botón por jugador, para no tener que escribir
+   * el nombre. Todavía se puede escribir `/stats seguido de un nombre`.
+   */
+  elegirJugador: (equipoNombre: string, cuerpo: string) =>
+    `📋 ${equipoNombre}:\n\n${cuerpo}\n\nToca un jugador para ver sus estadísticas 👇`,
+  /** Plantilla vacía: sin jugadores no hay botones que ofrecer. */
   listadoJugadores: (equipoNombre: string, cuerpo: string) =>
     `📋 ${equipoNombre}:\n\n${cuerpo}\n\nEscribe /stats seguido de un nombre para ver sus estadísticas.`,
   sinJugadores: () => 'Sin jugadores en este equipo todavía.',
+  /** Jugador elegido con un botón pero sin fila en la vista de la temporada. */
+  sinEstadisticas: (nombre: string, temporada: number) =>
+    `📊 ${nombre} — temporada ${temporada}\nTodavía no tiene estadísticas cargadas.`,
 
   lineaJugador: (datos: {
     nombre: string;
