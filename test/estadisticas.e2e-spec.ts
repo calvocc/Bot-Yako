@@ -386,10 +386,12 @@ describe('Estadísticas (e2e)', () => {
       const respuesta = await handler.stats(undefined, admin);
 
       expect(respuesta.texto).toContain('📋 Sub-11:');
-      expect(respuesta.texto).toContain('• #10 Jacob');
-      expect(respuesta.texto).toContain('• #7 Andrés');
+      // Sin lista duplicada en el texto: los nombres viven solo en los botones.
+      expect(respuesta.texto).not.toContain('Jacob');
+      expect(respuesta.texto).not.toContain('Andrés');
       expect(respuesta.texto).toContain('Toca un jugador');
       // `listar` ordena por dorsal: Andrés (#7) va antes que Jacob (#10).
+      expect(respuesta.botones?.map((b) => b.texto)).toEqual(['#7 Andrés', '#10 Jacob']);
       expect(respuesta.botones?.map((b) => b.id)).toEqual([
         `cmd:stats:jugador:${andres.id}`,
         `cmd:stats:jugador:${jacob.id}`,
@@ -526,10 +528,10 @@ describe('Estadísticas (e2e)', () => {
       // ...más el bloque de total, que sí suma entre los dos.
       expect(respuesta.texto).toContain('🧮 Total en la academia');
       expect(respuesta.texto).toContain('(2 equipos)');
-      expect(respuesta.texto).toContain('Goles: 3');
+      expect(respuesta.texto).toContain('⚽ 3 goles');
     });
 
-    it('/stats muestra tiro_afuera, pase y falta_cometida (migración 0020)', async () => {
+    it('la migración 0020 llega al servicio y tiro_afuera suma en los tiros de /stats', async () => {
       const { equipo, admin } = await escenario('Eventos sin agregar');
       const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
 
@@ -557,11 +559,20 @@ describe('Estadísticas (e2e)', () => {
       }
       await partidos.cerrar(partido.id, admin, { propio: 0, rival: 1 });
 
+      // La ficha ya no muestra pases ni faltas cometidas, así que la
+      // migración se verifica en la fila del servicio; en la ficha los
+      // tiros de afuera suman dentro del total de tiros.
+      const [fila] = await estadisticas.deJugador(equipo.id, 'Jacob');
+
+      expect(fila.tirosAfuera).toBe(2);
+      expect(fila.pases).toBe(1);
+      expect(fila.faltasCometidas).toBe(1);
+
       const respuesta = await handler.stats('Jacob', admin);
 
-      expect(respuesta.texto).toContain('Tiros: 0 (+2 afuera)');
-      expect(respuesta.texto).toContain('Pases: 1');
-      expect(respuesta.texto).toContain('Faltas cometidas: 1');
+      expect(respuesta.texto).toContain('🎯 2 tiros');
+      expect(respuesta.texto).not.toContain('Pases');
+      expect(respuesta.texto).not.toContain('cometidas');
     });
 
     it('/stats de un jugador sin ficha en otro equipo no muestra bloque "Total"', async () => {

@@ -19,12 +19,12 @@ describe('estadisticas.eligeEquipo', () => {
 });
 
 describe('estadisticas.elegirJugador', () => {
-  it('incluye el equipo, el cuerpo y la invitación a tocar un jugador', () => {
-    const texto = textos.elegirJugador('Sub-11', '• #10 Jacob\n• #7 Andrés');
+  it('solo invita a tocar un botón: la lista vive en los botones, no en el texto', () => {
+    const texto = textos.elegirJugador('Sub-11');
 
     expect(texto).toContain('📋 Sub-11:');
-    expect(texto).toContain('• #10 Jacob');
     expect(texto).toContain('Toca un jugador');
+    expect(texto).not.toContain('•');
   });
 });
 
@@ -77,12 +77,16 @@ describe('estadisticas.detallePartidoJugador', () => {
     });
 
     expect(texto).toContain('⚽ Jacob #10 — 14/09/2026 · vs Tigres');
-    expect(texto).toContain('1 partidos · 58 min');
-    expect(texto).toContain('Goles: 2 · Asistencias: 1');
-    expect(texto).toContain('Tiros: 4 (+1 afuera)');
+    expect(texto).toContain('1 partido');
+    expect(texto).toContain('⏱️ 58 min registrados en 1 partido');
+    expect(texto).toContain('⚽ 2 goles · 🅰️ 1 asistencia');
+    expect(texto).toContain('🔥 3 aportes de gol en el partido');
+    expect(texto).toContain('📈 Más de un aporte de gol por partido');
+    expect(texto).toContain('🎯 5 tiros · 🤹 2 regates · 🤕 1 falta recibida');
     expect(texto).toContain('🛡️ DEFENSA');
     expect(texto).not.toContain('🧤 PORTERÍA');
-    expect(texto).not.toContain('🟨 DISCIPLINA');
+    // Disciplina siempre se muestra, aunque sea todo cero.
+    expect(texto).toContain('🟨 0 amarillas · 🟥 0 rojas · 🙃 0 autogoles');
   });
 });
 
@@ -129,23 +133,66 @@ const fichaBase = {
 };
 
 describe('estadisticas.lineaJugador', () => {
-  it('arma la ficha por grupos con eficiencia y minutos', () => {
+  it('arma la ficha por grupos en lenguaje simple, con minutos y ritmo', () => {
     const texto = textos.lineaJugador(fichaBase);
 
-    expect(texto).toContain('📊 Jacob #10 — Sub-11 · temporada 2026');
+    expect(texto).toContain('📊 Jacob #10 — Sub-11 · Temporada 2026');
     expect(texto).toContain('🏟️ PARTICIPACIÓN');
-    expect(texto).toContain('5 partidos · 300 min');
+    expect(texto).toContain('5 partidos');
+    expect(texto).toContain('⏱️ 300 min registrados en 5 partidos');
     expect(texto).toContain('⚽ ATAQUE');
-    expect(texto).toContain('Goles: 4 · Asistencias: 2');
-    expect(texto).toContain('Tiros: 12 (+4 afuera)');
-    expect(texto).toContain('Pases: 30');
-    expect(texto).toContain('Faltas cometidas: 2');
-    expect(texto).toContain('0.80 G/PJ');
-    expect(texto).toContain("contribuciones/90'");
+    expect(texto).toContain('⚽ 4 goles · 🅰️ 2 asistencias');
+    expect(texto).toContain('🔥 6 aportes de gol en total');
+    expect(texto).toContain('📈 Más de un aporte de gol por partido');
+    expect(texto).toContain('🎯 16 tiros · 🤹 5 regates · 🤕 3 faltas recibidas');
+    // Sin tecnicismos: ni G/PJ, ni per-90, ni pases, ni faltas cometidas.
+    expect(texto).not.toContain('G/PJ');
+    expect(texto).not.toContain("90'");
+    expect(texto).not.toContain('Pases');
+    expect(texto).not.toContain('cometidas');
     expect(texto).toContain('🛡️ DEFENSA');
+    expect(texto).toContain('🔄 9 recuperaciones · 🧹 4 rechazos');
     expect(texto).toContain('🟨 DISCIPLINA');
+    expect(texto).toContain('🟨 1 amarilla · 🟥 0 rojas · 🙃 0 autogoles');
     // Jugador de campo sin atajadas: sin grupo portería.
     expect(texto).not.toContain('🧤 PORTERÍA');
+  });
+
+  it('dice cada cuántos partidos cae un aporte cuando el ritmo es menor', () => {
+    const texto = textos.lineaJugador({
+      ...fichaBase,
+      nombre: 'Jacob Calvo',
+      dorsal: 26,
+      equipoNombre: '2015 Azul',
+      partidosJugados: 9,
+      minutos: 202,
+      partidosConReloj: 5,
+      goles: 3,
+      asistencias: 1,
+      tirosAlArco: 4,
+      tirosAfuera: 0,
+      regates: 2,
+      faltasRecibidas: 0,
+      recuperaciones: 1,
+      rechazos: 1,
+      atajadas: 1,
+      penalesAtajados: 0,
+      amarillas: 0,
+      rojas: 0,
+      autogoles: 0,
+      faltasCometidas: 0,
+    });
+
+    expect(texto).toContain('📊 Jacob Calvo #26 — 2015 Azul · Temporada 2026');
+    expect(texto).toContain('9 partidos');
+    expect(texto).toContain('⏱️ 202 min registrados en 5 partidos');
+    expect(texto).toContain('⚽ 3 goles · 🅰️ 1 asistencia');
+    expect(texto).toContain('🔥 4 aportes de gol en total');
+    expect(texto).toContain('📈 Participó directamente en un gol cada 2 partidos');
+    expect(texto).toContain('🎯 4 tiros · 🤹 2 regates · 🤕 0 faltas recibidas');
+    expect(texto).toContain('🔄 1 recuperación · 🧹 1 rechazo');
+    expect(texto).toContain('🧤 1 atajada · 🥅 0 penales atajados');
+    expect(texto).toContain('🟨 0 amarillas · 🟥 0 rojas · 🙃 0 autogoles');
   });
 
   it('omite el dorsal cuando es null', () => {
@@ -155,7 +202,7 @@ describe('estadisticas.lineaJugador', () => {
     expect(texto).not.toContain('#10');
   });
 
-  it('sin reloj avisa y no calcula per-90', () => {
+  it('sin reloj avisa sin tecnicismos y disciplina igual se muestra', () => {
     const texto = textos.lineaJugador({
       ...fichaBase,
       minutos: 0,
@@ -166,17 +213,19 @@ describe('estadisticas.lineaJugador', () => {
       faltasCometidas: 0,
     });
 
-    expect(texto).toContain('sin registro de minutos');
+    expect(texto).toContain('⏱️ sin registro de minutos');
     expect(texto).not.toContain("90'");
     expect(texto).not.toContain('🛡️ DEFENSA');
-    expect(texto).not.toContain('🟨 DISCIPLINA');
+    expect(texto).toContain('🟨 DISCIPLINA');
+    expect(texto).toContain('🟨 0 amarillas · 🟥 0 rojas · 🙃 0 autogoles');
   });
 
   it('muestra portería solo para arquero o con intervenciones', () => {
     expect(textos.lineaJugador({ ...fichaBase, esArquero: true })).toContain('🧤 PORTERÍA');
-    expect(textos.lineaJugador({ ...fichaBase, atajadas: 2, penalesAtajados: 1 })).toContain(
-      '🧤 PORTERÍA',
-    );
+    const texto = textos.lineaJugador({ ...fichaBase, atajadas: 2, penalesAtajados: 1 });
+
+    expect(texto).toContain('🧤 PORTERÍA');
+    expect(texto).toContain('🧤 2 atajadas · 🥅 1 penal atajado');
   });
 });
 

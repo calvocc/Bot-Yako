@@ -3,11 +3,7 @@ import type { RespuestaBot } from '../channels/channel.types';
 import { botonComando, respuestaSinEquipos } from '../conversacion/comandos';
 import type { EquipoDelUsuario } from '../identidad/membresias.service';
 import { MembresiasService } from '../identidad/membresias.service';
-import {
-  describirJugador,
-  formatearListaJugadores,
-  JugadoresService,
-} from '../jugadores/jugadores.service';
+import { describirJugador, JugadoresService } from '../jugadores/jugadores.service';
 import { AlineacionService } from '../partidos/alineacion.service';
 import { PartidosService } from '../partidos/partidos.service';
 import { TiemposService } from '../partidos/tiempos.service';
@@ -242,14 +238,15 @@ export class EstadisticasHandler {
     }
 
     const plantilla = await this.jugadores.listar(equipo.equipoId);
-    const cuerpo = formatearListaJugadores(plantilla, textos.sinJugadores());
 
     if (plantilla.length === 0) {
-      return { texto: textos.listadoJugadores(equipo.equipoNombre, cuerpo) };
+      return {
+        texto: textos.listadoJugadores(equipo.equipoNombre, textos.sinJugadores()),
+      };
     }
 
     return {
-      texto: textos.elegirJugador(equipo.equipoNombre, cuerpo),
+      texto: textos.elegirJugador(equipo.equipoNombre),
       botones: plantilla.map((jugador) =>
         botonComando(
           'stats',
