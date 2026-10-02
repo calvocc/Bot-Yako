@@ -3,6 +3,10 @@ import type { EquipoDelUsuario } from '../identidad/membresias.service';
 import type { MembresiasService } from '../identidad/membresias.service';
 import type { Jugador } from '../jugadores/jugadores.service';
 import type { JugadoresService } from '../jugadores/jugadores.service';
+import type { AlineacionService } from '../partidos/alineacion.service';
+import type { PartidosService } from '../partidos/partidos.service';
+import type { Partido } from '../partidos/partido.mapper';
+import type { TiemposService } from '../partidos/tiempos.service';
 import { EstadisticasHandler } from './estadisticas.handler';
 import { temporadaActual } from './estadisticas.service';
 import type { EstadisticaJugador } from './estadisticas.service';
@@ -23,13 +27,18 @@ function equipo(equipoId: string, equipoNombre: string): EquipoDelUsuario {
   };
 }
 
-function jugador(id: string, nombre: string, dorsal: number | null): Jugador {
+function jugador(
+  id: string,
+  nombre: string,
+  dorsal: number | null,
+  posicion: Jugador['posicion'] = null,
+): Jugador {
   return {
     id,
     nombre,
     dorsal,
     activo: true,
-    posicion: null,
+    posicion,
     fechaNacimiento: null,
     pesoKg: null,
     estaturaCm: null,
@@ -64,6 +73,31 @@ interface Mundo {
   equipos: EquipoDelUsuario[];
   plantillas: Record<string, Jugador[]>;
   stats: Record<string, EstadisticaJugador[]>;
+  /** Partidos cerrados por equipo, para el cálculo de minutos. */
+  cerrados?: Record<string, Partido[]>;
+  /** Minutos por partido (`partidoId -> jugadorId -> minutos`). */
+  minutos?: Record<string, Record<string, number>>;
+}
+
+function partido(id: string, fecha: string): Partido {
+  return {
+    id,
+    equipoId: EQUIPO_1,
+    rival: 'Rival',
+    fecha,
+    competenciaId: null,
+    competenciaNombre: null,
+    cantidadTiempos: 2,
+    minutosPorTiempo: 25,
+    tiempoActual: 2,
+    tiempoEstado: 'finalizado',
+    tiempoIniciadoEn: null,
+    estado: 'cerrado',
+    marcadorPropio: 1,
+    marcadorRival: 0,
+    creadoPor: 'admin',
+    creadoEn: new Date(),
+  } as unknown as Partido;
 }
 
 function handlerDe(mundo: Mundo): EstadisticasHandler {
@@ -79,7 +113,30 @@ function handlerDe(mundo: Mundo): EstadisticasHandler {
     deJugador: (equipoId: string) => Promise.resolve(mundo.stats[equipoId] ?? []),
   } as unknown as EstadisticasService;
 
-  return new EstadisticasHandler(membresias, jugadores, estadisticas);
+  const partidos = {
+    cerradosDe: (equipoId: string) => Promise.resolve(mundo.cerrados?.[equipoId] ?? []),
+  } as unknown as PartidosService;
+
+  const tiempos = {
+    contextoDeCarga: () => Promise.resolve({ minuto: { minuto: 50 } }),
+  } as unknown as TiemposService;
+
+  const alineacion = {
+    datosDeParticipacion: (partidoId: string) => {
+      const minutos = new Map(Object.entries(mundo.minutos?.[partidoId] ?? {}));
+
+      return Promise.resolve({ participantes: [...minutos.keys()], minutos });
+    },
+  } as unknown as AlineacionService;
+
+  return new EstadisticasHandler(
+    membresias,
+    jugadores,
+    estadisticas,
+    partidos,
+    tiempos,
+    alineacion,
+  );
 }
 
 const bytesDe = (texto: string): number => Buffer.byteLength(texto, 'utf8');
@@ -198,5 +255,56 @@ describe('EstadisticasHandler.stats por botones', () => {
     const respuesta = await handler.stats(`jugador:${ANDRES_1}`, 'user-1');
 
     expect(respuesta.texto).toContain('No encontré a ese jugador entre tus equipos');
+  });
+
+  it('la ficha trae grupos, eficiencia y minutos cuando hay reloj', async () => {
+    const handler = handlerDe({
+      equipos: [equipo(EQUIPO_1, 'Sub-11')],
+      plantillas: { [EQUIPO_1]: [jugador(JACOB_1, 'Jacob', 10)] },
+      stats: { [EQUIPO_1]: [fila(JACOB_1, EQUIPO_1, 'Jacob')] },
+      cerrados: { [EQUIPO_1]: [partido('p1', `${temporadaActual()}-03-01`)] },
+      minutos: { p1: { [JACOB_1]: 58 } },
+    });
+
+    const respuesta = await handler.stats(`jugador:${JACOB_1}`, 'user-1');
+
+    expect(respuesta.texto).toContain('🏟️ PARTICIPACIÓN');
+    expect(respuesta.texto).toContain('8 partidos · 58 min');
+    expect(respuesta.texto).toContain('⚽ ATAQUE');
+    expect(respuesta.texto).toContain('0.75 G/PJ');
+    expect(respuesta.texto).toContain("contribuciones/90'");
+    // Sin nada en defensa ni portería esos grupos no aparecen (la fila trae
+    // 1 amarilla, así que disciplina sí sale).
+    expect(respuesta.texto).not.toContain('🛡️ DEFENSA');
+    expect(respuesta.texto).not.toContain('🧤 PORTERÍA');
+    expect(respuesta.texto).toContain('🟨 DISCIPLINA');
+  });
+
+  it('sin reloj avisa que no hay minutos y no inventa per-90', async () => {
+    const handler = handlerDe({
+      equipos: [equipo(EQUIPO_1, 'Sub-11')],
+      plantillas: { [EQUIPO_1]: [jugador(JACOB_1, 'Jacob', 10)] },
+      stats: { [EQUIPO_1]: [fila(JACOB_1, EQUIPO_1, 'Jacob')] },
+    });
+
+    const respuesta = await handler.stats(`jugador:${JACOB_1}`, 'user-1');
+
+    expect(respuesta.texto).toContain('sin registro de minutos');
+    expect(respuesta.texto).not.toContain("90'");
+    expect(respuesta.texto).toContain('0.75 G/PJ');
+  });
+
+  it('el grupo portería sale solo con atajadas o posición de arquero', async () => {
+    const arquero = { ...fila(JACOB_1, EQUIPO_1, 'Jacob'), atajadas: 7, penalesAtajados: 1 };
+    const handler = handlerDe({
+      equipos: [equipo(EQUIPO_1, 'Sub-11')],
+      plantillas: { [EQUIPO_1]: [jugador(JACOB_1, 'Jacob', 1, 'arquero')] },
+      stats: { [EQUIPO_1]: [arquero] },
+    });
+
+    const respuesta = await handler.stats(`jugador:${JACOB_1}`, 'user-1');
+
+    expect(respuesta.texto).toContain('🧤 PORTERÍA');
+    expect(respuesta.texto).toContain('Atajadas: 7');
   });
 });
