@@ -5,17 +5,17 @@ import type { EquipoDelUsuario } from '../identidad/membresias.service';
 import { MembresiasService } from '../identidad/membresias.service';
 import { describirJugador, JugadoresService } from '../jugadores/jugadores.service';
 import { AlineacionService } from '../partidos/alineacion.service';
+import type { Partido } from '../partidos/partido.mapper';
 import { PartidosService } from '../partidos/partidos.service';
 import { TiemposService } from '../partidos/tiempos.service';
+import { ResumenService } from '../resumen/resumen.service';
 import { textos as textosComunes } from '../textos/comunes';
 import { textos } from '../textos/estadisticas';
 import {
   EstadisticasService,
   temporadaActual,
-  type EstadisticaEquipo,
   type EstadisticaEquipoCompetencia,
   type EstadisticaJugador,
-  type Goleador,
 } from './estadisticas.service';
 
 /**
@@ -48,6 +48,7 @@ export class EstadisticasHandler {
     private readonly partidos: PartidosService,
     private readonly tiempos: TiemposService,
     private readonly alineacion: AlineacionService,
+    private readonly resumen: ResumenService,
   ) {}
 
   async stats(argumento: string | undefined, usuarioId?: string): Promise<RespuestaBot> {
@@ -302,30 +303,179 @@ export class EstadisticasHandler {
     return { texto: textosComunes.noEncontre('a ese jugador entre tus equipos') };
   }
 
-  async tabla(usuarioId?: string): Promise<RespuestaBot> {
+  /**
+   * `/tabla [equipo:<id>]`: igual que `/stats` sin nombre —con un solo
+   * equipo muestra su ficha directo; con varios, primero ofrece los equipos
+   * con botones y enseña solo el elegido. El texto libre no busca por
+   * nombre: cae al selector (o a la ficha si hay un solo equipo).
+   */
+  async tabla(argumento: string | undefined, usuarioId?: string): Promise<RespuestaBot> {
     if (!usuarioId) return { texto: textosComunes.primeroUsaStart() };
 
     const equipos = await this.membresias.equiposDe(usuarioId);
 
     if (equipos.length === 0) return respuestaSinEquipos();
 
-    const bloques = await Promise.all(
-      equipos.map(async (equipo) => {
-        const [stat, goleador] = await Promise.all([
-          this.estadisticas.deEquipo(equipo.equipoId),
-          this.estadisticas.goleadorDe(equipo.equipoId),
-        ]);
+    const nombre = argumento?.trim();
 
-        return this.bloqueEquipoConCampeonatos(
-          equipo.equipoId,
-          equipo.equipoNombre,
-          stat,
-          goleador,
-        );
+    if (nombre?.startsWith(PREFIJO_EQUIPO)) {
+      const equipo = equipos.find((e) => e.equipoId === nombre.slice(PREFIJO_EQUIPO.length));
+
+      if (!equipo) {
+        return { texto: textosComunes.noEncontre('ese equipo entre los tuyos') };
+      }
+
+      return this.fichaDeEquipo(equipo);
+    }
+
+    return this.elegirEquipoTabla(equipos);
+  }
+
+  /**
+   * `/tabla` sin equipo elegido: con un solo equipo va directo a su ficha;
+   * con varios, primero los ofrece con botones, sin adelantar ningún dato.
+   */
+  private async elegirEquipoTabla(equipos: EquipoDelUsuario[]): Promise<RespuestaBot> {
+    if (equipos.length === 1) {
+      return this.fichaDeEquipo(equipos[0]);
+    }
+
+    return {
+      texto: textos.eligeEquipoTabla(),
+      botones: equipos.map((equipo) =>
+        botonComando('tabla', recortar(equipo.equipoNombre), `${PREFIJO_EQUIPO}${equipo.equipoId}`),
+      ),
+    };
+  }
+
+  /**
+   * Ficha ampliada del equipo: resultados, goles, un bloque por campeonato
+   * (con goleador y MVP) y los agregados de la temporada. El MVP suma los
+   * puntos brutos del puntaje partido por partido, con el mismo cálculo del
+   * resumen (incluye bonos de cierre).
+   */
+  private async fichaDeEquipo(equipo: EquipoDelUsuario): Promise<RespuestaBot> {
+    const [stat, filas, agregado] = await Promise.all([
+      this.estadisticas.deEquipo(equipo.equipoId),
+      this.estadisticas.porCompetencia(equipo.equipoId),
+      this.estadisticas.agregadoEquipo(equipo.equipoId),
+    ]);
+
+    if (!stat) {
+      return { texto: textos.sinPartidosCerrados(equipo.equipoNombre, temporadaActual()) };
+    }
+
+    const mvps = await this.mvpsPorCompetencia(equipo.equipoId, stat.temporada, filas);
+
+    const bloques = [
+      ...textos.fichaEquipo({
+        equipoNombre: equipo.equipoNombre,
+        temporada: stat.temporada,
+        partidosJugados: stat.partidosJugados,
+        ganados: stat.ganados,
+        empatados: stat.empatados,
+        perdidos: stat.perdidos,
+        golesFavor: stat.golesFavor,
+        golesContra: stat.golesContra,
       }),
+    ];
+
+    if (filas.length > 0) {
+      bloques.push(textos.tituloCampeonatos(), '');
+
+      for (const fila of filas) {
+        bloques.push(
+          ...textos.bloqueCampeonato({
+            nombre: fila.competenciaNombre ?? 'Sin competencia',
+            partidosJugados: fila.partidosJugados,
+            ganados: fila.ganados,
+            empatados: fila.empatados,
+            perdidos: fila.perdidos,
+            golesFavor: fila.golesFavor,
+            goleador: fila.goleador,
+            mvp: mvps.get(fila.competenciaId) ?? null,
+          }),
+        );
+      }
+    }
+
+    bloques.push(
+      ...textos.aportesEquipo(agregado),
+      ...textos.porteriaEquipo(agregado),
+      ...textos.disciplinaEquipo(agregado),
     );
 
-    return { texto: bloques.join('\n\n') };
+    return {
+      texto: bloques.join('\n'),
+      // Lleva al listado seleccionable de jugadores de este equipo (el
+      // mismo `equipo:<id>` de `/stats`): la ficha individual ya existe y
+      // no se duplica nada acá.
+      botones: [botonComando('stats', '👥 Ver jugadores', `${PREFIJO_EQUIPO}${equipo.equipoId}`)],
+    };
+  }
+
+  /**
+   * MVP por campeonato: suma de puntos brutos en los cerrados de la
+   * temporada de cada competencia (mismo criterio de la vista, por año de
+   * la fecha). Se acota a los últimos 60 cerrados como los minutos de la
+   * ficha: una temporada real no los supera. Sin puntaje positivo no hay a
+   * quién destacar y ese campeonato sale sin línea MVP.
+   */
+  private async mvpsPorCompetencia(
+    equipoId: string,
+    temporada: number,
+    filas: EstadisticaEquipoCompetencia[],
+  ): Promise<Map<string | null, { nombre: string; puntos: number }>> {
+    const competencias = new Set(filas.map((fila) => fila.competenciaId));
+
+    if (competencias.size === 0) return new Map();
+
+    const cerrados = await this.partidos.cerradosDe(equipoId, 60);
+    const porCompetencia = new Map<string | null, Partido[]>();
+
+    for (const partido of cerrados) {
+      if (!partido.fecha.startsWith(String(temporada))) continue;
+      if (!competencias.has(partido.competenciaId)) continue;
+
+      const grupo = porCompetencia.get(partido.competenciaId) ?? [];
+      grupo.push(partido);
+      porCompetencia.set(partido.competenciaId, grupo);
+    }
+
+    const mvps = new Map<string | null, { nombre: string; puntos: number }>();
+
+    for (const [competenciaId, partidos] of porCompetencia) {
+      const puntos = new Map<string, { nombre: string; puntos: number; aporte: number }>();
+
+      // Los partidos de un campeonato son independientes: en paralelo.
+      const notasPorPartido = await Promise.all(
+        partidos.map((partido) => this.resumen.notasDe(partido)),
+      );
+
+      for (const notas of notasPorPartido) {
+        for (const nota of notas) {
+          const acumulado = puntos.get(nota.jugadorId) ?? {
+            nombre: nota.nombre,
+            puntos: 0,
+            aporte: 0,
+          };
+          acumulado.puntos += nota.puntosBrutos;
+          acumulado.aporte += nota.goles + nota.asistencias;
+          puntos.set(nota.jugadorId, acumulado);
+        }
+      }
+
+      const [ganador] = [...puntos.values()]
+        .filter((candidato) => candidato.puntos > 0)
+        .sort(
+          (a, b) =>
+            b.puntos - a.puntos || b.aporte - a.aporte || a.nombre.localeCompare(b.nombre, 'es'),
+        );
+
+      if (ganador) mvps.set(competenciaId, { nombre: ganador.nombre, puntos: ganador.puntos });
+    }
+
+    return mvps;
   }
 
   private lineaJugador(
@@ -357,65 +507,6 @@ export class EstadisticasHandler {
       autogoles: stat.autogoles,
       faltasCometidas: stat.faltasCometidas,
       esArquero: extras.esArquero,
-    });
-  }
-
-  private bloqueEquipo(
-    equipoNombre: string,
-    stat: EstadisticaEquipo | null,
-    goleador: Goleador | null,
-  ): string {
-    if (!stat) {
-      return textos.sinPartidosCerrados(equipoNombre, temporadaActual());
-    }
-
-    return textos.bloqueEquipo({
-      equipoNombre,
-      temporada: stat.temporada,
-      partidosJugados: stat.partidosJugados,
-      ganados: stat.ganados,
-      empatados: stat.empatados,
-      perdidos: stat.perdidos,
-      golesFavor: stat.golesFavor,
-      goleador,
-    });
-  }
-
-  /**
-   * Agrega el desglose por campeonato al bloque agregado de un equipo, solo
-   * cuando aporta algo: si todo el historial cae en un único campeonato (o
-   * todo "sin competencia"), el desglose repetiría el bloque agregado que ya
-   * se muestra, así que no se pide ni se agrega nada.
-   */
-  private async bloqueEquipoConCampeonatos(
-    equipoId: string,
-    equipoNombre: string,
-    stat: EstadisticaEquipo | null,
-    goleador: Goleador | null,
-  ): Promise<string> {
-    const bloque = this.bloqueEquipo(equipoNombre, stat, goleador);
-
-    if (!stat) return bloque;
-
-    // `porCompetencia` ya trae el goleador de cada campeonato resuelto en la
-    // misma consulta (join lateral): nada que pedir por fila acá.
-    const porCompetencia = await this.estadisticas.porCompetencia(equipoId);
-
-    if (porCompetencia.length <= 1) return bloque;
-
-    const lineas = porCompetencia.map((fila) => this.lineaCompetencia(fila));
-
-    return [bloque, [textos.porCampeonato(), ...lineas].join('\n')].join('\n\n');
-  }
-
-  private lineaCompetencia(fila: EstadisticaEquipoCompetencia): string {
-    return textos.lineaCompetencia({
-      nombre: fila.competenciaNombre ?? 'Sin competencia',
-      partidosJugados: fila.partidosJugados,
-      ganados: fila.ganados,
-      empatados: fila.empatados,
-      perdidos: fila.perdidos,
-      goleador: fila.goleador,
     });
   }
 }

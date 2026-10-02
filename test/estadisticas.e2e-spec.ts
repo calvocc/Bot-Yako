@@ -456,20 +456,36 @@ describe('Estadísticas (e2e)', () => {
       expect(respuesta.texto).toContain('No encontré a nadie llamado "Nadie"');
     });
 
-    it('/tabla trae un bloque por equipo, con el goleador', async () => {
+    it('/tabla con un solo equipo muestra su ficha ampliada directo', async () => {
       const { equipo, admin } = await escenario('Tabla handler');
       const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
 
       await partidoConGoles(equipo.id, admin, '2026-07-01', jacob.id, 4);
 
-      const respuesta = await handler.tabla(admin);
+      const respuesta = await handler.tabla(undefined, admin);
 
-      expect(respuesta.texto).toContain('1 partidos');
-      expect(respuesta.texto).toContain('1 ganados');
-      expect(respuesta.texto).toContain('Goleador: Jacob (4)');
+      expect(respuesta.texto).toContain('📋 Sub-11 — Temporada 2026');
+      expect(respuesta.texto).toContain('🏟️ RESULTADOS');
+      expect(respuesta.texto).toContain('1 partido · 🟢 1 ganado · 🟡 0 empates · 🔴 0 perdidos');
+      expect(respuesta.texto).toContain('⚽ GOLES');
+      expect(respuesta.texto).toContain('4 goles a favor · 0 en contra · 📊 Diferencia: +4');
+      expect(respuesta.texto).toContain('📈 Promedio: 4.0 goles por partido');
+      expect(respuesta.texto).toContain('👥 APORTES DEL EQUIPO');
+      expect(respuesta.texto).toContain('⚽ 4 goles · 🅰️ 0 asistencias');
+      expect(respuesta.texto).toContain('🟨 0 amarillas · 🟥 0 rojas · 🙃 0 autogoles');
+      // Sin atajadas no hay grupo portería.
+      expect(respuesta.texto).not.toContain('🧤 PORTERÍA');
+
+      // El botón lleva al listado seleccionable de jugadores del equipo.
+      expect(respuesta.botones?.map((b) => b.id)).toEqual([`cmd:stats:equipo:${equipo.id}`]);
+
+      const plantilla = await handler.stats(`equipo:${equipo.id}`, admin);
+
+      expect(plantilla.texto).toContain('Toca un jugador');
+      expect(plantilla.botones?.map((b) => b.id)).toEqual([`cmd:stats:jugador:${jacob.id}`]);
     });
 
-    it('/tabla con partidos en un solo campeonato no agrega el desglose', async () => {
+    it('/tabla con un solo campeonato muestra su bloque con goleador y MVP', async () => {
       const { academia, equipo, admin } = await escenario('Tabla un campeonato');
       const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
       const liga = await competencias.obtenerOCrear(academia.id, 'Liga', admin);
@@ -477,12 +493,16 @@ describe('Estadísticas (e2e)', () => {
       await partidoConGoles(equipo.id, admin, '2026-07-08', jacob.id, 2, undefined, liga.id);
       await partidoConGoles(equipo.id, admin, '2026-07-15', jacob.id, 1, undefined, liga.id);
 
-      const respuesta = await handler.tabla(admin);
+      const respuesta = await handler.tabla(undefined, admin);
 
-      expect(respuesta.texto).not.toContain('Por campeonato:');
+      expect(respuesta.texto).toContain('🏆 POR CAMPEONATO');
+      expect(respuesta.texto).toContain('🏆 Liga');
+      expect(respuesta.texto).toContain('🥇 Goleador: Jacob (3 goles)');
+      // 2 + 1 goles a 3 puntos cada uno (sin posición): 9 puntos.
+      expect(respuesta.texto).toContain('⭐ MVP: Jacob (9 pts)');
     });
 
-    it('/tabla con 2+ campeonatos agrega el desglose con goleador por campeonato', async () => {
+    it('/tabla con 2+ campeonatos trae un bloque por campeonato, con goleador y MVP propios', async () => {
       const { academia, equipo, admin } = await escenario('Tabla desglose');
       const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
       const andres = await jugadores.crear(equipo.id, 'Andrés', 7);
@@ -491,13 +511,15 @@ describe('Estadísticas (e2e)', () => {
       await partidoConGoles(equipo.id, admin, '2026-07-01', jacob.id, 3, undefined, liga.id);
       await partidoConGoles(equipo.id, admin, '2026-07-08', andres.id, 5);
 
-      const respuesta = await handler.tabla(admin);
+      const respuesta = await handler.tabla(undefined, admin);
 
-      expect(respuesta.texto).toContain('Por campeonato:');
-      expect(respuesta.texto).toContain('🏆 Liga: 1 partidos · 1G 0E 0P · Goleador: Jacob (3)');
-      expect(respuesta.texto).toContain(
-        '🏆 Sin competencia: 1 partidos · 1G 0E 0P · Goleador: Andrés (5)',
-      );
+      expect(respuesta.texto).toContain('🏆 POR CAMPEONATO');
+      expect(respuesta.texto).toContain('🏆 Liga');
+      expect(respuesta.texto).toContain('🥇 Goleador: Jacob (3 goles)');
+      expect(respuesta.texto).toContain('⭐ MVP: Jacob (9 pts)');
+      expect(respuesta.texto).toContain('🏆 Sin competencia');
+      expect(respuesta.texto).toContain('🥇 Goleador: Andrés (5 goles)');
+      expect(respuesta.texto).toContain('⭐ MVP: Andrés (15 pts)');
     });
 
     it('/stats de una persona vinculada a dos equipos suma un bloque "Total"', async () => {
@@ -613,7 +635,8 @@ describe('Estadísticas (e2e)', () => {
       adaptador.limpiar();
       await procesador.procesar(textoDePrueba('/tabla', canalViewer));
       expect(adaptador.ultimoTexto).toContain('📋 Sub-11');
-      expect(adaptador.ultimoTexto).toContain('Goleador: Jacob (3)');
+      expect(adaptador.ultimoTexto).toContain('🥇 Goleador: Jacob (3 goles)');
+      expect(adaptador.ultimoTexto).toContain('⭐ MVP: Jacob (9 pts)');
 
       // Ni /stats ni /tabla escribieron nada: un Viewer no tiene permiso de
       // carga y estas consultas no deberían necesitarlo tampoco.

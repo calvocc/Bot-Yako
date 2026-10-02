@@ -188,7 +188,15 @@ export const textos = {
   sinPartidosCerrados: (equipoNombre: string, temporada: number) =>
     `📋 ${equipoNombre} — temporada ${temporada}\nSin partidos cerrados todavía.`,
 
-  bloqueEquipo: (datos: {
+  /** `/tabla` con 2+ equipos: primero se elige el equipo con botones. */
+  eligeEquipoTabla: () => '🏷️ ¿De qué equipo quieres ver la tabla?\n\nToca uno 👇',
+
+  /**
+   * Ficha del equipo: resultados y goles en lenguaje simple. Los bloques de
+   * campeonatos, aportes, portería y disciplina los agrega el handler
+   * después, en el mismo mensaje.
+   */
+  fichaEquipo: (datos: {
     equipoNombre: string;
     temporada: number;
     partidosJugados: number;
@@ -196,37 +204,104 @@ export const textos = {
     empatados: number;
     perdidos: number;
     golesFavor: number;
-    goleador: { nombre: string; goles: number } | null;
-  }): string => {
-    const perdidos = datos.perdidos === 1 ? '1 perdido' : `${datos.perdidos} perdidos`;
-    const golLinea = datos.goleador
-      ? ` · Goleador: ${datos.goleador.nombre} (${datos.goleador.goles})`
-      : '';
+    golesContra: number;
+  }): string[] => {
+    const diferencia = datos.golesFavor - datos.golesContra;
+    const promedio =
+      datos.partidosJugados > 0 ? (datos.golesFavor / datos.partidosJugados).toFixed(1) : '—';
 
     return [
-      `📋 ${datos.equipoNombre} — temporada ${datos.temporada}`,
-      `${datos.partidosJugados} partidos · ${datos.ganados} ganados · ${datos.empatados} empates · ${perdidos}`,
-      `Goles a favor: ${datos.golesFavor}${golLinea}`,
-    ].join('\n');
+      `📋 ${datos.equipoNombre} — Temporada ${datos.temporada}`,
+      '',
+      '🏟️ RESULTADOS',
+      `${plural(datos.partidosJugados, 'partido', 'partidos')} · 🟢 ${plural(datos.ganados, 'ganado', 'ganados')} · 🟡 ${plural(datos.empatados, 'empate', 'empates')} · 🔴 ${plural(datos.perdidos, 'perdido', 'perdidos')}`,
+      '',
+      '⚽ GOLES',
+      `${plural(datos.golesFavor, 'gol', 'goles')} a favor · ${datos.golesContra} en contra · 📊 Diferencia: ${diferencia > 0 ? `+${diferencia}` : `${diferencia}`}`,
+      `📈 Promedio: ${promedio} goles por partido`,
+      '',
+    ];
   },
 
-  porCampeonato: () => 'Por campeonato:',
-  /** Una línea por competencia (o el grupo "Sin competencia") del desglose de `/tabla`. */
-  lineaCompetencia: (datos: {
+  tituloCampeonatos: () => '🏆 POR CAMPEONATO',
+
+  /**
+   * Un bloque por competencia (o el grupo "Sin competencia"). El MVP es el
+   * jugador con más puntos brutos sumados en ese campeonato; si nadie sumó
+   * en positivo no hay a quién destacar y la línea se omite.
+   */
+  bloqueCampeonato: (datos: {
     nombre: string;
     partidosJugados: number;
     ganados: number;
     empatados: number;
     perdidos: number;
+    golesFavor: number;
     goleador: { nombre: string; goles: number } | null;
-  }): string => {
-    const golLinea = datos.goleador
-      ? ` · Goleador: ${datos.goleador.nombre} (${datos.goleador.goles})`
-      : '';
+    mvp: { nombre: string; puntos: number } | null;
+  }): string[] => {
+    const lineas = [
+      `🏆 ${datos.nombre}`,
+      `${plural(datos.partidosJugados, 'partido', 'partidos')} · 🟢 ${datos.ganados}G · 🟡 ${datos.empatados}E · 🔴 ${datos.perdidos}P`,
+      `⚽ ${plural(datos.golesFavor, 'gol', 'goles')} a favor`,
+    ];
 
-    return `🏆 ${datos.nombre}: ${datos.partidosJugados} partidos · ${datos.ganados}G ${datos.empatados}E ${datos.perdidos}P${golLinea}`;
+    if (datos.goleador) {
+      lineas.push(
+        `🥇 Goleador: ${datos.goleador.nombre} (${plural(datos.goleador.goles, 'gol', 'goles')})`,
+      );
+    }
+
+    if (datos.mvp) {
+      lineas.push(`⭐ MVP: ${datos.mvp.nombre} (${puntosTexto(datos.mvp.puntos)} pts)`);
+    }
+
+    return [...lineas, ''];
   },
+
+  /**
+   * Suma del equipo en la temporada (bloques APORTES/PORTERÍA/DISCIPLINA de
+   * `/tabla`): los tiros combinan arco + afuera, como en la ficha del
+   * jugador.
+   */
+  aportesEquipo: (datos: {
+    goles: number;
+    asistencias: number;
+    tirosAlArco: number;
+    tirosAfuera: number;
+    regates: number;
+    recuperaciones: number;
+    rechazos: number;
+  }): string[] => [
+    '👥 APORTES DEL EQUIPO',
+    `⚽ ${plural(datos.goles, 'gol', 'goles')} · 🅰️ ${plural(datos.asistencias, 'asistencia', 'asistencias')}`,
+    `🎯 ${plural(datos.tirosAlArco + datos.tirosAfuera, 'tiro', 'tiros')} · 🤹 ${plural(datos.regates, 'regate', 'regates')}`,
+    `🔄 ${plural(datos.recuperaciones, 'recuperación', 'recuperaciones')} · 🧹 ${plural(datos.rechazos, 'rechazo', 'rechazos')}`,
+    '',
+  ],
+
+  /** Solo si hubo intervenciones: en cero este grupo no informa nada. */
+  porteriaEquipo: (datos: { atajadas: number; penalesAtajados: number }): string[] => {
+    if (datos.atajadas === 0 && datos.penalesAtajados === 0) return [];
+
+    return [
+      '🧤 PORTERÍA',
+      `🧤 ${plural(datos.atajadas, 'atajada', 'atajadas')} · 🥅 ${plural(datos.penalesAtajados, 'penal atajado', 'penales atajados')}`,
+      '',
+    ];
+  },
+
+  /** Siempre visible: un "0 amarillas · 0 rojas" también informa. */
+  disciplinaEquipo: (datos: { amarillas: number; rojas: number; autogoles: number }): string[] => [
+    '🟨 DISCIPLINA',
+    `🟨 ${plural(datos.amarillas, 'amarilla', 'amarillas')} · 🟥 ${plural(datos.rojas, 'roja', 'rojas')} · 🙃 ${plural(datos.autogoles, 'autogol', 'autogoles')}`,
+  ],
 };
+
+/** `12 pts` / `12.5 pts`: sin decimal colgando cuando la suma es exacta. */
+function puntosTexto(puntos: number): string {
+  return Number.isInteger(puntos) ? `${puntos}` : puntos.toFixed(1);
+}
 
 /** `2026-09-14` → `14/09/2026`: fecha larga del encabezado del detalle. */
 function fechaLarga(fecha: string): string {

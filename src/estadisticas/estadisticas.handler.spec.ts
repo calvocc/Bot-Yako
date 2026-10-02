@@ -3,12 +3,17 @@ import type { EquipoDelUsuario } from '../identidad/membresias.service';
 import type { MembresiasService } from '../identidad/membresias.service';
 import type { Jugador } from '../jugadores/jugadores.service';
 import type { JugadoresService } from '../jugadores/jugadores.service';
+import type { NotaJugador } from '../eventos/puntaje';
 import type { AlineacionService } from '../partidos/alineacion.service';
 import type { PartidosService } from '../partidos/partidos.service';
 import type { Partido } from '../partidos/partido.mapper';
 import type { TiemposService } from '../partidos/tiempos.service';
+import type { ResumenService } from '../resumen/resumen.service';
 import { EstadisticasHandler } from './estadisticas.handler';
 import { temporadaActual } from './estadisticas.service';
+import type { AgregadoEquipo } from './estadisticas.service';
+import type { EstadisticaEquipo } from './estadisticas.service';
+import type { EstadisticaEquipoCompetencia } from './estadisticas.service';
 import type { EstadisticaJugador } from './estadisticas.service';
 import type { EstadisticasService } from './estadisticas.service';
 
@@ -80,15 +85,53 @@ interface Mundo {
   cerrados?: Record<string, Partido[]>;
   /** Minutos por partido (`partidoId -> jugadorId -> minutos`). */
   minutos?: Record<string, Record<string, number>>;
+  /** Fila de `estadisticas_equipo` para `/tabla` (`null` = sin cerrados). */
+  tabla?: EstadisticaEquipo | null;
+  campeonatos?: EstadisticaEquipoCompetencia[];
+  agregado?: AgregadoEquipo;
+  /** Notas por partido (`partidoId -> notas`), para el MVP de `/tabla`. */
+  notas?: Record<string, NotaJugador[]>;
 }
 
-function partido(id: string, fecha: string): Partido {
+function nota(
+  jugadorId: string,
+  nombre: string,
+  puntosBrutos: number,
+  goles = 0,
+  asistencias = 0,
+): NotaJugador {
+  return {
+    jugadorId,
+    nombre,
+    dorsal: 10,
+    posicion: null,
+    puntosBrutos,
+    nota: 6,
+    goles,
+    asistencias,
+    amarillas: 0,
+    rojas: 0,
+    autogoles: 0,
+    recuperaciones: 0,
+    rechazos: 0,
+    regates: 0,
+    tirosAlArco: 0,
+    tirosAfuera: 0,
+    pases: 0,
+    faltasRecibidas: 0,
+    faltasCometidas: 0,
+    atajadas: 0,
+    penalesAtajados: 0,
+  };
+}
+
+function partido(id: string, fecha: string, competenciaId: string | null = null): Partido {
   return {
     id,
     equipoId: EQUIPO_1,
     rival: 'Rival',
     fecha,
-    competenciaId: null,
+    competenciaId,
     competenciaNombre: null,
     cantidadTiempos: 2,
     minutosPorTiempo: 25,
@@ -114,6 +157,25 @@ function handlerDe(mundo: Mundo): EstadisticasHandler {
 
   const estadisticas = {
     deJugador: (equipoId: string) => Promise.resolve(mundo.stats[equipoId] ?? []),
+    deEquipo: () => Promise.resolve(mundo.tabla ?? null),
+    porCompetencia: () => Promise.resolve(mundo.campeonatos ?? []),
+    agregadoEquipo: () =>
+      Promise.resolve(
+        mundo.agregado ?? {
+          goles: 0,
+          asistencias: 0,
+          tirosAlArco: 0,
+          tirosAfuera: 0,
+          regates: 0,
+          recuperaciones: 0,
+          rechazos: 0,
+          atajadas: 0,
+          penalesAtajados: 0,
+          amarillas: 0,
+          rojas: 0,
+          autogoles: 0,
+        },
+      ),
   } as unknown as EstadisticasService;
 
   const partidos = {
@@ -132,6 +194,10 @@ function handlerDe(mundo: Mundo): EstadisticasHandler {
     },
   } as unknown as AlineacionService;
 
+  const resumen = {
+    notasDe: (partido: Partido) => Promise.resolve(mundo.notas?.[partido.id] ?? []),
+  } as unknown as ResumenService;
+
   return new EstadisticasHandler(
     membresias,
     jugadores,
@@ -139,6 +205,7 @@ function handlerDe(mundo: Mundo): EstadisticasHandler {
     partidos,
     tiempos,
     alineacion,
+    resumen,
   );
 }
 
@@ -315,5 +382,175 @@ describe('EstadisticasHandler.stats por botones', () => {
 
     expect(respuesta.texto).toContain('🧤 PORTERÍA');
     expect(respuesta.texto).toContain('🧤 7 atajadas · 🥅 1 penal atajado');
+  });
+});
+
+function tablaEquipo(): EstadisticaEquipo {
+  return {
+    equipoId: EQUIPO_1,
+    temporada: temporadaActual(),
+    partidosJugados: 9,
+    ganados: 2,
+    empatados: 3,
+    perdidos: 4,
+    golesFavor: 15,
+    golesContra: 18,
+  };
+}
+
+describe('EstadisticasHandler.tabla por botones', () => {
+  it('/tabla con varios equipos ofrece los equipos sin adelantar datos', async () => {
+    const handler = handlerDe({
+      equipos: [equipo(EQUIPO_1, 'Sub-11'), equipo(EQUIPO_2, 'Sub-13')],
+      plantillas: {},
+      stats: {},
+    });
+
+    const respuesta = await handler.tabla(undefined, 'user-1');
+
+    expect(respuesta.texto).toContain('¿De qué equipo quieres ver la tabla?');
+    expect(respuesta.texto).not.toContain('RESULTADOS');
+    expect(respuesta.botones?.map((b) => b.id)).toEqual([
+      `cmd:tabla:equipo:${EQUIPO_1}`,
+      `cmd:tabla:equipo:${EQUIPO_2}`,
+    ]);
+    for (const boton of respuesta.botones ?? []) {
+      expect(bytesDe(boton.id)).toBeLessThanOrEqual(LIMITE_BYTES_ID_BOTON);
+    }
+  });
+
+  it('/tabla con un solo equipo muestra su ficha directo', async () => {
+    const handler = handlerDe({
+      equipos: [equipo(EQUIPO_1, 'Sub-11')],
+      plantillas: {},
+      stats: {},
+      tabla: tablaEquipo(),
+    });
+
+    const respuesta = await handler.tabla(undefined, 'user-1');
+
+    // El botón lleva al listado seleccionable de jugadores de ese equipo.
+    expect(respuesta.botones?.map((b) => b.id)).toEqual([`cmd:stats:equipo:${EQUIPO_1}`]);
+    expect(respuesta.botones?.map((b) => b.texto)).toEqual(['👥 Ver jugadores']);
+    expect(respuesta.texto).toContain('📋 Sub-11 — Temporada');
+    expect(respuesta.texto).toContain('🏟️ RESULTADOS');
+    expect(respuesta.texto).toContain('9 partidos · 🟢 2 ganados');
+    expect(respuesta.texto).toContain('📊 Diferencia: -3');
+    expect(respuesta.texto).toContain('👥 APORTES DEL EQUIPO');
+    expect(respuesta.texto).toContain('🟨 DISCIPLINA');
+    // Sin campeonatos no hay sección; sin atajadas no hay portería.
+    expect(respuesta.texto).not.toContain('POR CAMPEONATO');
+    expect(respuesta.texto).not.toContain('🧤 PORTERÍA');
+  });
+
+  it('elegir equipo muestra su ficha y uno ajeno no muestra nada', async () => {
+    const handler = handlerDe({
+      equipos: [equipo(EQUIPO_1, 'Sub-11'), equipo(EQUIPO_2, 'Sub-13')],
+      plantillas: {},
+      stats: {},
+      tabla: tablaEquipo(),
+    });
+
+    const respuesta = await handler.tabla(`equipo:${EQUIPO_1}`, 'user-1');
+
+    expect(respuesta.texto).toContain('📋 Sub-11 — Temporada');
+
+    const ajeno = await handler.tabla('equipo:equipo-ajeno', 'user-1');
+
+    expect(ajeno.texto).toContain('No encontré ese equipo entre los tuyos');
+    expect(ajeno.botones).toBeUndefined();
+  });
+
+  it('/tabla sin cerrados lo dice', async () => {
+    const handler = handlerDe({
+      equipos: [equipo(EQUIPO_1, 'Sub-11')],
+      plantillas: {},
+      stats: {},
+      tabla: null,
+    });
+
+    const respuesta = await handler.tabla(undefined, 'user-1');
+
+    expect(respuesta.texto).toContain('Sin partidos cerrados todavía.');
+  });
+
+  it('el campeonato trae goleador y MVP sumando puntos de sus partidos', async () => {
+    const liga = 'aaaaaaaa-0000-0000-0000-000000000001';
+    const handler = handlerDe({
+      equipos: [equipo(EQUIPO_1, 'Sub-11')],
+      plantillas: {},
+      stats: {},
+      tabla: tablaEquipo(),
+      campeonatos: [
+        {
+          equipoId: EQUIPO_1,
+          temporada: temporadaActual(),
+          competenciaId: liga,
+          competenciaNombre: 'Liga',
+          partidosJugados: 2,
+          ganados: 1,
+          empatados: 1,
+          perdidos: 0,
+          golesFavor: 3,
+          golesContra: 1,
+          goleador: { nombre: 'Jacob', dorsal: 10, goles: 2 },
+        },
+      ],
+      cerrados: {
+        [EQUIPO_1]: [
+          partido('p1', `${temporadaActual()}-03-01`, liga),
+          partido('p2', `${temporadaActual()}-03-08`, liga),
+        ],
+      },
+      notas: {
+        p1: [nota(JACOB_1, 'Jacob', 5, 2, 0)],
+        p2: [nota(JACOB_1, 'Jacob', 3, 0, 1), nota(ANDRES_1, 'Andrés', 4, 1, 0)],
+      },
+    });
+
+    const respuesta = await handler.tabla(undefined, 'user-1');
+
+    expect(respuesta.texto).toContain('🏆 POR CAMPEONATO');
+    expect(respuesta.texto).toContain('🏆 Liga');
+    expect(respuesta.texto).toContain('🥇 Goleador: Jacob (2 goles)');
+    // Jacob suma 5 + 3 = 8 puntos contra 4 de Andrés.
+    expect(respuesta.texto).toContain('⭐ MVP: Jacob (8 pts)');
+  });
+
+  it('sin puntaje positivo el campeonato sale sin línea MVP', async () => {
+    const liga = 'aaaaaaaa-0000-0000-0000-000000000001';
+    const handler = handlerDe({
+      equipos: [equipo(EQUIPO_1, 'Sub-11')],
+      plantillas: {},
+      stats: {},
+      tabla: tablaEquipo(),
+      campeonatos: [
+        {
+          equipoId: EQUIPO_1,
+          temporada: temporadaActual(),
+          competenciaId: liga,
+          competenciaNombre: 'Liga',
+          partidosJugados: 1,
+          ganados: 0,
+          empatados: 1,
+          perdidos: 0,
+          golesFavor: 0,
+          golesContra: 0,
+          goleador: null,
+        },
+      ],
+      cerrados: {
+        [EQUIPO_1]: [partido('p1', `${temporadaActual()}-03-01`, liga)],
+      },
+      notas: {
+        p1: [nota(JACOB_1, 'Jacob', 0)],
+      },
+    });
+
+    const respuesta = await handler.tabla(undefined, 'user-1');
+
+    expect(respuesta.texto).toContain('🏆 Liga');
+    expect(respuesta.texto).not.toContain('⭐ MVP');
+    expect(respuesta.texto).not.toContain('Goleador');
   });
 });

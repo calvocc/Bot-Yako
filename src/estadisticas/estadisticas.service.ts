@@ -53,6 +53,26 @@ export interface Goleador {
   goles: number;
 }
 
+/**
+ * Suma de la temporada por equipo (bloques APORTES/PORTERÍA/DISCIPLINA de
+ * `/tabla`): agrega las filas ya calculadas de `estadisticas_jugador`, sin
+ * recalcular nada por evento.
+ */
+export interface AgregadoEquipo {
+  goles: number;
+  asistencias: number;
+  tirosAlArco: number;
+  tirosAfuera: number;
+  regates: number;
+  recuperaciones: number;
+  rechazos: number;
+  atajadas: number;
+  penalesAtajados: number;
+  amarillas: number;
+  rojas: number;
+  autogoles: number;
+}
+
 export interface EstadisticaEquipoCompetencia extends EstadisticaEquipo {
   competenciaId: string | null;
   competenciaNombre: string | null;
@@ -201,6 +221,44 @@ export class EstadisticasService {
     `);
 
     return mapearGoleador(fila);
+  }
+
+  async agregadoEquipo(
+    equipoId: string,
+    temporada: number = temporadaActual(),
+  ): Promise<AgregadoEquipo> {
+    const [fila] = await this.db.db.execute<Record<string, unknown>>(sql`
+      select
+        coalesce(sum(goles), 0) as goles,
+        coalesce(sum(asistencias), 0) as asistencias,
+        coalesce(sum(tiros_al_arco), 0) as tiros_al_arco,
+        coalesce(sum(tiros_afuera), 0) as tiros_afuera,
+        coalesce(sum(regates), 0) as regates,
+        coalesce(sum(recuperaciones), 0) as recuperaciones,
+        coalesce(sum(rechazos), 0) as rechazos,
+        coalesce(sum(atajadas), 0) as atajadas,
+        coalesce(sum(penales_atajados), 0) as penales_atajados,
+        coalesce(sum(amarillas), 0) as amarillas,
+        coalesce(sum(rojas), 0) as rojas,
+        coalesce(sum(autogoles), 0) as autogoles
+      from estadisticas_jugador
+      where equipo_id = ${equipoId} and temporada = ${temporada}
+    `);
+
+    return {
+      goles: Number(fila?.goles ?? 0),
+      asistencias: Number(fila?.asistencias ?? 0),
+      tirosAlArco: Number(fila?.tiros_al_arco ?? 0),
+      tirosAfuera: Number(fila?.tiros_afuera ?? 0),
+      regates: Number(fila?.regates ?? 0),
+      recuperaciones: Number(fila?.recuperaciones ?? 0),
+      rechazos: Number(fila?.rechazos ?? 0),
+      atajadas: Number(fila?.atajadas ?? 0),
+      penalesAtajados: Number(fila?.penales_atajados ?? 0),
+      amarillas: Number(fila?.amarillas ?? 0),
+      rojas: Number(fila?.rojas ?? 0),
+      autogoles: Number(fila?.autogoles ?? 0),
+    };
   }
 }
 
