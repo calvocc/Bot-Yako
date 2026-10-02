@@ -343,12 +343,20 @@ No pide minuto ni tiempos ni asistencias — si alguien quiere agregar ese detal
 
 Si el usuario pertenece a más de un equipo, cada uno de estos comandos primero pregunta a cuál se refiere (igual que en `/cargar`), salvo que pertenezca a uno solo.
 
-`/stats [jugador]`
+`/stats [jugador]` — con nombre busca directo; sin nombre no hay que escribir:
+primero ofrece los equipos con botones (si hay más de uno) y después un botón
+por jugador de la plantilla.
 ```
 User: /stats Jacob
 Bot: 📊 Jacob #10 — Ringo Amaya Sub-11 · temporada 2026
      Partidos jugados: 8
      Goles: 6  ·  Asistencias: 2  ·  Amarillas: 1
+
+User: /stats
+Bot: 🏷️ ¿De qué equipo quieres ver estadísticas?
+     [Sub-11] [Sub-13]
+Bot: 📋 Sub-11: … Toca un jugador para ver sus estadísticas 👇
+     [#10 Jacob] [#7 Andrés]
 ```
 
 `/tabla`

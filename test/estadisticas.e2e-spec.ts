@@ -374,17 +374,64 @@ describe('Estadísticas (e2e)', () => {
   });
 
   describe('EstadisticasHandler', () => {
-    it('/stats sin nombre lista la plantilla de cada equipo', async () => {
+    it('/stats sin nombre con un solo equipo lista la plantilla con botones', async () => {
       const { equipo, admin } = await escenario('Sin nombre');
-      await jugadores.crear(equipo.id, 'Jacob', 10);
-      await jugadores.crear(equipo.id, 'Andrés', 7);
+      const jacob = await jugadores.crear(equipo.id, 'Jacob', 10);
+      const andres = await jugadores.crear(equipo.id, 'Andrés', 7);
 
       const respuesta = await handler.stats(undefined, admin);
 
       expect(respuesta.texto).toContain('📋 Sub-11:');
       expect(respuesta.texto).toContain('• #10 Jacob');
       expect(respuesta.texto).toContain('• #7 Andrés');
-      expect(respuesta.texto).toContain('/stats seguido de un nombre');
+      expect(respuesta.texto).toContain('Toca un jugador');
+      // `listar` ordena por dorsal: Andrés (#7) va antes que Jacob (#10).
+      expect(respuesta.botones?.map((b) => b.id)).toEqual([
+        `cmd:stats:jugador:${andres.id}`,
+        `cmd:stats:jugador:${jacob.id}`,
+      ]);
+    });
+
+    it('/stats sin nombre con varios equipos ofrece los equipos y resuelve por botones', async () => {
+      const { equipo, admin, academia } = await escenario('Varios equipos botones');
+      const jacobSub11 = await jugadores.crear(equipo.id, 'Jacob', 10);
+
+      const equiposSvc = app.get(EquiposService);
+      const sub13 = await equiposSvc.crear(
+        academia.id,
+        'Sub-13',
+        { cantidadTiempos: 2, minutosPorTiempo: 25 },
+        admin,
+      );
+      const jacobSub13 = await jugadores.crear(sub13.id, 'Jacob Restrepo', 9);
+
+      await partidoConGoles(sub13.id, admin, '2026-09-10', jacobSub13.id, 2);
+
+      const equipos = await handler.stats(undefined, admin);
+
+      expect(equipos.texto).toContain('¿De qué equipo quieres ver estadísticas?');
+      expect(equipos.texto).not.toContain('Jacob');
+      expect(equipos.botones?.map((b) => b.id)).toEqual(
+        expect.arrayContaining([`cmd:stats:equipo:${sub13.id}`]),
+      );
+
+      const plantilla = await handler.stats(`equipo:${sub13.id}`, admin);
+
+      expect(plantilla.texto).toContain('📋 Sub-13:');
+      expect(plantilla.botones?.map((b) => b.id)).toEqual([`cmd:stats:jugador:${jacobSub13.id}`]);
+
+      const detalle = await handler.stats(`jugador:${jacobSub13.id}`, admin);
+
+      expect(detalle.texto).toContain('📊 Jacob Restrepo #9 — Sub-13');
+      expect(detalle.texto).toContain('Goles: 2');
+
+      // La ficha del otro equipo no se mezcla: eligiendo su botón sale su bloque.
+      await partidoConGoles(equipo.id, admin, '2026-09-11', jacobSub11.id, 1);
+
+      const otro = await handler.stats(`jugador:${jacobSub11.id}`, admin);
+
+      expect(otro.texto).toContain('📊 Jacob #10 — Sub-11');
+      expect(otro.texto).toContain('Goles: 1');
     });
 
     it('/stats sin nombre y sin plantilla cargada lo dice, sin romper', async () => {

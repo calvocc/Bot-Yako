@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import type { RespuestaBot } from '../channels/channel.types';
-import { respuestaSinEquipos } from '../conversacion/comandos';
+import { botonComando, respuestaSinEquipos } from '../conversacion/comandos';
 import type { EquipoDelUsuario } from '../identidad/membresias.service';
 import { MembresiasService } from '../identidad/membresias.service';
-import { formatearListaJugadores, JugadoresService } from '../jugadores/jugadores.service';
+import {
+  describirJugador,
+  formatearListaJugadores,
+  JugadoresService,
+} from '../jugadores/jugadores.service';
 import { textos as textosComunes } from '../textos/comunes';
 import { textos } from '../textos/estadisticas';
 import {
@@ -16,10 +20,25 @@ import {
 } from './estadisticas.service';
 
 /**
+ * Selección interna que viaja en el argumento de los botones `cmd:stats:...`
+ * (ver `botonComando` en `conversacion/comandos`): `equipo:<equipoId>` lista
+ * la plantilla de ese equipo con un botón por jugador, y `jugador:<jugadorId>`
+ * muestra las estadísticas de esa ficha. Llevan prefijo para no confundirlas
+ * con un nombre escrito a mano —un nombre nunca empieza así— y el id real
+ * (no un índice posicional) para que la lista no se corra entre la pregunta
+ * y la respuesta. Los dos ids caben en el `callback_data` de Telegram
+ * (`cmd:stats:jugador:` + uuid = 54 bytes, límite 64).
+ */
+const PREFIJO_EQUIPO = 'equipo:';
+const PREFIJO_JUGADOR = 'jugador:';
+
+/**
  * `/stats [jugador]` y `/tabla` (RF-6). Cualquier rol puede usarlos —Viewer
- * incluido (RF-6.3)—, así que resuelven el equipo igual que `/partidos`: sin
- * `rolMinimo` y un bloque por cada equipo del usuario, en vez de preguntar
- * cuál (es una consulta, no hay nada que "elegir" para actuar).
+ * incluido (RF-6.3)—, así que `/stats <nombre>` y `/tabla` resuelven el
+ * equipo igual que `/partidos`: sin `rolMinimo` y un bloque por cada equipo
+ * del usuario. En cambio `/stats` sin nombre sí pregunta: con botones, sin
+ * estado —primero el equipo (si hay más de uno) y después un botón por
+ * jugador— para no obligar a escribir el nombre.
  */
 @Injectable()
 export class EstadisticasHandler {
@@ -38,7 +57,15 @@ export class EstadisticasHandler {
 
     const nombre = argumento?.trim();
 
-    return nombre ? this.buscarJugador(equipos, nombre) : this.listarJugadores(equipos);
+    if (!nombre) return this.elegirEquipoOJugadores(equipos);
+    if (nombre.startsWith(PREFIJO_EQUIPO)) {
+      return this.listarJugadoresDeEquipo(equipos, nombre.slice(PREFIJO_EQUIPO.length));
+    }
+    if (nombre.startsWith(PREFIJO_JUGADOR)) {
+      return this.mostrarJugador(equipos, nombre.slice(PREFIJO_JUGADOR.length));
+    }
+
+    return this.buscarJugador(equipos, nombre);
   }
 
   /** `/stats <nombre>`: búsqueda directa de estadísticas, sin cambios de comportamiento. */
@@ -113,18 +140,91 @@ export class EstadisticasHandler {
     return bloques;
   }
 
-  /** `/stats` sin argumento: plantilla de cada equipo, para saber a quién pedirle el detalle. */
-  private async listarJugadores(equipos: EquipoDelUsuario[]): Promise<RespuestaBot> {
-    const bloques = await Promise.all(
-      equipos.map(async (equipo) => {
-        const plantilla = await this.jugadores.listar(equipo.equipoId);
-        const cuerpo = formatearListaJugadores(plantilla, textos.sinJugadores());
+  /**
+   * `/stats` sin argumento: con un solo equipo va directo a su plantilla
+   * (con un botón por jugador); con varios, primero ofrece los equipos con
+   * botones, sin adelantar ninguna plantilla.
+   */
+  private async elegirEquipoOJugadores(equipos: EquipoDelUsuario[]): Promise<RespuestaBot> {
+    if (equipos.length === 1) {
+      return this.listarJugadoresDeEquipo(equipos, equipos[0].equipoId);
+    }
 
-        return textos.listadoJugadores(equipo.equipoNombre, cuerpo);
-      }),
+    return {
+      texto: textos.eligeEquipo(),
+      botones: equipos.map((equipo) =>
+        botonComando('stats', recortar(equipo.equipoNombre), `${PREFIJO_EQUIPO}${equipo.equipoId}`),
+      ),
+    };
+  }
+
+  /**
+   * Plantilla de un equipo con un botón por jugador. El equipo tiene que ser
+   * de los del usuario: un botón viejo (o un `equipo:<id>` escrito a mano)
+   * de un equipo al que ya no tiene acceso no muestra nada ajeno.
+   */
+  private async listarJugadoresDeEquipo(
+    equipos: EquipoDelUsuario[],
+    equipoId: string,
+  ): Promise<RespuestaBot> {
+    const equipo = equipos.find((e) => e.equipoId === equipoId);
+
+    if (!equipo) {
+      return { texto: textosComunes.noEncontre('ese equipo entre los tuyos') };
+    }
+
+    const plantilla = await this.jugadores.listar(equipo.equipoId);
+    const cuerpo = formatearListaJugadores(plantilla, textos.sinJugadores());
+
+    if (plantilla.length === 0) {
+      return { texto: textos.listadoJugadores(equipo.equipoNombre, cuerpo) };
+    }
+
+    return {
+      texto: textos.elegirJugador(equipo.equipoNombre, cuerpo),
+      botones: plantilla.map((jugador) =>
+        botonComando(
+          'stats',
+          recortar(describirJugador(jugador)),
+          `${PREFIJO_JUGADOR}${jugador.id}`,
+        ),
+      ),
+    };
+  }
+
+  /**
+   * Estadísticas de la ficha elegida con un botón. La ficha se busca solo en
+   * los equipos del usuario —un `jugador:<id>` de otro equipo no resuelve— y
+   * se muestra solo su bloque, sin el "Total" de `/stats <nombre>`: acá se
+   * eligió una ficha puntual, no una persona.
+   */
+  private async mostrarJugador(
+    equipos: EquipoDelUsuario[],
+    jugadorId: string,
+  ): Promise<RespuestaBot> {
+    const porEquipo = await Promise.all(
+      equipos.map(async (equipo) => ({
+        equipo,
+        plantilla: await this.jugadores.listar(equipo.equipoId),
+      })),
     );
 
-    return { texto: bloques.join('\n\n') };
+    for (const { equipo, plantilla } of porEquipo) {
+      const jugador = plantilla.find((j) => j.id === jugadorId);
+
+      if (!jugador) continue;
+
+      const stats = await this.estadisticas.deJugador(equipo.equipoId, jugador.nombre);
+      const fila = stats.find((s) => s.jugadorId === jugador.id);
+
+      if (!fila) {
+        return { texto: textos.sinEstadisticas(jugador.nombre, temporadaActual()) };
+      }
+
+      return { texto: this.lineaJugador(equipo.equipoNombre, fila) };
+    }
+
+    return { texto: textosComunes.noEncontre('a ese jugador entre tus equipos') };
   }
 
   async tabla(usuarioId?: string): Promise<RespuestaBot> {
@@ -224,4 +324,14 @@ export class EstadisticasHandler {
       goleador: fila.goleador,
     });
   }
+}
+
+/**
+ * El rótulo se recorta a 20 caracteres porque es lo que aceptan los botones
+ * de WhatsApp (ver `LIMITE_CARACTERES_TEXTO_BOTON`): el mismo criterio que ya
+ * usa el selector de equipo. Con el dorsal primero (`describirJugador`), lo
+ * que se pierde al recortar es cola del nombre, no el número.
+ */
+function recortar(texto: string, maximo = 20): string {
+  return texto.length <= maximo ? texto : `${texto.slice(0, maximo - 1)}…`;
 }
