@@ -475,6 +475,14 @@ describe('Estadísticas (e2e)', () => {
       expect(respuesta.texto).toContain('🟨 0 amarillas · 🟥 0 rojas · 🙃 0 autogoles');
       // Sin atajadas no hay grupo portería.
       expect(respuesta.texto).not.toContain('🧤 PORTERÍA');
+
+      // El botón lleva al listado seleccionable de jugadores del equipo.
+      expect(respuesta.botones?.map((b) => b.id)).toEqual([`cmd:stats:equipo:${equipo.id}`]);
+
+      const plantilla = await handler.stats(`equipo:${equipo.id}`, admin);
+
+      expect(plantilla.texto).toContain('Toca un jugador');
+      expect(plantilla.botones?.map((b) => b.id)).toEqual([`cmd:stats:jugador:${jacob.id}`]);
     });
 
     it('/tabla con un solo campeonato muestra su bloque con goleador y MVP', async () => {

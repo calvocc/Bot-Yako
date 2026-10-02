@@ -429,7 +429,9 @@ describe('EstadisticasHandler.tabla por botones', () => {
 
     const respuesta = await handler.tabla(undefined, 'user-1');
 
-    expect(respuesta.botones).toBeUndefined();
+    // El botón lleva al listado seleccionable de jugadores de ese equipo.
+    expect(respuesta.botones?.map((b) => b.id)).toEqual([`cmd:stats:equipo:${EQUIPO_1}`]);
+    expect(respuesta.botones?.map((b) => b.texto)).toEqual(['👥 Ver jugadores']);
     expect(respuesta.texto).toContain('📋 Sub-11 — Temporada');
     expect(respuesta.texto).toContain('🏟️ RESULTADOS');
     expect(respuesta.texto).toContain('9 partidos · 🟢 2 ganados');

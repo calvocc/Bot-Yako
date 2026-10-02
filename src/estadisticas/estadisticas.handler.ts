@@ -405,7 +405,13 @@ export class EstadisticasHandler {
       ...textos.disciplinaEquipo(agregado),
     );
 
-    return { texto: bloques.join('\n') };
+    return {
+      texto: bloques.join('\n'),
+      // Lleva al listado seleccionable de jugadores de este equipo (el
+      // mismo `equipo:<id>` de `/stats`): la ficha individual ya existe y
+      // no se duplica nada acá.
+      botones: [botonComando('stats', '👥 Ver jugadores', `${PREFIJO_EQUIPO}${equipo.equipoId}`)],
+    };
   }
 
   /**

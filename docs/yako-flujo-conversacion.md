@@ -392,7 +392,11 @@ Bot: 📋 Ringo Amaya Sub-11 — Temporada 2026
      ⚽ 22 goles · 🅰️ 10 asistencias
      🟨 DISCIPLINA
      🟨 2 amarillas · 🟥 0 rojas · 🙃 0 autogoles
+     [👥 Ver jugadores]
 ```
+Debajo de la ficha sale `👥 Ver jugadores`, que lleva al listado
+seleccionable de jugadores del equipo (lo mismo que `/stats` sin nombre)
+para ver las fichas individuales.
 
 `/partidos` — lista los últimos partidos del equipo y su estado (pendiente / en vivo / cerrado).
 
