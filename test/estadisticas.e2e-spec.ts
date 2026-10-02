@@ -546,6 +546,9 @@ describe('Estadísticas (e2e)', () => {
           equipoOrigen: 'propio',
           jugadorId: jacob.id,
           reportadoPor: admin,
+          // Dos tiros iguales seguidos los tomaría por carga duplicada (mismo
+          // `forzar` que usa `partidoConGoles` para varios goles legítimos).
+          forzar: true,
         });
       }
       await partidos.cerrar(partido.id, admin, { propio: 0, rival: 1 });
