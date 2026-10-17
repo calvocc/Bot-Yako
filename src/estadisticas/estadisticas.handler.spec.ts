@@ -642,13 +642,13 @@ describe('EstadisticasHandler.tabla rendimiento', () => {
     const texto = respuesta.texto;
 
     expect(texto).toContain('📈 Rendimiento — Sub-11 · Temporada');
-    expect(texto).toContain('🥇 Goleador: Jacob #10 (6 goles)');
-    expect(texto).toContain('📈 Mejor promedio: Jacob #10 — 7.5 en 2 partidos');
-    expect(texto).toContain('📉 Promedio más bajo: Tomás #1 — 5.5 en 2 partidos');
+    expect(texto).toContain('🥇 Goleador: #10 Jacob (6 goles)');
+    expect(texto).toContain('📈 Mejor promedio: #10 Jacob — 7.5 en 2 partidos');
+    expect(texto).toContain('📉 Promedio más bajo: #1 Tomás — 5.5 en 2 partidos');
     // 3 + 1 de los cerrados de esta temporada; los 9 de la anterior no cuentan.
     expect(texto).toContain('🧤 PORTERÍA — 4 goles recibidos');
-    expect(texto).toContain('🟨 Más amonestado: Andrés #7 (2 amarillas · 1 roja)');
-    expect(texto).toContain('Tomás #1: 4 goles en 2 partidos (2.0 por partido)');
+    expect(texto).toContain('🟨 Más amonestado: #7 Andrés (2 amarillas · 1 roja)');
+    expect(texto).toContain('#1 Tomás: 4 goles en 2 partidos (2.0 por partido)');
 
     // Listado de todo el plantel, de mayor a menor promedio; sin partidos al final.
     const listado = texto.slice(texto.indexOf('👥 JUGADORES'));
@@ -685,7 +685,7 @@ describe('EstadisticasHandler.tabla rendimiento', () => {
 
     const respuesta = await handlerDe(mundo).tabla(`rendimiento:${EQUIPO_1}`, 'user-1');
 
-    expect(respuesta.texto).toContain('🥇 Goleador: Jacob #10 (9 goles)');
+    expect(respuesta.texto).toContain('🥇 Goleador: #10 Jacob (9 goles)');
     expect(respuesta.texto).toContain('🧤 PORTERÍA — 9 goles recibidos');
   });
 
