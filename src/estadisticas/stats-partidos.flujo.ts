@@ -12,6 +12,7 @@ import { TiemposService } from '../partidos/tiempos.service';
 import { textos as textosComunes } from '../textos/comunes';
 import { textos } from '../textos/estadisticas';
 import { EstadisticasHandler } from './estadisticas.handler';
+import { esGol } from '../eventos/evento.tipos';
 import { EventosService } from '../eventos/eventos.service';
 
 export const FLUJO_STATS_PARTIDOS = 'stats-partidos';
@@ -171,7 +172,7 @@ export class StatsPartidosFlujo {
               fecha: partido.fecha,
               rival: partido.rival,
               minutos: minutos.size > 0 ? (minutos.get(resuelto.jugador.id) ?? 0) : null,
-              goles: cuenta('gol') + cuenta('gol_penal') + cuenta('gol_tiro_libre'),
+              goles: propios.filter((e) => esGol(e.tipo)).length,
               asistencias: cuenta('asistencia'),
               tirosAlArco: cuenta('tiro_al_arco'),
               tirosAfuera: cuenta('tiro_afuera'),

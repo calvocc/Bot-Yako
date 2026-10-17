@@ -19,3 +19,11 @@ export function botonesDeOpciones(opciones: readonly OpcionLista[]): Boton[] {
 function recortar(texto: string, maximo: number): string {
   return texto.length <= maximo ? texto : `${texto.slice(0, maximo - 1)}…`;
 }
+
+/**
+ * Id del viejo botón "Ver más", de cuando el bot paginaba. Un mensaje
+ * enviado antes de quitar el paginado todavía puede tenerlo: los pasos que
+ * cierran el flujo ante un botón desconocido lo reconocen y vuelven a
+ * mostrar la lista, ahora completa, en vez de terminar a mitad de camino.
+ */
+export const ID_VER_MAS_LEGADO = 'pag:mas';

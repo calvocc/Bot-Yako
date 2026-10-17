@@ -146,6 +146,32 @@ describe('Plantilla: agregar jugador de otro equipo de la academia (e2e)', () =>
     expect(new Set(origenYVinculo.map((f) => f.persona_id)).size).toBe(1);
   });
 
+  it('la baja muestra la plantilla completa y un "Ver más" viejo la redibuja', async () => {
+    const { admin, sub11 } = await escenario('Baja sin paginar');
+    const nombres = Array.from({ length: 14 }, (_, i) => `Jugador ${i + 1}`);
+
+    for (const [i, nombre] of nombres.entries()) {
+      await jugadores.crear(sub11.id, nombre, i + 1);
+    }
+
+    const decir = (texto: string) => procesador.procesar(textoDePrueba(texto, admin));
+    const tocar = (id: string) => procesador.procesar(seleccionDePrueba(id, admin));
+
+    await decir('/plantilla');
+    await tocar(`eq:${sub11.id}`);
+    await tocar('pl:baja');
+
+    // Los 14 de una, sin "Ver más".
+    expect(adaptador.ultimosBotones).toHaveLength(14);
+    expect(adaptador.ultimosBotones.some((b) => b.id === 'pag:mas')).toBe(false);
+
+    // Un "Ver más" de un mensaje anterior al cambio no corta el flujo:
+    // vuelve a mostrar la lista completa.
+    await tocar('pag:mas');
+    expect(adaptador.ultimoTexto).not.toContain('No di de baja');
+    expect(adaptador.ultimosBotones).toHaveLength(14);
+  });
+
   it('avisa (sin bloquear) un posible duplicado al pegar la lista de siempre', async () => {
     const { admin, sub11, sub13 } = await escenario('Aviso lista');
     await jugadores.crear(sub11.id, 'Andrés Gómez', 7);

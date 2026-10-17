@@ -1,70 +1,17 @@
+import type { Jugador } from '../jugadores/jugadores.service';
 import type { RendimientoPartido } from '../resumen/resumen.service';
 
-/** Promedio de nota de un jugador en la temporada (0–10, ver `puntaje.ts`). */
-export interface PromedioJugador {
-  promedio: number;
-  partidos: number;
-}
-
-/** Goles en contra de un arquero en la temporada, y en cuántos partidos atajó. */
-export interface ArqueroTemporada {
-  golesRecibidos: number;
-  partidos: number;
-}
-
-export interface RendimientoTemporada {
-  promedios: Map<string, PromedioJugador>;
-  arqueros: Map<string, ArqueroTemporada>;
-}
-
 /**
- * Junta el rendimiento partido por partido en el de la temporada.
- *
- * Puro y sin base de datos: el promedio es la media simple de la nota de
- * cada partido en que el jugador tuvo nota (jugó o tuvo algún evento), y
- * los goles recibidos se suman por arquero con los partidos en que figuró.
+ * Un renglón del listado de rendimiento de `/tabla`: lo que el jugador hizo
+ * en los partidos cerrados de la temporada, más su promedio.
  */
-export function rendimientoDeTemporada(
-  partidos: readonly RendimientoPartido[],
-): RendimientoTemporada {
-  const sumas = new Map<string, { suma: number; partidos: number }>();
-  const arqueros = new Map<string, ArqueroTemporada>();
-
-  for (const partido of partidos) {
-    for (const nota of partido.notas) {
-      const acumulado = sumas.get(nota.jugadorId) ?? { suma: 0, partidos: 0 };
-      acumulado.suma += nota.nota;
-      acumulado.partidos += 1;
-      sumas.set(nota.jugadorId, acumulado);
-    }
-
-    for (const [jugadorId, goles] of partido.golesRecibidos) {
-      const acumulado = arqueros.get(jugadorId) ?? { golesRecibidos: 0, partidos: 0 };
-      acumulado.golesRecibidos += goles;
-      acumulado.partidos += 1;
-      arqueros.set(jugadorId, acumulado);
-    }
-  }
-
-  const promedios = new Map<string, PromedioJugador>();
-
-  for (const [jugadorId, { suma, partidos: jugados }] of sumas) {
-    promedios.set(jugadorId, { promedio: suma / jugados, partidos: jugados });
-  }
-
-  return { promedios, arqueros };
-}
-
-/** Un renglón del listado de rendimiento: la ficha de la temporada más su promedio. */
 export interface FilaRendimiento {
   jugadorId: string;
   nombre: string;
   dorsal: number | null;
-  esArquero: boolean;
-  /** `null` si todavía no tiene nota en ningún partido cerrado. */
+  /** Media de la nota (0–10) por partido; `null` si todavía no jugó ninguno. */
   promedio: number | null;
-  partidosConNota: number;
-  partidosJugados: number;
+  partidos: number;
   goles: number;
   asistencias: number;
   amarillas: number;
@@ -75,6 +22,86 @@ export interface FilaRendimiento {
   /** Solo para quien atajó algún partido; `null` en el resto. */
   golesRecibidos: number | null;
   partidosAtajados: number;
+}
+
+/**
+ * Junta el rendimiento partido por partido en el de la temporada.
+ *
+ * Todo sale de los mismos partidos (los cerrados de la temporada, con la
+ * nota del resumen): goles, tarjetas y promedio no pueden contar partidos
+ * distintos —un partido en curso no suma goles que el promedio no ve—.
+ * Puro y sin base de datos.
+ *
+ * El listado trae a toda la plantilla activa y, además, a quien ya no está
+ * en ella pero jugó esta temporada: nadie que sumó queda afuera.
+ */
+export function rendimientoDeTemporada(
+  plantilla: readonly Jugador[],
+  partidos: readonly RendimientoPartido[],
+): FilaRendimiento[] {
+  const filas = new Map<string, FilaRendimiento & { sumaNotas: number }>();
+
+  const asegurar = (jugador: { jugadorId: string; nombre: string; dorsal: number | null }) => {
+    const existente = filas.get(jugador.jugadorId);
+
+    if (existente) return existente;
+
+    const nueva = {
+      ...jugador,
+      promedio: null,
+      partidos: 0,
+      goles: 0,
+      asistencias: 0,
+      amarillas: 0,
+      rojas: 0,
+      atajadas: 0,
+      penalesAtajados: 0,
+      recuperaciones: 0,
+      golesRecibidos: null,
+      partidosAtajados: 0,
+      sumaNotas: 0,
+    };
+
+    filas.set(jugador.jugadorId, nueva);
+
+    return nueva;
+  };
+
+  for (const jugador of plantilla) {
+    if (jugador.activo) {
+      asegurar({ jugadorId: jugador.id, nombre: jugador.nombre, dorsal: jugador.dorsal ?? null });
+    }
+  }
+
+  for (const partido of partidos) {
+    for (const nota of partido.notas) {
+      const fila = asegurar(nota);
+
+      fila.sumaNotas += nota.nota;
+      fila.partidos += 1;
+      fila.goles += nota.goles;
+      fila.asistencias += nota.asistencias;
+      fila.amarillas += nota.amarillas;
+      fila.rojas += nota.rojas;
+      fila.atajadas += nota.atajadas;
+      fila.penalesAtajados += nota.penalesAtajados;
+      fila.recuperaciones += nota.recuperaciones;
+    }
+
+    for (const [jugadorId, goles] of partido.golesRecibidos) {
+      const fila = filas.get(jugadorId);
+
+      if (!fila) continue;
+
+      fila.golesRecibidos = (fila.golesRecibidos ?? 0) + goles;
+      fila.partidosAtajados += 1;
+    }
+  }
+
+  return [...filas.values()].map(({ sumaNotas, ...fila }) => ({
+    ...fila,
+    promedio: fila.partidos > 0 ? sumaNotas / fila.partidos : null,
+  }));
 }
 
 export interface Destacados {

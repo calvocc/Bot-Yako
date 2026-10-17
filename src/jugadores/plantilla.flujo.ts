@@ -6,7 +6,7 @@ import {
   CLAVE_EQUIPO_NOMBRE,
   pasoSelectorEquipo,
 } from '../conversacion/pasos-comunes/selector-equipo';
-import { botonesDeOpciones } from '../conversacion/pasos-comunes/opciones';
+import { botonesDeOpciones, ID_VER_MAS_LEGADO } from '../conversacion/pasos-comunes/opciones';
 import { EquiposService } from '../equipos/equipos.service';
 import { MembresiasService } from '../identidad/membresias.service';
 import { textos as textosComunes } from '../textos/comunes';
@@ -243,6 +243,10 @@ export class PlantillaFlujo {
         // La búsqueda por academia no hace falta para descartar un botón
         // viejo o un texto suelto: se pide solo en las dos ramas que sí la
         // usan, no antes de saber cuál es.
+        if (seleccion === ID_VER_MAS_LEGADO) {
+          return { tipo: 'ir', pasoId: PASOS.agregarElegirCandidato };
+        }
+
         if (!seleccion.startsWith(PREFIJO_CANDIDATO)) {
           return { tipo: 'finalizar', respuesta: { texto: textos.agregar.ningunoAgregado() } };
         }
@@ -313,6 +317,10 @@ export class PlantillaFlujo {
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
         const seleccion = ctx.mensaje.seleccionId ?? '';
+
+        if (seleccion === ID_VER_MAS_LEGADO) {
+          return { tipo: 'ir', pasoId: PASOS.bajaElegir };
+        }
 
         if (!seleccion.startsWith(PREFIJO_BAJA)) {
           return { tipo: 'finalizar', respuesta: { texto: textos.baja.ningunoDeBaja() } };

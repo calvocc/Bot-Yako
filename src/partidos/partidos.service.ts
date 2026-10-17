@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, getTableColumns, gte, ne, or } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, gte, lte, ne, or } from 'drizzle-orm';
 import { DbService, type EjecutorDb } from '../db/db.service';
 import type { FormatoPartido } from '../equipos/equipos.service';
 import { competencias, partidos, usuarios } from '../db/schema';
@@ -135,6 +135,26 @@ export class PartidosService {
       .where(and(eq(partidos.equipoId, equipoId), eq(partidos.estado, 'cerrado')))
       .orderBy(desc(partidos.fecha), desc(partidos.creadoEn))
       .limit(limite);
+
+    return filas.map((f) => mapearPartido(f, f.competenciaNombre));
+  }
+
+  /**
+   * Todos los cerrados de una temporada (año de la fecha, mismo criterio de
+   * las vistas), sin tope: el rendimiento de `/tabla` no puede perder los
+   * más viejos de una temporada larga.
+   */
+  async cerradosDeTemporada(equipoId: string, temporada: number): Promise<Partido[]> {
+    const filas = await this.consulta()
+      .where(
+        and(
+          eq(partidos.equipoId, equipoId),
+          eq(partidos.estado, 'cerrado'),
+          gte(partidos.fecha, `${temporada}-01-01`),
+          lte(partidos.fecha, `${temporada}-12-31`),
+        ),
+      )
+      .orderBy(desc(partidos.fecha), desc(partidos.creadoEn));
 
     return filas.map((f) => mapearPartido(f, f.competenciaNombre));
   }

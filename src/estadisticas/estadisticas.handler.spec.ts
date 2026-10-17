@@ -160,7 +160,6 @@ function handlerDe(mundo: Mundo): EstadisticasHandler {
   const estadisticas = {
     deJugador: (equipoId: string) => Promise.resolve(mundo.stats[equipoId] ?? []),
     deEquipo: () => Promise.resolve(mundo.tabla ?? null),
-    jugadoresDeEquipo: (equipoId: string) => Promise.resolve(mundo.stats[equipoId] ?? []),
     porCompetencia: () => Promise.resolve(mundo.campeonatos ?? []),
     agregadoEquipo: () =>
       Promise.resolve(
@@ -183,6 +182,10 @@ function handlerDe(mundo: Mundo): EstadisticasHandler {
 
   const partidos = {
     cerradosDe: (equipoId: string) => Promise.resolve(mundo.cerrados?.[equipoId] ?? []),
+    cerradosDeTemporada: (equipoId: string, temporada: number) =>
+      Promise.resolve(
+        (mundo.cerrados?.[equipoId] ?? []).filter((p) => p.fecha.startsWith(String(temporada))),
+      ),
   } as unknown as PartidosService;
 
   const tiempos = {
@@ -572,10 +575,22 @@ describe('EstadisticasHandler.tabla por botones', () => {
 
 describe('EstadisticasHandler.tabla rendimiento', () => {
   const ARQUERO = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
-  const SUPLENTE = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+  const NUEVO = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+  const EX = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+  const BAJA_SIN_JUGAR = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
 
-  function conNota(base: NotaJugador, valor: number): NotaJugador {
-    return { ...base, nota: valor };
+  function notaDe(
+    jugadorId: string,
+    nombre: string,
+    dorsal: number,
+    valor: number,
+    extra: Partial<NotaJugador> = {},
+  ): NotaJugador {
+    return { ...nota(jugadorId, nombre, 0), dorsal, nota: valor, ...extra };
+  }
+
+  function contra(base: Partido, rival: number): Partido {
+    return { ...base, marcadorRival: rival };
   }
 
   function mundoRendimiento(): Mundo {
@@ -588,51 +603,33 @@ describe('EstadisticasHandler.tabla rendimiento', () => {
           jugador(JACOB_1, 'Jacob', 10),
           jugador(ANDRES_1, 'Andrés', 7),
           jugador(ARQUERO, 'Tomás', 1, 'arquero'),
-          jugador(SUPLENTE, 'Nuevo', 20),
+          jugador(NUEVO, 'Nuevo', 20),
+          { ...jugador(EX, 'Ex', 30), activo: false },
+          { ...jugador(BAJA_SIN_JUGAR, 'Baja', 31), activo: false },
         ],
       },
-      stats: {
-        [EQUIPO_1]: [
-          { ...fila(JACOB_1, EQUIPO_1, 'Jacob'), goles: 6, amarillas: 1 },
-          {
-            ...fila(ANDRES_1, EQUIPO_1, 'Andrés'),
-            dorsal: 7,
-            goles: 1,
-            asistencias: 3,
-            amarillas: 2,
-            rojas: 1,
-          },
-          {
-            ...fila(ARQUERO, EQUIPO_1, 'Tomás'),
-            dorsal: 1,
-            goles: 0,
-            asistencias: 0,
-            amarillas: 0,
-            atajadas: 9,
-          },
-        ],
-      },
-      tabla: tablaEquipo(),
+      stats: {},
       cerrados: {
         [EQUIPO_1]: [
-          partido('p1', `${temporada}-03-01`),
-          partido('p2', `${temporada}-03-08`),
-          // Otra temporada: no entra en el promedio.
-          partido('p0', `${temporada - 1}-11-01`),
+          contra(partido('p1', `${temporada}-03-01`), 3),
+          contra(partido('p2', `${temporada}-03-08`), 1),
+          // Otra temporada: no entra en ningún número.
+          contra(partido('p0', `${temporada - 1}-11-01`), 9),
         ],
       },
       notas: {
         p1: [
-          conNota(nota(JACOB_1, 'Jacob', 4), 8),
-          conNota(nota(ANDRES_1, 'Andrés', 0), 6),
-          conNota(nota(ARQUERO, 'Tomás', 0), 5),
+          notaDe(JACOB_1, 'Jacob', 10, 8, { goles: 4, amarillas: 1 }),
+          notaDe(ANDRES_1, 'Andrés', 7, 6, { goles: 1, asistencias: 3, amarillas: 2 }),
+          notaDe(ARQUERO, 'Tomás', 1, 5, { atajadas: 5 }),
+          notaDe(EX, 'Ex', 30, 6),
         ],
         p2: [
-          conNota(nota(JACOB_1, 'Jacob', 2), 7),
-          conNota(nota(ANDRES_1, 'Andrés', 0), 6),
-          conNota(nota(ARQUERO, 'Tomás', 0), 6),
+          notaDe(JACOB_1, 'Jacob', 10, 7, { goles: 2 }),
+          notaDe(ANDRES_1, 'Andrés', 7, 6, { rojas: 1 }),
+          notaDe(ARQUERO, 'Tomás', 1, 6, { atajadas: 4 }),
         ],
-        p0: [conNota(nota(ANDRES_1, 'Andrés', 0), 10)],
+        p0: [notaDe(ANDRES_1, 'Andrés', 7, 10, { goles: 9 })],
       },
       golesRecibidos: { p1: { [ARQUERO]: 3 }, p2: { [ARQUERO]: 1 }, p0: { [ARQUERO]: 9 } },
     };
@@ -648,7 +645,8 @@ describe('EstadisticasHandler.tabla rendimiento', () => {
     expect(texto).toContain('🥇 Goleador: Jacob #10 (6 goles)');
     expect(texto).toContain('📈 Mejor promedio: Jacob #10 — 7.5 en 2 partidos');
     expect(texto).toContain('📉 Promedio más bajo: Tomás #1 — 5.5 en 2 partidos');
-    expect(texto).toContain('🧤 PORTERÍA — 18 goles recibidos');
+    // 3 + 1 de los cerrados de esta temporada; los 9 de la anterior no cuentan.
+    expect(texto).toContain('🧤 PORTERÍA — 4 goles recibidos');
     expect(texto).toContain('🟨 Más amonestado: Andrés #7 (2 amarillas · 1 roja)');
     expect(texto).toContain('Tomás #1: 4 goles en 2 partidos (2.0 por partido)');
 
@@ -657,19 +655,43 @@ describe('EstadisticasHandler.tabla rendimiento', () => {
     expect(listado.indexOf('Jacob #10')).toBeLessThan(listado.indexOf('Andrés #7'));
     expect(listado.indexOf('Andrés #7')).toBeLessThan(listado.indexOf('Tomás #1'));
     expect(listado).toContain('⭐ 7.5 · Jacob #10');
+    expect(listado).toContain('     2 partidos · ⚽ 6 · 🟨 1');
     expect(listado).toContain('⭐ 6.0 · Andrés #7');
     expect(listado).toContain('⭐ 5.5 · Tomás #1');
-    expect(listado).toContain('4 goles recibidos');
-    expect(listado).toContain('🧤 9');
+    expect(listado).toContain('4 goles recibidos · 🧤 9');
     expect(listado).toContain('⭐ — · Nuevo #20');
     expect(listado).toContain('sin partidos todavía');
+    // Quien ya no está en la plantilla pero jugó esta temporada sigue en el
+    // listado; quien se dio de baja sin jugar, no.
+    expect(listado).toContain('⭐ 6.0 · Ex #30');
+    expect(listado).not.toContain('Baja #31');
 
     expect(respuesta.botones?.map((b) => b.id)).toEqual([`cmd:stats:equipo:${EQUIPO_1}`]);
   });
 
+  it('cuenta todos los cerrados de la temporada, de a pocos a la vez', async () => {
+    const temporada = temporadaActual();
+    const cerrados = Array.from({ length: 9 }, (_, i) =>
+      contra(partido(`m${i}`, `${temporada}-04-${String(i + 1).padStart(2, '0')}`), 1),
+    );
+    const mundo: Mundo = {
+      ...mundoRendimiento(),
+      cerrados: { [EQUIPO_1]: cerrados },
+      notas: Object.fromEntries(
+        cerrados.map((p) => [p.id, [notaDe(JACOB_1, 'Jacob', 10, 7, { goles: 1 })]]),
+      ),
+      golesRecibidos: {},
+    };
+
+    const respuesta = await handlerDe(mundo).tabla(`rendimiento:${EQUIPO_1}`, 'user-1');
+
+    expect(respuesta.texto).toContain('🥇 Goleador: Jacob #10 (9 goles)');
+    expect(respuesta.texto).toContain('🧤 PORTERÍA — 9 goles recibidos');
+  });
+
   it('sin tarjetas ni arquero registrado lo dice', async () => {
     const mundo = mundoRendimiento();
-    mundo.stats[EQUIPO_1] = [fila(JACOB_1, EQUIPO_1, 'Jacob')].map((f) => ({ ...f, amarillas: 0 }));
+    mundo.notas = { p1: [notaDe(JACOB_1, 'Jacob', 10, 7)], p2: [] };
     mundo.golesRecibidos = {};
 
     const respuesta = await handlerDe(mundo).tabla(`rendimiento:${EQUIPO_1}`, 'user-1');
@@ -679,7 +701,7 @@ describe('EstadisticasHandler.tabla rendimiento', () => {
   });
 
   it('un equipo ajeno no muestra nada y sin cerrados lo dice', async () => {
-    const handler = handlerDe({ ...mundoRendimiento(), tabla: null });
+    const handler = handlerDe({ ...mundoRendimiento(), cerrados: {} });
 
     const ajeno = await handler.tabla('rendimiento:equipo-ajeno', 'user-1');
     expect(ajeno.texto).toContain('No encontré ese equipo entre los tuyos');

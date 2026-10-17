@@ -2,7 +2,7 @@ import type { Boton } from '../channels/channel.types';
 import { describirMinuto, type Minuto } from '../partidos/minuto';
 import type { Partido } from '../partidos/partido.mapper';
 import { describirMarcador } from '../partidos/partido.mapper';
-import { definicionDe, EVENTOS, type EquipoOrigen, type TipoEvento } from './evento.tipos';
+import { definicionDe, EVENTOS, mueveElMarcador, type EquipoOrigen } from './evento.tipos';
 import type { EventoCargado, Marcador } from './eventos.service';
 
 export const PREFIJO_EVENTO = 'ev:';
@@ -113,10 +113,6 @@ export function lineaDeBitacora(
   const resultado = mueveElMarcador(evento.tipo) ? ` — ${marcador.propio}-${marcador.rival}` : '';
 
   return `${definicion.emoji} ${definicion.sustantivo} de ${quien}${cuando}${resultado}`;
-}
-
-function mueveElMarcador(tipo: TipoEvento): boolean {
-  return tipo === 'gol' || tipo === 'gol_penal' || tipo === 'gol_tiro_libre' || tipo === 'autogol';
 }
 
 function nombrarJugador(nombre: string | null, dorsal: number | null): string | null {

@@ -6,7 +6,7 @@ import {
   CLAVE_EQUIPO_NOMBRE,
   pasoSelectorEquipo,
 } from '../conversacion/pasos-comunes/selector-equipo';
-import { botonesDeOpciones } from '../conversacion/pasos-comunes/opciones';
+import { botonesDeOpciones, ID_VER_MAS_LEGADO } from '../conversacion/pasos-comunes/opciones';
 import { MembresiasService } from './membresias.service';
 import { textos as textosComunes } from '../textos/comunes';
 import { textos } from '../textos/permisos';
@@ -73,6 +73,10 @@ export class PermisosFlujo {
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
         const seleccion = ctx.mensaje.seleccionId ?? '';
+
+        if (seleccion === ID_VER_MAS_LEGADO) {
+          return { tipo: 'ir', pasoId: PASOS.miembro };
+        }
 
         if (!seleccion.startsWith(PREFIJO_MIEMBRO)) {
           return { tipo: 'finalizar', respuesta: { texto: textos.noCambieNada() } };

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { TypedConfigService } from '../config/config.service';
 import type { ContextoFlujo, Entrada, Flujo, Paso, Transicion } from '../conversacion/flow.types';
 import { leerTexto } from '../conversacion/flow.types';
-import { botonesDeOpciones } from '../conversacion/pasos-comunes/opciones';
+import { botonesDeOpciones, ID_VER_MAS_LEGADO } from '../conversacion/pasos-comunes/opciones';
 import { CLAVE_EQUIPO_ID, pasoSelectorEquipo } from '../conversacion/pasos-comunes/selector-equipo';
 import { MembresiasService } from '../identidad/membresias.service';
 import { describirJugador, JugadoresService } from '../jugadores/jugadores.service';
@@ -75,6 +75,10 @@ export class InvitarJugadorFlujo {
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
         const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
         const seleccion = ctx.mensaje.seleccionId ?? '';
+
+        if (seleccion === ID_VER_MAS_LEGADO) {
+          return { tipo: 'ir', pasoId: PASOS.jugador };
+        }
 
         if (!seleccion.startsWith(PREFIJO_JUGADOR)) {
           return {

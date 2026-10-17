@@ -91,12 +91,14 @@ export function calcularMinutosJugados(
  * Goles en contra atribuidos a cada arquero que jugó el partido, para el
  * rendimiento de la temporada de `/tabla`.
  *
- * Con un solo arquero todo el marcador rival es suyo. Con varios, cada gol
- * en contra con minuto va a quien estaba en cancha en ese minuto (titular +
- * cambios con minuto hasta ahí, mismo criterio que `derivarEnCancha`); lo
- * que no se puede ubicar —un gol sin minuto, o la diferencia con un marcador
- * confirmado a mano en post partido— va al arquero titular (o al primero).
- * Nunca se reparte más que `totalEnContra`.
+ * `arqueros` llega en orden de prioridad (ver `arquerosDelPartido` en
+ * `ResumenService`). Con un solo arquero todo el marcador rival es suyo.
+ * Con varios, cada gol en contra con minuto va al primero de la lista que
+ * estaba en cancha en ese minuto (titular + cambios con minuto hasta ahí,
+ * mismo criterio que `derivarEnCancha`); lo que no se puede ubicar —un gol
+ * sin minuto, o la diferencia con un marcador confirmado a mano en post
+ * partido— va al primer arquero titular (o al primero de la lista). Nunca
+ * se reparte más que `totalEnContra`.
  */
 export function golesRecibidosPorArquero(
   arqueros: readonly string[],

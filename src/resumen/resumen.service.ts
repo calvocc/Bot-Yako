@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { esGol } from '../eventos/evento.tipos';
 import { EventosService, type EventoCargado } from '../eventos/eventos.service';
 import {
   calcularNotas,
@@ -31,7 +32,6 @@ const PORCENTAJE_MINIMO_BONO = 0.6;
 const PUNTOS_VALLA_INVICTA = 3;
 /** Se resta 1 por cada 2 goles recibidos (redondeando hacia abajo: 1 gol no cuesta nada). */
 const GOLES_POR_PUNTO_PENALIZADO = 2;
-const TIPOS_GOL = new Set<string>(['gol', 'gol_penal', 'gol_tiro_libre']);
 
 /** Notas del partido más los goles en contra de cada arquero que jugó. */
 export interface RendimientoPartido {
@@ -68,67 +68,60 @@ export class ResumenService {
   /**
    * Lo de `notasDe` más los goles que recibió cada arquero (ver
    * `golesRecibidosPorArquero`): lo usa el rendimiento de la temporada de
-   * `/tabla`. Los titulares se piden aparte porque solo hacen falta acá.
+   * `/tabla`. Recibe la plantilla ya cargada (con inactivos) para no
+   * pedirla de nuevo en cada uno de los partidos de la temporada.
    */
-  async rendimientoDe(partido: Partido): Promise<RendimientoPartido> {
-    const [{ cargados, participantes, bonos }, titulares] = await Promise.all([
-      this.base(partido),
-      this.alineacion.titularesDe(partido.id),
-    ]);
-
+  async rendimientoDe(
+    partido: Partido,
+    plantilla?: readonly Jugador[],
+  ): Promise<RendimientoPartido> {
+    const { cargados, participantes, bonos, titulares, cambios } = await this.base(
+      partido,
+      plantilla,
+    );
     const notas = calcularNotas(cargados, participantes, bonos);
-    const arqueros = notas.filter((n) => n.posicion === 'arquero').map((n) => n.jugadorId);
-    const cambios: CambioJugado[] = cargados
-      .filter((e) => e.tipo === 'cambio' && e.jugadorId && e.jugadorEntraId)
-      .map((e) => ({
-        sale: e.jugadorId as string,
-        entra: e.jugadorEntraId as string,
-        minuto: e.minutoCalculado,
-      }));
-    // Mismo criterio del trigger del marcador: un gol suma para quien lo
-    // marcó y un autogol para el rival de quien lo marcó.
-    const minutosEnContra = cargados
-      .filter(
-        (e) =>
-          (e.equipoOrigen === 'rival' && TIPOS_GOL.has(e.tipo)) ||
-          (e.equipoOrigen === 'propio' && e.tipo === 'autogol'),
-      )
-      .map((e) => e.minutoCalculado);
 
     return {
       notas,
       golesRecibidos: golesRecibidosPorArquero(
-        arqueros,
+        arquerosDelPartido(participantes, notas, titulares),
         titulares,
         cambios,
-        minutosEnContra,
+        minutosGolesEnContra(cargados),
         marcadorDe(partido).rival,
       ),
     };
   }
 
-  private async base(partido: Partido): Promise<{
+  private async base(
+    partido: Partido,
+    plantillaYaCargada?: readonly Jugador[],
+  ): Promise<{
     cargados: EventoCargado[];
     participantes: JugadorParticipante[];
     bonos: Bono[];
+    titulares: string[];
+    cambios: CambioJugado[];
   }> {
     // La plantilla y el minuto final se piden una sola vez acá, en paralelo
     // con los eventos -- son independientes entre sí, y el minuto final hace
     // falta antes de poder pedir minutos jugados.
     const [cargados, plantilla, contexto] = await Promise.all([
       this.eventos.delPartido(partido.id),
-      this.jugadores.listar(partido.equipoId, true),
+      plantillaYaCargada ?? this.jugadores.listar(partido.equipoId, true),
       this.tiempos.contextoDeCarga(partido),
     ]);
 
     const minutoFinal = contexto.minuto.minuto;
-    // Una sola consulta de titulares/cambios para las dos cosas que salen de
-    // ahí (participantes y minutos jugados): antes eran dos SELECT de cada
-    // una, uno por `participantesDe` y otro por `minutosJugadosDe`.
-    const { participantes: ids, minutos } = await this.alineacion.datosDeParticipacion(
-      partido.id,
-      minutoFinal,
-    );
+    // Una sola consulta de titulares/cambios para todo lo que sale de ahí
+    // (participantes, minutos jugados y quién estaba en cancha en cada
+    // minuto): antes eran SELECT repetidos de cada una.
+    const {
+      participantes: ids,
+      minutos,
+      titulares,
+      cambios,
+    } = await this.alineacion.datosDeParticipacion(partido.id, minutoFinal);
 
     const porId = new Map(plantilla.map((j) => [j.id, j]));
 
@@ -136,6 +129,8 @@ export class ResumenService {
       cargados,
       participantes: this.participantesDesde(ids, porId),
       bonos: this.bonosDesde(partido, minutoFinal, minutos, porId),
+      titulares,
+      cambios,
     };
   }
 
@@ -187,6 +182,50 @@ export class ResumenService {
       })
       .map(([jugadorId]) => ({ jugadorId, puntos }));
   }
+}
+
+/**
+ * Quiénes atajaron el partido, en orden de prioridad para
+ * `golesRecibidosPorArquero`: titulares primero y, entre ellos, quien más
+ * atajadas tuvo (si dos arqueros arrancan y uno juega de campo, el que
+ * ataja es el del arco).
+ *
+ * Solo cuenta a quien jugó (titular o entró por cambio): un arquero
+ * suplente que vio una amarilla desde el banco tiene nota, pero no recibió
+ * goles. Sin alineación registrada no hay forma de saber quién jugó, y ahí
+ * se toma a los arqueros con nota.
+ */
+function arquerosDelPartido(
+  participantes: readonly JugadorParticipante[],
+  notas: readonly NotaJugador[],
+  titulares: readonly string[],
+): string[] {
+  const atajadas = new Map(notas.map((n) => [n.jugadorId, n.atajadas + n.penalesAtajados]));
+  const candidatos =
+    participantes.length > 0
+      ? participantes.filter((p) => p.posicion === 'arquero').map((p) => p.jugadorId)
+      : notas.filter((n) => n.posicion === 'arquero').map((n) => n.jugadorId);
+
+  return candidatos.sort(
+    (a, b) =>
+      Number(titulares.includes(b)) - Number(titulares.includes(a)) ||
+      (atajadas.get(b) ?? 0) - (atajadas.get(a) ?? 0),
+  );
+}
+
+/**
+ * Minuto de cada gol en contra (`null` sin reloj). Mismo criterio del
+ * trigger del marcador: un gol suma para quien lo marcó y un autogol para
+ * el rival de quien lo marcó.
+ */
+function minutosGolesEnContra(cargados: readonly EventoCargado[]): (number | null)[] {
+  return cargados
+    .filter(
+      (e) =>
+        (e.equipoOrigen === 'rival' && esGol(e.tipo)) ||
+        (e.equipoOrigen === 'propio' && e.tipo === 'autogol'),
+    )
+    .map((e) => e.minutoCalculado);
 }
 
 /**

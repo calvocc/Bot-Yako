@@ -34,52 +34,59 @@ export interface OpcionesRender {
 }
 
 /**
- * Elige la representación según cuántas opciones haya.
+ * Elige la representación según cuántas opciones haya, y devuelve los
+ * mensajes a mandar en orden.
  *
- * Un grupo de más de 3 botones se convierte en lista automáticamente, así que
- * el panel del partido en vivo —que tiene 8— sigue siendo usable en WhatsApp
- * sin recortar la experiencia en Telegram, donde los 8 se muestran de una.
+ * Un grupo de más de 3 botones se convierte en lista automáticamente. Más
+ * de 10 opciones —el panel en vivo, una plantilla completa— no entran en
+ * una sola lista de WhatsApp, así que se reparten en varias listas
+ * seguidas: el bot ya no pagina en los flujos (Telegram muestra todo de
+ * una), y es este canal el que tiene que adaptarse. Los ids viajan intactos
+ * y son estables —nunca posicionales—, así que el flujo acepta la opción
+ * venga de la lista que venga, sin guardar en qué página se estaba.
  */
 export function renderizarParaWhatsApp(
   respuesta: RespuestaBot,
   opciones: OpcionesRender = {},
-): MensajeWhatsApp {
+): MensajeWhatsApp[] {
   const botones = respuesta.botones ?? [];
 
   if (botones.length === 0) {
-    return { tipo: 'texto', cuerpo: respuesta.texto };
+    return [{ tipo: 'texto', cuerpo: respuesta.texto }];
   }
 
   if (botones.length <= MAX_BOTONES_RESPUESTA) {
-    return {
-      tipo: 'botones',
-      cuerpo: respuesta.texto,
-      botones: botones.map((boton) => ({
+    return [
+      {
+        tipo: 'botones',
+        cuerpo: respuesta.texto,
+        botones: botones.map((boton) => ({
+          id: boton.id,
+          titulo: recortar(boton.texto, MAX_CARACTERES_ROTULO_BOTON),
+        })),
+      },
+    ];
+  }
+
+  const rotuloBoton = recortar(opciones.rotuloLista ?? 'Ver opciones', MAX_CARACTERES_ROTULO_BOTON);
+  const partes = Math.ceil(botones.length / MAX_FILAS_LISTA);
+  const mensajes: MensajeWhatsApp[] = [];
+
+  for (let parte = 0; parte < partes; parte++) {
+    mensajes.push({
+      tipo: 'lista',
+      // El cuerpo es obligatorio en una lista: las que siguen a la primera
+      // solo dicen que continúan, sin repetir la pregunta.
+      cuerpo: parte === 0 ? respuesta.texto : `Más opciones (${parte + 1}/${partes})`,
+      rotuloBoton,
+      filas: botones.slice(parte * MAX_FILAS_LISTA, (parte + 1) * MAX_FILAS_LISTA).map((boton) => ({
         id: boton.id,
-        titulo: recortar(boton.texto, MAX_CARACTERES_ROTULO_BOTON),
+        titulo: recortar(boton.texto, MAX_CARACTERES_TITULO_FILA),
       })),
-    };
+    });
   }
 
-  if (botones.length > MAX_FILAS_LISTA) {
-    // Un flujo que ofrece más de 10 opciones no se puede mostrar en WhatsApp
-    // de una sola vez. Es un problema de diseño del flujo (hay que paginar),
-    // no algo que el adaptador pueda resolver escondiendo opciones.
-    throw new Error(
-      `WhatsApp admite hasta ${MAX_FILAS_LISTA} opciones por mensaje y este flujo ofrece ` +
-        `${botones.length}. Hay que paginarlas en el flujo.`,
-    );
-  }
-
-  return {
-    tipo: 'lista',
-    cuerpo: respuesta.texto,
-    rotuloBoton: recortar(opciones.rotuloLista ?? 'Ver opciones', MAX_CARACTERES_ROTULO_BOTON),
-    filas: botones.map((boton) => ({
-      id: boton.id,
-      titulo: recortar(boton.texto, MAX_CARACTERES_TITULO_FILA),
-    })),
-  };
+  return mensajes;
 }
 
 /** Avisa de rótulos que WhatsApp truncaría, para detectarlos en desarrollo. */

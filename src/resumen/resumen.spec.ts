@@ -235,3 +235,66 @@ describe('ResumenService.notasDe', () => {
     expect(notas[0]).toMatchObject({ nombre: 'Jacob', goles: 1, puntosBrutos: 3 });
   });
 });
+
+describe('ResumenService.rendimientoDe', () => {
+  const arquero = (id: string): Jugador =>
+    ({ id, nombre: id, dorsal: 1, activo: true, posicion: 'arquero' }) as Jugador;
+  const campo = (id: string): Jugador =>
+    ({ id, nombre: id, dorsal: 9, activo: true, posicion: null }) as Jugador;
+
+  function servicio(
+    eventos: EventoCargado[],
+    titulares: string[],
+    listar: jest.Mock = jest.fn(),
+  ): ResumenService {
+    return new ResumenService(
+      { delPartido: () => Promise.resolve(eventos) } as unknown as EventosService,
+      {
+        datosDeParticipacion: () =>
+          Promise.resolve({ participantes: titulares, minutos: new Map(), titulares, cambios: [] }),
+      } as unknown as AlineacionService,
+      {
+        contextoDeCarga: () => Promise.resolve({ minuto: { minuto: 50 } }),
+      } as unknown as TiemposService,
+      { listar } as unknown as JugadoresService,
+    );
+  }
+
+  it('no le cuenta goles al arquero suplente que solo vio tarjeta desde el banco', async () => {
+    const plantilla = [arquero('titular'), arquero('suplente'), campo('jacob')];
+    const amarillaDelSuplente: EventoCargado = {
+      ...gol('suplente', 10),
+      tipo: 'tarjeta_amarilla',
+      jugadorPosicion: 'arquero',
+    };
+    const listar = jest.fn();
+
+    const { golesRecibidos } = await servicio(
+      [amarillaDelSuplente],
+      ['titular', 'jacob'],
+      listar,
+    ).rendimientoDe(partido({ marcadorRival: 2 }), plantilla);
+
+    expect(golesRecibidos).toEqual(new Map([['titular', 2]]));
+    // Con la plantilla ya cargada no se vuelve a pedir.
+    expect(listar).not.toHaveBeenCalled();
+  });
+
+  it('con dos arqueros titulares, el gol va al que atajó, no al que jugó de campo', async () => {
+    const plantilla = [arquero('de-campo'), arquero('del-arco')];
+    const atajada: EventoCargado = {
+      ...gol('del-arco', 5),
+      tipo: 'atajada',
+      jugadorPosicion: 'arquero',
+    };
+    const golRival: EventoCargado = { ...gol('rival', 20), equipoOrigen: 'rival', jugadorId: null };
+
+    const { golesRecibidos } = await servicio(
+      [atajada, golRival],
+      ['de-campo', 'del-arco'],
+    ).rendimientoDe(partido({ marcadorRival: 1 }), plantilla);
+
+    expect(golesRecibidos.get('del-arco')).toBe(1);
+    expect(golesRecibidos.get('de-campo')).toBe(0);
+  });
+});

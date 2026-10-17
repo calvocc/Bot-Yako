@@ -376,7 +376,7 @@ function nombreConDorsal(fila: { nombre: string; dorsal: number | null }): strin
 
 /** `7.4 en 6 partidos`. */
 function promedioDe(fila: FilaRendimiento): string {
-  return `${(fila.promedio ?? 0).toFixed(1)} en ${plural(fila.partidosConNota, 'partido', 'partidos')}`;
+  return `${(fila.promedio ?? 0).toFixed(1)} en ${plural(fila.partidos, 'partido', 'partidos')}`;
 }
 
 /** `2 amarillas · 1 roja`, omitiendo la que esté en cero. */
@@ -395,11 +395,9 @@ function tarjetas(fila: { amarillas: number; rojas: number }): string {
  * la pantalla del teléfono.
  */
 function miniResumen(fila: FilaRendimiento): string {
-  if (fila.partidosJugados === 0 && fila.partidosConNota === 0) return 'sin partidos todavía';
+  if (fila.partidos === 0) return 'sin partidos todavía';
 
-  const partes = [
-    plural(Math.max(fila.partidosJugados, fila.partidosConNota), 'partido', 'partidos'),
-  ];
+  const partes = [plural(fila.partidos, 'partido', 'partidos')];
 
   if (fila.goles > 0) partes.push(`⚽ ${fila.goles}`);
   if (fila.asistencias > 0) partes.push(`🅰️ ${fila.asistencias}`);

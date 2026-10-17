@@ -8,6 +8,14 @@ export interface Competencia {
   nombre: string;
 }
 
+/**
+ * Cuántas se ofrecen como botones, de la más reciente para atrás. La lista
+ * no se pagina, pero tampoco puede crecer sin tope: con los años una
+ * academia junta cientos y Telegram rechaza un teclado de más de 100
+ * botones. Una más vieja se elige escribiendo su nombre.
+ */
+export const MAXIMO_COMPETENCIAS = 60;
+
 @Injectable()
 export class CompetenciasService {
   constructor(private readonly db: DbService) {}
@@ -20,9 +28,9 @@ export class CompetenciasService {
    * torneo lo comparten. La fecha de "más reciente" sale de los partidos
    * que la usaron, no de cuándo se creó la fila: lo que importa para
    * ofrecerla primero es qué tan vigente está, no cuándo alguien la escribió
-   * por primera vez. Se devuelven todas: el bot las ofrece sin paginar.
+   * por primera vez.
    */
-  async deLaAcademia(academiaId: string): Promise<Competencia[]> {
+  async deLaAcademia(academiaId: string, limite = MAXIMO_COMPETENCIAS): Promise<Competencia[]> {
     const filas = await this.db.db
       .select({
         id: competencias.id,
@@ -33,7 +41,8 @@ export class CompetenciasService {
       .leftJoin(partidos, eq(partidos.competenciaId, competencias.id))
       .where(eq(competencias.academiaId, academiaId))
       .groupBy(competencias.id, competencias.nombre)
-      .orderBy(desc(sql`max(${partidos.fecha})`), desc(competencias.creadoEn));
+      .orderBy(desc(sql`max(${partidos.fecha})`), desc(competencias.creadoEn))
+      .limit(limite);
 
     return filas.map((f) => ({ id: f.id, nombre: f.nombre }));
   }
