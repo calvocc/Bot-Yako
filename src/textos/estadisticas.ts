@@ -353,12 +353,17 @@ export const textos = {
 
     lineas.push('', '👥 JUGADORES');
 
-    // Dorsal, nombre y promedio en la primera línea; el mini resumen debajo,
-    // sin sangría.
+    // Posición, dorsal, nombre y promedio en la primera línea; el mini
+    // resumen debajo, sin sangría. Las filas ya vienen de mayor a menor
+    // promedio: el podio lleva medalla y el resto su número. Quien todavía
+    // no tiene nota no tiene puesto en el ranking y va sin posición.
+    let puesto = 0;
+
     for (const fila of datos.filas) {
       const promedio = fila.promedio !== null ? `⭐ ${fila.promedio.toFixed(1)}` : '⭐ —';
+      const posicion = fila.promedio !== null ? `${marcaDePuesto(++puesto)} ` : '';
 
-      lineas.push(`${nombreConDorsal(fila)} · ${promedio}`, miniResumen(fila));
+      lineas.push(`${posicion}${nombreConDorsal(fila)} · ${promedio}`, miniResumen(fila));
     }
 
     return lineas.join('\n');
@@ -370,6 +375,13 @@ export const textos = {
     `🟨 ${plural(datos.amarillas, 'amarilla', 'amarillas')} · 🟥 ${plural(datos.rojas, 'roja', 'rojas')} · 🙃 ${plural(datos.autogoles, 'autogol', 'autogoles')}`,
   ],
 };
+
+const MEDALLAS = ['🥇', '🥈', '🥉'];
+
+/** `🥇`/`🥈`/`🥉` para el podio, `4.`, `5.`… para el resto. */
+function marcaDePuesto(puesto: number): string {
+  return MEDALLAS[puesto - 1] ?? `${puesto}.`;
+}
 
 /** `#10 Jacob` / `Jacob`: el dorsal primero, en todo el mensaje de rendimiento. */
 function nombreConDorsal(fila: { nombre: string; dorsal: number | null }): string {
