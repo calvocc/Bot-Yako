@@ -86,3 +86,55 @@ export function calcularMinutosJugados(
 
   return acumulado;
 }
+
+/**
+ * Goles en contra atribuidos a cada arquero que jugó el partido, para el
+ * rendimiento de la temporada de `/tabla`.
+ *
+ * `arqueros` llega en orden de prioridad (ver `arquerosDelPartido` en
+ * `ResumenService`). Con un solo arquero todo el marcador rival es suyo.
+ * Con varios, cada gol en contra con minuto va al primero de la lista que
+ * estaba en cancha en ese minuto (titular + cambios con minuto hasta ahí,
+ * mismo criterio que `derivarEnCancha`); lo que no se puede ubicar —un gol
+ * sin minuto, o la diferencia con un marcador confirmado a mano en post
+ * partido— va al primer arquero titular (o al primero de la lista). Nunca
+ * se reparte más que `totalEnContra`.
+ */
+export function golesRecibidosPorArquero(
+  arqueros: readonly string[],
+  titulares: readonly string[],
+  cambios: readonly CambioJugado[],
+  minutosGolesEnContra: readonly (number | null)[],
+  totalEnContra: number,
+): Map<string, number> {
+  const recibidos = new Map<string, number>(arqueros.map((id) => [id, 0]));
+
+  if (arqueros.length === 0) return recibidos;
+
+  const principal = arqueros.find((id) => titulares.includes(id)) ?? arqueros[0];
+  let asignados = 0;
+
+  if (arqueros.length > 1) {
+    for (const minuto of minutosGolesEnContra) {
+      if (minuto === null || asignados >= totalEnContra) continue;
+
+      const enCancha = derivarEnCancha(
+        titulares,
+        cambios.filter((c) => c.minuto !== null && c.minuto <= minuto),
+      );
+      const arquero = arqueros.find((id) => enCancha.has(id));
+
+      if (!arquero) continue;
+
+      recibidos.set(arquero, (recibidos.get(arquero) ?? 0) + 1);
+      asignados += 1;
+    }
+  }
+
+  recibidos.set(
+    principal,
+    (recibidos.get(principal) ?? 0) + Math.max(0, totalEnContra - asignados),
+  );
+
+  return recibidos;
+}

@@ -1,10 +1,8 @@
 import type { Boton } from '../channels/channel.types';
-import { ID_VER_MAS, OPCIONES_POR_PAGINA } from '../conversacion/pasos-comunes/paginacion';
 import { describirMinuto, type Minuto } from '../partidos/minuto';
 import type { Partido } from '../partidos/partido.mapper';
 import { describirMarcador } from '../partidos/partido.mapper';
-import { textos } from '../textos/pasos-comunes';
-import { definicionDe, EVENTOS, type EquipoOrigen, type TipoEvento } from './evento.tipos';
+import { definicionDe, EVENTOS, mueveElMarcador, type EquipoOrigen } from './evento.tipos';
 import type { EventoCargado, Marcador } from './eventos.service';
 
 export const PREFIJO_EVENTO = 'ev:';
@@ -28,14 +26,6 @@ export interface EstadoPanel {
   minuto: Minuto;
   /** Nota efímera arriba del panel: "▶️ Se inició el Tiempo 2 automáticamente." */
   aviso?: string;
-  /**
-   * Página del panel de eventos que se está mostrando. 18 tipos de evento se
-   * pasan del límite de 10 filas de WhatsApp, así que se pagina (ver
-   * `tamanosDePaginaEventos`). Los controles (Fin del tiempo, Deshacer, Ver
-   * resumen, Finalizar) solo entran en la última página; "Ver más" está en
-   * todas.
-   */
-  paginaEventos: number;
 }
 
 /**
@@ -46,7 +36,7 @@ export interface EstadoPanel {
  * encuentre el de arriba.
  */
 export function panelEnVivo(estado: EstadoPanel): { texto: string; botones: Boton[] } {
-  const { partido, equipoNombre, minuto, aviso, paginaEventos } = estado;
+  const { partido, equipoNombre, minuto, aviso } = estado;
 
   const encabezado = `⚡ ${equipoNombre} vs ${partido.rival}`;
   const reloj =
@@ -55,21 +45,9 @@ export function panelEnVivo(estado: EstadoPanel): { texto: string; botones: Boto
       : descripcionSinReloj(partido);
 
   const lineas = [aviso, encabezado, `${reloj} · ${describirMarcador(partido)}`].filter(Boolean);
-  const controles = botonesDeControl(partido);
-  const { botones: botonesEventos, hayMas } = botonesDeEvento(paginaEventos, controles.length);
-
-  // "Ver más" es lo único que se mantiene siempre visible mientras se pagina
-  // -- incluso en la última página, desde donde vuelve a la primera -- así
-  // que si esta página ya agotó los eventos y `botonesPaginados` no lo puso
-  // (no hay más para ver desde acá) se agrega igual.
-  const conVerMas = hayMas
-    ? botonesEventos
-    : [...botonesEventos, { id: ID_VER_MAS, texto: textos.verMas }];
-
-  // Los controles (Fin del tiempo, Deshacer, Ver resumen, Finalizar) recién
-  // entran cuando esta página llega al final de la lista de eventos: antes
-  // de eso ese lugar es para más tipos de evento.
-  const botones = hayMas ? conVerMas : [...conVerMas, ...controles];
+  // Todos los eventos y, al final, los controles (Fin del tiempo, Deshacer,
+  // Ver resumen, Finalizar): sin paginar, todo a la vista en un solo teclado.
+  const botones = [...botonesDeEvento(), ...botonesDeControl(partido)];
 
   return {
     texto: lineas.join('\n'),
@@ -85,91 +63,9 @@ function descripcionSinReloj(partido: Partido): string {
     : `Tiempo ${partido.tiempoActual} finalizado`;
 }
 
-/**
- * Cuántos eventos entran en cada página, dado que los controles (`reservar`)
- * solo le sacan lugar a la ÚLTIMA -- las anteriores usan las
- * `OPCIONES_POR_PAGINA` completas.
- *
- * A diferencia de `botonesPaginados` (que reserva lo mismo en TODAS las
- * páginas, así que su `pagina * porPagina` siempre da el mismo tamaño), acá
- * el tamaño de la última puede ser menor -- o incluso cero: si el total cae
- * justo en un múltiplo de `OPCIONES_POR_PAGINA`, llenar esa página del todo
- * no dejaría lugar para los controles en ninguna página siguiente, así que
- * se corta ahí y los controles se van a una página aparte, sin eventos
- * (`botonesDeEvento`/`panelEnVivo` ya arman bien una página así). El resto
- * de los casos reparten el sobrante en una página extra, siempre dentro del
- * cupo de 10 botones de WhatsApp.
- */
-function tamanosDePaginaEventos(total: number, reservarUltima: number): number[] {
-  const normal = OPCIONES_POR_PAGINA;
-  const ultima = OPCIONES_POR_PAGINA - reservarUltima;
-
-  if (total <= ultima) return [total];
-
-  const tamanos: number[] = [];
-  let restante = total;
-
-  while (restante > ultima) {
-    if (restante === normal) {
-      // Justo un múltiplo de `normal`: se toma la página completa y se
-      // corta acá -- ver el comentario de la función.
-      tamanos.push(normal);
-      restante = 0;
-      break;
-    }
-
-    if (restante - normal > 0) {
-      tamanos.push(normal);
-      restante -= normal;
-    } else {
-      // Una página normal completa no deja margen (restante - normal <= 0):
-      // se reparte en dos partes que sí entran, en vez de dejar la última
-      // con `normal` eventos y sin lugar para los controles.
-      tamanos.push(restante - ultima);
-      restante = ultima;
-    }
-  }
-
-  tamanos.push(restante);
-
-  return tamanos;
-}
-
-/** Cuántas páginas hacen falta para paginar los eventos con esta reserva. */
-export function totalPaginasEventos(reservarUltima: number): number {
-  return tamanosDePaginaEventos(EVENTOS.length, reservarUltima).length;
-}
-
-/** Avanza a la página siguiente de eventos, volviendo a la primera al pasarse. */
-export function paginaSiguienteEventos(pagina: number, reservarUltima: number): number {
-  return (pagina + 1) % totalPaginasEventos(reservarUltima);
-}
-
-/**
- * Los botones de evento de una página, con "Ver más" si sobran, y si esta
- * página ya llegó al final de la lista (`hayMas` en falso, para que
- * `panelEnVivo` sepa si le toca sumar los controles ahí).
- *
- * `reservarUltima` es el lugar que `panelEnVivo` deja aparte para los
- * controles (3 o 4 según el estado del partido) -- solo en la última
- * página, ver `tamanosDePaginaEventos`.
- */
-export function botonesDeEvento(
-  pagina: number,
-  reservarUltima: number,
-): { botones: Boton[]; hayMas: boolean } {
-  const tamanos = tamanosDePaginaEventos(EVENTOS.length, reservarUltima);
-  const desde = tamanos.slice(0, pagina).reduce((suma, n) => suma + n, 0);
-  const trozo = EVENTOS.slice(desde, desde + (tamanos[pagina] ?? 0));
-  const hayMas = pagina < tamanos.length - 1;
-
-  const botones: Boton[] = trozo.map((e) => ({ id: `${PREFIJO_EVENTO}${e.tipo}`, texto: e.boton }));
-
-  if (hayMas) {
-    botones.push({ id: ID_VER_MAS, texto: textos.verMas });
-  }
-
-  return { botones, hayMas };
+/** Todos los tipos de evento como botones, en el orden de `EVENTOS`. */
+export function botonesDeEvento(): Boton[] {
+  return EVENTOS.map((e) => ({ id: `${PREFIJO_EVENTO}${e.tipo}`, texto: e.boton }));
 }
 
 export function botonesDeControl(partido: Partido): Boton[] {
@@ -217,10 +113,6 @@ export function lineaDeBitacora(
   const resultado = mueveElMarcador(evento.tipo) ? ` — ${marcador.propio}-${marcador.rival}` : '';
 
   return `${definicion.emoji} ${definicion.sustantivo} de ${quien}${cuando}${resultado}`;
-}
-
-function mueveElMarcador(tipo: TipoEvento): boolean {
-  return tipo === 'gol' || tipo === 'gol_penal' || tipo === 'gol_tiro_libre' || tipo === 'autogol';
 }
 
 function nombrarJugador(nombre: string | null, dorsal: number | null): string | null {

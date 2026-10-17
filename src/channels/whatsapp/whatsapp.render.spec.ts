@@ -13,17 +13,17 @@ const botones = (cantidad: number) =>
 
 describe('renderizarParaWhatsApp', () => {
   it('manda texto plano cuando no hay botones', () => {
-    expect(renderizarParaWhatsApp({ texto: 'Hola' })).toEqual({ tipo: 'texto', cuerpo: 'Hola' });
+    expect(renderizarParaWhatsApp({ texto: 'Hola' })).toEqual([{ tipo: 'texto', cuerpo: 'Hola' }]);
   });
 
   it('usa botones de respuesta rápida hasta tres opciones', () => {
-    const resultado = renderizarParaWhatsApp({ texto: '¿Cuál?', botones: botones(3) });
+    const [resultado] = renderizarParaWhatsApp({ texto: '¿Cuál?', botones: botones(3) });
 
     expect(resultado.tipo).toBe('botones');
   });
 
   it('convierte a lista automáticamente a partir de cuatro opciones', () => {
-    const resultado = renderizarParaWhatsApp({ texto: '¿Cuál?', botones: botones(4) });
+    const [resultado] = renderizarParaWhatsApp({ texto: '¿Cuál?', botones: botones(4) });
 
     expect(resultado.tipo).toBe('lista');
   });
@@ -45,7 +45,7 @@ describe('renderizarParaWhatsApp', () => {
       ],
     };
 
-    const resultado = renderizarParaWhatsApp(panel);
+    const [resultado] = renderizarParaWhatsApp(panel);
 
     expect(resultado.tipo).toBe('lista');
 
@@ -57,7 +57,7 @@ describe('renderizarParaWhatsApp', () => {
   });
 
   it('recorta los rótulos que exceden el límite de la plataforma', () => {
-    const resultado = renderizarParaWhatsApp({
+    const [resultado] = renderizarParaWhatsApp({
       texto: '¿Cuál?',
       botones: [{ id: 'x', texto: 'Un rótulo larguísimo que no entra en un botón' }],
     });
@@ -68,12 +68,26 @@ describe('renderizarParaWhatsApp', () => {
     expect(resultado.botones[0].id).toBe('x');
   });
 
-  it('falla si un flujo ofrece más opciones de las que WhatsApp puede mostrar', () => {
-    // Preferimos un error explícito a esconder opciones en silencio: es el
-    // flujo el que tiene que paginar.
-    expect(() =>
-      renderizarParaWhatsApp({ texto: '¿Cuál?', botones: botones(MAX_FILAS_LISTA + 1) }),
-    ).toThrow(/paginar/);
+  it('reparte en varias listas lo que no entra en una, sin perder ninguna opción', () => {
+    // Los flujos ya no paginan (Telegram muestra todo): es WhatsApp el que
+    // reparte. Ninguna opción se esconde y los ids viajan intactos.
+    const todas = botones(MAX_FILAS_LISTA * 2 + 3);
+    const mensajes = renderizarParaWhatsApp({ texto: '¿Cuál?', botones: todas });
+
+    expect(mensajes).toHaveLength(3);
+    expect(mensajes.map((m) => m.cuerpo)).toEqual([
+      '¿Cuál?',
+      'Más opciones (2/3)',
+      'Más opciones (3/3)',
+    ]);
+
+    const ids = mensajes.flatMap((m) => (m.tipo === 'lista' ? m.filas.map((f) => f.id) : []));
+
+    expect(ids).toEqual(todas.map((b) => b.id));
+    for (const mensaje of mensajes) {
+      if (mensaje.tipo !== 'lista') throw new Error('esperaba lista');
+      expect(mensaje.filas.length).toBeLessThanOrEqual(MAX_FILAS_LISTA);
+    }
   });
 });
 
@@ -110,7 +124,6 @@ describe('rotulosDemasiadoLargos', () => {
       partidos.nuevoPartido.botonFormatoHabitual,
       partidos.nuevoPartido.botonFormatoOtro,
       partidos.listar.botonCrearPartido,
-      pasosComunes.verMas,
       pasosComunes.confirmarListo,
       comunes.botonEmpezar(),
       comunes.botonAyuda(),

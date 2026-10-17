@@ -8,8 +8,13 @@ export interface Competencia {
   nombre: string;
 }
 
-/** Cuántas se ofrecen como botones antes de pasar a "Ver más". */
-export const COMPETENCIAS_POR_PAGINA = 8;
+/**
+ * Cuántas se ofrecen como botones, de la más reciente para atrás. La lista
+ * no se pagina, pero tampoco puede crecer sin tope: con los años una
+ * academia junta cientos y Telegram rechaza un teclado de más de 100
+ * botones. Una más vieja se elige escribiendo su nombre.
+ */
+export const MAXIMO_COMPETENCIAS = 60;
 
 @Injectable()
 export class CompetenciasService {
@@ -25,10 +30,7 @@ export class CompetenciasService {
    * ofrecerla primero es qué tan vigente está, no cuándo alguien la escribió
    * por primera vez.
    */
-  async deLaAcademia(
-    academiaId: string,
-    limite = COMPETENCIAS_POR_PAGINA * 3,
-  ): Promise<Competencia[]> {
+  async deLaAcademia(academiaId: string, limite = MAXIMO_COMPETENCIAS): Promise<Competencia[]> {
     const filas = await this.db.db
       .select({
         id: competencias.id,

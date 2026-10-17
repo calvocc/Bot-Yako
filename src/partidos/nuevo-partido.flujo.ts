@@ -1,9 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {
-  botonesPaginados,
-  ID_VER_MAS,
-  paginaSiguiente,
-} from '../conversacion/pasos-comunes/paginacion';
+import { botonesDeOpciones } from '../conversacion/pasos-comunes/opciones';
 import {
   CLAVE_EQUIPO_ID,
   CLAVE_EQUIPO_NOMBRE,
@@ -41,7 +37,6 @@ const CLAVE_RIVAL = 'rival';
 const CLAVE_FECHA = 'fecha';
 const CLAVE_COMPETENCIA_ID = 'competenciaId';
 const CLAVE_COMPETENCIA_NOMBRE = 'competenciaNombre';
-const CLAVE_PAGINA_COMPETENCIA = 'paginaCompetencia';
 const CLAVE_TIEMPOS = 'cantidadTiempos';
 const CLAVE_MINUTOS = 'minutosPorTiempo';
 
@@ -51,9 +46,6 @@ const ID_COMPETENCIA_OTRA = 'co:otra';
 const ID_COMPETENCIA_NINGUNA = 'co:ninguna';
 const ID_FORMATO_HABITUAL = 'fmt:habitual';
 const ID_FORMATO_OTRO = 'fmt:otro';
-
-/** "Nueva competencia" y "Sin competencia": botones fijos que se suman a la lista paginada. */
-const RESERVA_BOTONES_COMPETENCIA = 2;
 
 @Injectable()
 export class NuevoPartidoFlujo {
@@ -177,15 +169,11 @@ export class NuevoPartidoFlujo {
       return equipo ? this.competencias.deLaAcademia(equipo.academiaId) : [];
     };
 
-    const botones = (lista: Competencia[], pagina: number) => {
-      const { botones: paginados } = botonesPaginados(
-        lista.map((c) => ({ id: `${PREFIJO_COMPETENCIA}${c.id}`, texto: c.nombre })),
-        pagina,
-        RESERVA_BOTONES_COMPETENCIA,
-      );
-
+    const botones = (lista: Competencia[]) => {
       return [
-        ...paginados,
+        ...botonesDeOpciones(
+          lista.map((c) => ({ id: `${PREFIJO_COMPETENCIA}${c.id}`, texto: c.nombre })),
+        ),
         { id: ID_COMPETENCIA_OTRA, texto: textos.nuevoPartido.botonNuevaCompetencia },
         { id: ID_COMPETENCIA_NINGUNA, texto: textos.nuevoPartido.botonSinCompetencia },
       ];
@@ -200,7 +188,7 @@ export class NuevoPartidoFlujo {
         return {
           respuesta: {
             texto: textos.nuevoPartido.preguntaCompetencia(),
-            botones: botones(lista, 0),
+            botones: botones(lista),
           },
         };
       },
@@ -221,20 +209,6 @@ export class NuevoPartidoFlujo {
         }
 
         const lista = await listar(ctx);
-        const pagina = leerNumero(ctx.datos, CLAVE_PAGINA_COMPETENCIA, 0);
-
-        if (seleccion === ID_VER_MAS) {
-          const siguiente = paginaSiguiente(pagina, lista.length, RESERVA_BOTONES_COMPETENCIA);
-
-          return {
-            tipo: 'repetir',
-            respuesta: {
-              texto: textos.nuevoPartido.preguntaCompetencia(),
-              botones: botones(lista, siguiente),
-            },
-            datos: { [CLAVE_PAGINA_COMPETENCIA]: siguiente },
-          };
-        }
 
         if (seleccion?.startsWith(PREFIJO_COMPETENCIA)) {
           const elegida = lista.find((c) => c.id === seleccion.slice(PREFIJO_COMPETENCIA.length));
@@ -261,9 +235,8 @@ export class NuevoPartidoFlujo {
           tipo: 'repetir',
           respuesta: {
             texto: textos.nuevoPartido.tocaOpcionOEscribeNombre(),
-            botones: botones(lista, pagina),
+            botones: botones(lista),
           },
-          datos: { [CLAVE_PAGINA_COMPETENCIA]: pagina },
         };
       },
     };

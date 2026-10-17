@@ -160,13 +160,21 @@ export class AlineacionService {
    * eran dos SELECT de titulares y dos de cambios por cada /resumen.
    *
    * `minutos` sigue el mismo criterio que `minutosJugadosDe` (ver su
-   * comentario): vacío sin `minutoFinal` o sin titulares.
+   * comentario): vacío sin `minutoFinal` o sin titulares. `titulares` y
+   * `cambios` se devuelven también, tal como se leyeron, para quien necesite
+   * saber quién estaba en cancha en un minuto dado (goles recibidos por
+   * arquero en el rendimiento de `/tabla`) sin volver a pedirlos.
    */
   async datosDeParticipacion(
     partidoId: string,
     minutoFinal: number,
     tx?: EjecutorDb,
-  ): Promise<{ participantes: string[]; minutos: Map<string, number> }> {
+  ): Promise<{
+    participantes: string[];
+    minutos: Map<string, number>;
+    titulares: string[];
+    cambios: CambioJugado[];
+  }> {
     const [titulares, cambios] = await Promise.all([
       this.titularesDe(partidoId, tx),
       this.cambiosDe(partidoId, tx),
@@ -178,6 +186,8 @@ export class AlineacionService {
         minutoFinal <= 0 || titulares.length === 0
           ? new Map<string, number>()
           : calcularMinutosJugados(minutoFinal, titulares, cambios),
+      titulares,
+      cambios,
     };
   }
 

@@ -1,4 +1,9 @@
-import { calcularMinutosJugados, derivarEnCancha, type CambioJugado } from './alineacion';
+import {
+  calcularMinutosJugados,
+  derivarEnCancha,
+  golesRecibidosPorArquero,
+  type CambioJugado,
+} from './alineacion';
 
 const cambio = (parcial: Partial<CambioJugado> & Pick<CambioJugado, 'sale' | 'entra'>) => ({
   minuto: null,
@@ -98,5 +103,54 @@ describe('calcularMinutosJugados', () => {
     );
 
     expect(minutos.get('samuel')).toBe(10);
+  });
+});
+
+describe('golesRecibidosPorArquero', () => {
+  it('sin arquero no atribuye nada', () => {
+    expect(golesRecibidosPorArquero([], ['a'], [], [5], 1).size).toBe(0);
+  });
+
+  it('con un solo arquero, todo el marcador rival es suyo', () => {
+    expect(golesRecibidosPorArquero(['arq'], ['arq'], [], [null, 10], 3)).toEqual(
+      new Map([['arq', 3]]),
+    );
+  });
+
+  it('con dos, cada gol va a quien estaba en cancha en ese minuto', () => {
+    const cambios = [{ sale: 'arq1', entra: 'arq2', minuto: 20 }];
+    const recibidos = golesRecibidosPorArquero(
+      ['arq1', 'arq2'],
+      ['arq1', 'x'],
+      cambios,
+      [5, 25, 30],
+      3,
+    );
+
+    expect(recibidos).toEqual(
+      new Map([
+        ['arq1', 1],
+        ['arq2', 2],
+      ]),
+    );
+  });
+
+  it('lo que no se puede ubicar va al titular, sin pasarse del marcador', () => {
+    const cambios = [{ sale: 'arq1', entra: 'arq2', minuto: 20 }];
+
+    // Un gol sin minuto y un marcador confirmado mayor que los eventos.
+    expect(golesRecibidosPorArquero(['arq2', 'arq1'], ['arq1'], cambios, [25, null], 3)).toEqual(
+      new Map([
+        ['arq2', 1],
+        ['arq1', 2],
+      ]),
+    );
+    // Marcador confirmado menor que los eventos: no se reparte de más.
+    expect(golesRecibidosPorArquero(['arq1', 'arq2'], ['arq1'], cambios, [5, 25, 30], 1)).toEqual(
+      new Map([
+        ['arq1', 1],
+        ['arq2', 0],
+      ]),
+    );
   });
 });

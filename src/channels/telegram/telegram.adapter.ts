@@ -28,6 +28,49 @@ function esContenidoSinCambios(error: unknown): boolean {
   return descripcion.includes('message is not modified');
 }
 
+/**
+ * Largo máximo del texto de un mensaje en la Bot API. `String.length` cuenta
+ * unidades UTF-16, igual que Telegram, así que un emoji ocupa lo mismo en
+ * los dos lados.
+ */
+export const LIMITE_CARACTERES_MENSAJE = 4096;
+
+/**
+ * Parte un texto largo en trozos que Telegram acepta, cortando entre líneas
+ * para no dejar un renglón a la mitad. Solo una línea que por sí sola no
+ * entra se corta a la fuerza.
+ */
+export function partirTexto(texto: string, limite = LIMITE_CARACTERES_MENSAJE): string[] {
+  if (texto.length <= limite) return [texto];
+
+  const trozos: string[] = [];
+  let actual = '';
+
+  for (const linea of texto.split('\n')) {
+    const candidato = actual ? `${actual}\n${linea}` : linea;
+
+    if (candidato.length <= limite) {
+      actual = candidato;
+      continue;
+    }
+
+    if (actual) trozos.push(actual);
+
+    let resto = linea;
+
+    while (resto.length > limite) {
+      trozos.push(resto.slice(0, limite));
+      resto = resto.slice(limite);
+    }
+
+    actual = resto;
+  }
+
+  if (actual) trozos.push(actual);
+
+  return trozos;
+}
+
 /** Botones por fila en el teclado. Dos entran cómodos en un teléfono. */
 const BOTONES_POR_FILA = 2;
 /** Con rótulos largos conviene una sola columna. */
@@ -51,8 +94,11 @@ export class TelegramAdapter implements ChannelAdapter {
 
   async enviar(destino: DestinoMensaje, respuesta: RespuestaBot): Promise<MensajeEnviado> {
     const teclado = this.construirTeclado(respuesta.botones);
+    const trozos = partirTexto(respuesta.texto);
 
-    if (respuesta.editarMensajeId) {
+    // Un texto que no entra en un solo mensaje no se puede editar en el
+    // sitio: se manda nuevo, en varios mensajes.
+    if (respuesta.editarMensajeId && trozos.length === 1) {
       try {
         await this.bot.telegram.editMessageText(
           destino.chatId,
@@ -81,9 +127,21 @@ export class TelegramAdapter implements ChannelAdapter {
       }
     }
 
-    const enviado = await this.bot.telegram.sendMessage(destino.chatId, respuesta.texto, teclado);
+    // Los trozos van en orden y los botones solo en el último, que es el
+    // que queda abajo, a mano, y el que se edita después.
+    let ultimoId = 0;
 
-    return { mensajeId: String(enviado.message_id) };
+    for (const [i, trozo] of trozos.entries()) {
+      const enviado = await this.bot.telegram.sendMessage(
+        destino.chatId,
+        trozo,
+        i === trozos.length - 1 ? teclado : undefined,
+      );
+
+      ultimoId = enviado.message_id;
+    }
+
+    return { mensajeId: String(ultimoId) };
   }
 
   /**

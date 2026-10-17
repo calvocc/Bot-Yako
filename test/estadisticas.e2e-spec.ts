@@ -476,13 +476,27 @@ describe('Estadísticas (e2e)', () => {
       // Sin atajadas no hay grupo portería.
       expect(respuesta.texto).not.toContain('🧤 PORTERÍA');
 
-      // El botón lleva al listado seleccionable de jugadores del equipo.
-      expect(respuesta.botones?.map((b) => b.id)).toEqual([`cmd:stats:equipo:${equipo.id}`]);
+      // Un botón lleva al listado seleccionable de jugadores del equipo y el
+      // otro al rendimiento de todo el plantel.
+      expect(respuesta.botones?.map((b) => b.id)).toEqual([
+        `cmd:stats:equipo:${equipo.id}`,
+        `cmd:tabla:rendimiento:${equipo.id}`,
+      ]);
 
       const plantilla = await handler.stats(`equipo:${equipo.id}`, admin);
 
       expect(plantilla.texto).toContain('Toca un jugador');
       expect(plantilla.botones?.map((b) => b.id)).toEqual([`cmd:stats:jugador:${jacob.id}`]);
+
+      const rendimiento = await handler.tabla(`rendimiento:${equipo.id}`, admin);
+
+      expect(rendimiento.texto).toContain('📈 Rendimiento — Sub-11 · Temporada 2026');
+      expect(rendimiento.texto).toContain('🥇 Goleador: Jacob #10 (4 goles)');
+      // 4 goles sin posición cargada = 12 puntos: la nota queda en el tope.
+      expect(rendimiento.texto).toContain('📈 Mejor promedio: Jacob #10 — 10.0 en 1 partido');
+      expect(rendimiento.texto).not.toContain('📉 Promedio más bajo');
+      expect(rendimiento.texto).toContain('🧤 PORTERÍA — 0 goles recibidos');
+      expect(rendimiento.texto).toContain('⭐ 10.0 · Jacob #10');
     });
 
     it('/tabla con un solo campeonato muestra su bloque con goleador y MVP', async () => {

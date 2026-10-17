@@ -145,3 +145,23 @@ export function esTipoDeEvento(valor: string): valor is TipoEvento {
 export function admiteEquipoRival(tipo: TipoEvento): boolean {
   return definicionDe(tipo).admiteRival;
 }
+
+/**
+ * Las variantes de gol: cuentan igual para el total de goles, lo que las
+ * distingue es el puntaje. Un solo lugar para no tener que acordarse de
+ * cada lista suelta al sumar una variante nueva.
+ */
+const TIPOS_GOL: ReadonlySet<TipoEvento> = new Set<TipoEvento>([
+  'gol',
+  'gol_penal',
+  'gol_tiro_libre',
+]);
+
+export function esGol(tipo: TipoEvento): boolean {
+  return TIPOS_GOL.has(tipo);
+}
+
+/** Lo que mueve el marcador, mismo criterio del trigger: cualquier gol o un autogol. */
+export function mueveElMarcador(tipo: TipoEvento): boolean {
+  return esGol(tipo) || tipo === 'autogol';
+}

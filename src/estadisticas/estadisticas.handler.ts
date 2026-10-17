@@ -5,10 +5,10 @@ import type { EquipoDelUsuario } from '../identidad/membresias.service';
 import { MembresiasService } from '../identidad/membresias.service';
 import { describirJugador, JugadoresService } from '../jugadores/jugadores.service';
 import { AlineacionService } from '../partidos/alineacion.service';
-import type { Partido } from '../partidos/partido.mapper';
+import { marcadorDe, type Partido } from '../partidos/partido.mapper';
 import { PartidosService } from '../partidos/partidos.service';
 import { TiemposService } from '../partidos/tiempos.service';
-import { ResumenService } from '../resumen/resumen.service';
+import { ResumenService, type RendimientoPartido } from '../resumen/resumen.service';
 import { textos as textosComunes } from '../textos/comunes';
 import { textos } from '../textos/estadisticas';
 import {
@@ -17,6 +17,7 @@ import {
   type EstadisticaEquipoCompetencia,
   type EstadisticaJugador,
 } from './estadisticas.service';
+import { destacados, ordenarPorPromedio, rendimientoDeTemporada } from './rendimiento';
 
 /**
  * Selección interna que viaja en el argumento de los botones `cmd:stats:...`
@@ -30,6 +31,10 @@ import {
  */
 const PREFIJO_EQUIPO = 'equipo:';
 const PREFIJO_JUGADOR = 'jugador:';
+/** `/tabla rendimiento:<equipoId>` (`cmd:tabla:rendimiento:` + uuid = 58 bytes, límite 64). */
+const PREFIJO_RENDIMIENTO = 'rendimiento:';
+/** Partidos cuyo rendimiento se calcula a la vez (cada uno hace varias consultas). */
+const PARTIDOS_EN_PARALELO = 4;
 
 /**
  * `/stats [jugador]` y `/tabla` (RF-6). Cualquier rol puede usarlos —Viewer
@@ -318,6 +323,16 @@ export class EstadisticasHandler {
 
     const nombre = argumento?.trim();
 
+    if (nombre?.startsWith(PREFIJO_RENDIMIENTO)) {
+      const equipo = equipos.find((e) => e.equipoId === nombre.slice(PREFIJO_RENDIMIENTO.length));
+
+      if (!equipo) {
+        return { texto: textosComunes.noEncontre('ese equipo entre los tuyos') };
+      }
+
+      return this.rendimientoDeEquipo(equipo);
+    }
+
     if (nombre?.startsWith(PREFIJO_EQUIPO)) {
       const equipo = equipos.find((e) => e.equipoId === nombre.slice(PREFIJO_EQUIPO.length));
 
@@ -407,9 +422,61 @@ export class EstadisticasHandler {
 
     return {
       texto: bloques.join('\n'),
-      // Lleva al listado seleccionable de jugadores de este equipo (el
-      // mismo `equipo:<id>` de `/stats`): la ficha individual ya existe y
-      // no se duplica nada acá.
+      // "Ver jugadores" lleva al listado seleccionable de este equipo (el
+      // mismo `equipo:<id>` de `/stats`): la ficha individual ya existe y no
+      // se duplica nada acá. "Rendimiento" resume a todo el plantel.
+      botones: [
+        botonComando('stats', '👥 Ver jugadores', `${PREFIJO_EQUIPO}${equipo.equipoId}`),
+        botonComando('tabla', '📈 Rendimiento', `${PREFIJO_RENDIMIENTO}${equipo.equipoId}`),
+      ],
+    };
+  }
+
+  /**
+   * Rendimiento de la temporada del equipo: goleador, mejor y peor
+   * promedio, más amonestado, goles recibidos por cada arquero y el listado
+   * de todo el plantel con su promedio y un mini resumen.
+   *
+   * Todo sale de los partidos cerrados de la temporada, sin tope —el
+   * promedio es la media de la nota por partido, la misma del resumen con
+   * bonos de cierre—, así que un partido en curso no aparece en ningún
+   * número. Se calculan de a `PARTIDOS_EN_PARALELO` para no acaparar el
+   * pool de conexiones con una temporada larga, y la plantilla se pide una
+   * sola vez para todos.
+   */
+  private async rendimientoDeEquipo(equipo: EquipoDelUsuario): Promise<RespuestaBot> {
+    const temporada = temporadaActual();
+    const [plantilla, cerrados] = await Promise.all([
+      this.jugadores.listar(equipo.equipoId, true),
+      this.partidos.cerradosDeTemporada(equipo.equipoId, temporada),
+    ]);
+
+    if (cerrados.length === 0) {
+      return { texto: textos.sinPartidosCerrados(equipo.equipoNombre, temporada) };
+    }
+
+    const porPartido: RendimientoPartido[] = [];
+
+    for (let i = 0; i < cerrados.length; i += PARTIDOS_EN_PARALELO) {
+      porPartido.push(
+        ...(await Promise.all(
+          cerrados
+            .slice(i, i + PARTIDOS_EN_PARALELO)
+            .map((partido) => this.resumen.rendimientoDe(partido, plantilla)),
+        )),
+      );
+    }
+
+    const filas = rendimientoDeTemporada(plantilla, porPartido);
+
+    return {
+      texto: textos.rendimientoEquipo({
+        equipoNombre: equipo.equipoNombre,
+        temporada,
+        golesContra: cerrados.reduce((suma, partido) => suma + marcadorDe(partido).rival, 0),
+        destacados: destacados(filas),
+        filas: ordenarPorPromedio(filas),
+      }),
       botones: [botonComando('stats', '👥 Ver jugadores', `${PREFIJO_EQUIPO}${equipo.equipoId}`)],
     };
   }

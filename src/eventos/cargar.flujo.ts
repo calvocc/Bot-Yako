@@ -1,10 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { RespuestaBot } from '../channels/channel.types';
-import {
-  botonesPaginados,
-  ID_VER_MAS,
-  paginaSiguiente,
-} from '../conversacion/pasos-comunes/paginacion';
+import { botonesDeOpciones } from '../conversacion/pasos-comunes/opciones';
 import {
   pasoSeleccionMultiple,
   type OpcionesSeleccionMultiple,
@@ -22,7 +18,7 @@ import type {
   Paso,
   Transicion,
 } from '../conversacion/flow.types';
-import { leerNumero, leerTexto } from '../conversacion/flow.types';
+import { leerTexto } from '../conversacion/flow.types';
 import { EquiposService } from '../equipos/equipos.service';
 import { MembresiasService } from '../identidad/membresias.service';
 import {
@@ -54,7 +50,6 @@ import {
 } from './post-partido.flujo';
 import {
   avisoDeDuplicado,
-  botonesDeControl,
   botonesDeOrigen,
   ID_DESHACER,
   ID_ES_OTRO,
@@ -68,7 +63,6 @@ import {
   ID_YA_ESTABA,
   lineaDeBitacora,
   origenDesdeBoton,
-  paginaSiguienteEventos,
   panelEnVivo,
   PREFIJO_EVENTO,
   PREFIJO_JUGADOR,
@@ -137,9 +131,6 @@ const CLAVE_PENDIENTE_NOMBRE = 'jugadorNombrePendiente';
 const CLAVE_PENDIENTE_DORSAL = 'jugadorDorsalPendiente';
 const CLAVE_CANDIDATO_ID = 'candidatoJugadorId';
 const CLAVE_CANDIDATO_EQUIPO = 'candidatoEquipoNombre';
-const CLAVE_PAGINA = 'paginaJugadores';
-/** Página del panel de eventos (13 tipos no entran en una sola pantalla). */
-const CLAVE_PAGINA_EVENTOS = 'paginaEventos';
 /** Nota efímera que el panel muestra una vez y descarta. */
 const CLAVE_AVISO = 'aviso';
 /** Líneas de bitácora todavía sin enviar, en camino al panel. */
@@ -648,23 +639,6 @@ export class CargarFlujo {
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
         const seleccion = ctx.mensaje.seleccionId ?? '';
 
-        if (seleccion === ID_VER_MAS) {
-          const partido = await this.partidoDe(ctx);
-
-          if (!partido) return this.partidoPerdido();
-
-          // Misma reserva que usa `panelEnVivo` al armar cada página: solo le
-          // saca lugar a la última (ver `paginaSiguienteEventos`).
-          const reservarUltima = botonesDeControl(partido).length;
-          const pagina = leerNumero(ctx.datos, CLAVE_PAGINA_EVENTOS, 0);
-
-          ctx.datos[CLAVE_PAGINA_EVENTOS] = paginaSiguienteEventos(pagina, reservarUltima);
-
-          const respuesta = await this.dibujarPanel(ctx);
-
-          return respuesta ? { tipo: 'repetir', respuesta } : this.partidoPerdido();
-        }
-
         if (seleccion.startsWith(PREFIJO_EVENTO)) {
           return this.arrancarEvento(ctx, seleccion.slice(PREFIJO_EVENTO.length));
         }
@@ -723,7 +697,6 @@ export class CargarFlujo {
       ...this.datosPanel(ctx),
       [CLAVE_TIPO]: crudo,
       [CLAVE_AVISO]: aviso,
-      [CLAVE_PAGINA]: 0,
       // Se limpia acá y no al volver al panel: es lo único que hace que un
       // evento normal después de un cambio no herede "quién sale" del cambio
       // anterior. `pasoCambioSale` lo vuelve a poner si corresponde.
@@ -797,16 +770,10 @@ export class CargarFlujo {
       return esTipoDeEvento(tipo) && admiteEquipoRival(tipo);
     };
 
-    // Los botones que este paso agrega aparte de la plantilla, y que hay que
-    // descontar del tamaño de página para no pasarse del límite del canal.
-    const extras = (ctx: ContextoFlujo) => (admiteSinFicha(ctx) ? 2 : 1);
-
-    const preguntar = async (ctx: ContextoFlujo, pagina: number): Promise<RespuestaBot> => {
+    const preguntar = async (ctx: ContextoFlujo): Promise<RespuestaBot> => {
       const { enCancha } = await this.particionEnCancha(ctx);
-      const { botones } = botonesPaginados(
+      const botones = botonesDeOpciones(
         enCancha.map((j) => ({ id: `${PREFIJO_JUGADOR}${j.id}`, texto: describirJugador(j) })),
-        pagina,
-        extras(ctx),
       );
 
       botones.push({ id: ID_JUGADOR_OTRO, texto: 'Otro jugador' });
@@ -825,22 +792,11 @@ export class CargarFlujo {
       id: PASOS.jugador,
 
       entrar: async (ctx: ContextoFlujo): Promise<Entrada> => ({
-        respuesta: await preguntar(ctx, leerNumero(ctx.datos, CLAVE_PAGINA, 0)),
+        respuesta: await preguntar(ctx),
       }),
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
         const seleccion = ctx.mensaje.seleccionId ?? '';
-        const pagina = leerNumero(ctx.datos, CLAVE_PAGINA, 0);
-
-        if (seleccion === ID_VER_MAS) {
-          const { enCancha } = await this.particionEnCancha(ctx);
-          const siguiente = paginaSiguiente(pagina, enCancha.length, extras(ctx));
-
-          ctx.datos[CLAVE_PAGINA] = siguiente;
-          ctx.datos[CLAVE_AVISO] = '';
-
-          return { tipo: 'repetir', respuesta: await preguntar(ctx, siguiente) };
-        }
 
         if (seleccion === ID_JUGADOR_OTRO) {
           return { tipo: 'ir', pasoId: PASOS.jugadorLibre, datos: this.datosPanel(ctx) };
@@ -860,7 +816,7 @@ export class CargarFlujo {
 
         if (escrito) return this.resolverPorNombre(ctx, escrito);
 
-        return { tipo: 'repetir', respuesta: await preguntar(ctx, pagina) };
+        return { tipo: 'repetir', respuesta: await preguntar(ctx) };
       },
     };
   }
@@ -887,11 +843,10 @@ export class CargarFlujo {
   // --- Cambio: quién sale, quién entra -----------------------------------
 
   private pasoCambioSale(): Paso {
-    const preguntar = async (ctx: ContextoFlujo, pagina: number): Promise<RespuestaBot> => {
+    const preguntar = async (ctx: ContextoFlujo): Promise<RespuestaBot> => {
       const { enCancha } = await this.particionEnCancha(ctx);
-      const { botones } = botonesPaginados(
+      const botones = botonesDeOpciones(
         enCancha.map((j) => ({ id: `${PREFIJO_JUGADOR}${j.id}`, texto: describirJugador(j) })),
-        pagina,
       );
 
       return { texto: this.conAviso(ctx, '¿Quién sale?'), botones };
@@ -901,25 +856,14 @@ export class CargarFlujo {
       id: PASOS.cambioSale,
 
       entrar: async (ctx: ContextoFlujo): Promise<Entrada> => ({
-        respuesta: await preguntar(ctx, leerNumero(ctx.datos, CLAVE_PAGINA, 0)),
+        respuesta: await preguntar(ctx),
       }),
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
         const seleccion = ctx.mensaje.seleccionId ?? '';
-        const pagina = leerNumero(ctx.datos, CLAVE_PAGINA, 0);
-
-        if (seleccion === ID_VER_MAS) {
-          const { enCancha } = await this.particionEnCancha(ctx);
-          const siguiente = paginaSiguiente(pagina, enCancha.length);
-
-          ctx.datos[CLAVE_PAGINA] = siguiente;
-          ctx.datos[CLAVE_AVISO] = '';
-
-          return { tipo: 'repetir', respuesta: await preguntar(ctx, siguiente) };
-        }
 
         if (!seleccion.startsWith(PREFIJO_JUGADOR)) {
-          return { tipo: 'repetir', respuesta: await preguntar(ctx, pagina) };
+          return { tipo: 'repetir', respuesta: await preguntar(ctx) };
         }
 
         return {
@@ -928,7 +872,6 @@ export class CargarFlujo {
           datos: {
             ...this.datosPanel(ctx),
             [CLAVE_JUGADOR_SALE]: seleccion.slice(PREFIJO_JUGADOR.length),
-            [CLAVE_PAGINA]: 0,
           },
         };
       },
@@ -936,15 +879,12 @@ export class CargarFlujo {
   }
 
   private pasoCambioEntra(): Paso {
-    // Una reserva para "Otro jugador": la banca no admite "Sin identificar"
-    // —un cambio siempre necesita saber quién entra— así que no hace falta
-    // el segundo hueco que sí reserva `pasoJugador`.
-    const preguntar = async (ctx: ContextoFlujo, pagina: number): Promise<RespuestaBot> => {
+    // La banca no admite "Sin identificar": un cambio siempre necesita saber
+    // quién entra.
+    const preguntar = async (ctx: ContextoFlujo): Promise<RespuestaBot> => {
       const { banca } = await this.particionEnCancha(ctx);
-      const { botones } = botonesPaginados(
+      const botones = botonesDeOpciones(
         banca.map((j) => ({ id: `${PREFIJO_JUGADOR}${j.id}`, texto: describirJugador(j) })),
-        pagina,
-        1,
       );
 
       botones.push({ id: ID_JUGADOR_OTRO, texto: 'Otro jugador' });
@@ -956,22 +896,11 @@ export class CargarFlujo {
       id: PASOS.cambioEntra,
 
       entrar: async (ctx: ContextoFlujo): Promise<Entrada> => ({
-        respuesta: await preguntar(ctx, leerNumero(ctx.datos, CLAVE_PAGINA, 0)),
+        respuesta: await preguntar(ctx),
       }),
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
         const seleccion = ctx.mensaje.seleccionId ?? '';
-        const pagina = leerNumero(ctx.datos, CLAVE_PAGINA, 0);
-
-        if (seleccion === ID_VER_MAS) {
-          const { banca } = await this.particionEnCancha(ctx);
-          const siguiente = paginaSiguiente(pagina, banca.length, 1);
-
-          ctx.datos[CLAVE_PAGINA] = siguiente;
-          ctx.datos[CLAVE_AVISO] = '';
-
-          return { tipo: 'repetir', respuesta: await preguntar(ctx, siguiente) };
-        }
 
         if (seleccion === ID_JUGADOR_OTRO) {
           return { tipo: 'ir', pasoId: PASOS.jugadorLibre, datos: this.datosPanel(ctx) };
@@ -985,7 +914,7 @@ export class CargarFlujo {
 
         if (escrito) return this.resolverPorNombre(ctx, escrito);
 
-        return { tipo: 'repetir', respuesta: await preguntar(ctx, pagina) };
+        return { tipo: 'repetir', respuesta: await preguntar(ctx) };
       },
     };
   }
@@ -1615,7 +1544,6 @@ export class CargarFlujo {
       equipoNombre: leerTexto(ctx.datos, CLAVE_EQUIPO_NOMBRE, 'Tu equipo'),
       minuto: contexto.minuto,
       aviso: aviso || undefined,
-      paginaEventos: leerNumero(ctx.datos, CLAVE_PAGINA_EVENTOS, 0),
     });
 
     const texto = bitacora.length > 0 ? [...bitacora, '', panel.texto].join('\n') : panel.texto;
@@ -1652,9 +1580,7 @@ export class CargarFlujo {
   }
 
   private datosPanel(ctx: ContextoFlujo): DatosFlujo {
-    // Vuelve siempre a la primera página de eventos: si alguien navegó a la
-    // segunda para tocar "Atajada", lo normal después es volver a ver el gol.
-    return { [CLAVE_PANEL]: this.panelId(ctx), [CLAVE_PAGINA_EVENTOS]: 0 };
+    return { [CLAVE_PANEL]: this.panelId(ctx) };
   }
 
   private conAviso(ctx: ContextoFlujo, texto: string): string {
