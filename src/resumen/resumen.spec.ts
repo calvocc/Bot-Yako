@@ -28,6 +28,7 @@ const partido = (parcial: Partial<Partido> = {}): Partido => ({
   creadoPor: 'u1',
   cerradoEn: new Date(),
   cerradoPor: 'u1',
+  reabiertoEn: null,
   ...parcial,
 });
 

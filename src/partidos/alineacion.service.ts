@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { DbService, type EjecutorDb } from '../db/db.service';
 import { eventos, partidoTitulares } from '../db/schema';
 import { calcularMinutosJugados, type CambioJugado, derivarEnCancha } from './alineacion';
@@ -189,6 +189,40 @@ export class AlineacionService {
       titulares,
       cambios,
     };
+  }
+
+  /**
+   * Corrige quiénes jugaron en un partido ya cargado ("✏️ Corregir" de
+   * `/cargar`): saca de `partido_titulares` a quien no jugó y suma a quien
+   * faltó, en una sola transacción. Quien entró por cambio no está en esa
+   * tabla: para sacarlo hay que borrar el evento del cambio.
+   */
+  async ajustarParticipantes(
+    partidoId: string,
+    usuarioId: string,
+    cambios: { agregar: readonly string[]; quitar: readonly string[] },
+  ): Promise<void> {
+    await this.db.db.transaction(async (tx) => {
+      if (cambios.quitar.length > 0) {
+        await tx
+          .delete(partidoTitulares)
+          .where(
+            and(
+              eq(partidoTitulares.partidoId, partidoId),
+              inArray(partidoTitulares.jugadorId, [...cambios.quitar]),
+            ),
+          );
+      }
+
+      if (cambios.agregar.length > 0) {
+        await tx
+          .insert(partidoTitulares)
+          .values(
+            cambios.agregar.map((jugadorId) => ({ partidoId, jugadorId, creadoPor: usuarioId })),
+          )
+          .onConflictDoNothing();
+      }
+    });
   }
 
   /**

@@ -15,6 +15,7 @@ export const ID_FINALIZAR_TIEMPO = 'pa:fintiempo';
 export const ID_DESHACER = 'pa:deshacer';
 export const ID_FINALIZAR_PARTIDO = 'pa:finpartido';
 export const ID_RESUMEN = 'pa:resumen';
+export const ID_CORREGIR = 'pa:corregir';
 export const ID_ES_OTRO = 'du:otro';
 export const ID_YA_ESTABA = 'du:mismo';
 export const ID_SI = 'ok:si';
@@ -26,6 +27,11 @@ export interface EstadoPanel {
   minuto: Minuto;
   /** Nota efímera arriba del panel: "▶️ Se inició el Tiempo 2 automáticamente." */
   aviso?: string;
+}
+
+/** Un partido reabierto con `/reabrir`: se ofrece corregir lo ya cargado. */
+export function esCorregible(partido: Partido): boolean {
+  return partido.reabiertoEn !== null;
 }
 
 /**
@@ -80,8 +86,15 @@ export function botonesDeControl(partido: Partido): Boton[] {
   botones.push(
     { id: ID_DESHACER, texto: '↩️ Deshacer' },
     { id: ID_RESUMEN, texto: '📋 Ver resumen' },
-    { id: ID_FINALIZAR_PARTIDO, texto: '🏁 Finalizar' },
   );
+
+  // Solo en un partido reabierto: corregir quién jugó o borrar un evento
+  // que no es el último (para el último alcanza con "Deshacer").
+  if (esCorregible(partido)) {
+    botones.push({ id: ID_CORREGIR, texto: '✏️ Corregir' });
+  }
+
+  botones.push({ id: ID_FINALIZAR_PARTIDO, texto: '🏁 Finalizar' });
 
   return botones;
 }
@@ -99,6 +112,20 @@ export function lineaDeBitacora(
   equipoNombre: string,
   rival: string,
 ): string {
+  const resultado = mueveElMarcador(evento.tipo) ? ` — ${marcador.propio}-${marcador.rival}` : '';
+
+  return `${describirEvento(evento, equipoNombre, rival)}${resultado}`;
+}
+
+/**
+ * El evento en una línea, sin marcador: "⚽ Gol de Jacob #10, min 12". Lo
+ * usan la bitácora (que le suma el marcador) y la lista de "✏️ Corregir".
+ */
+export function describirEvento(
+  evento: EventoCargado,
+  equipoNombre: string,
+  rival: string,
+): string {
   const cuando = evento.minutoCalculado === null ? '' : `, min ${evento.minutoCalculado}`;
 
   if (evento.tipo === 'cambio') {
@@ -109,10 +136,8 @@ export function lineaDeBitacora(
   }
 
   const definicion = definicionDe(evento.tipo);
-  const quien = protagonista(evento, equipoNombre, rival);
-  const resultado = mueveElMarcador(evento.tipo) ? ` — ${marcador.propio}-${marcador.rival}` : '';
 
-  return `${definicion.emoji} ${definicion.sustantivo} de ${quien}${cuando}${resultado}`;
+  return `${definicion.emoji} ${definicion.sustantivo} de ${protagonista(evento, equipoNombre, rival)}${cuando}`;
 }
 
 function nombrarJugador(nombre: string | null, dorsal: number | null): string | null {

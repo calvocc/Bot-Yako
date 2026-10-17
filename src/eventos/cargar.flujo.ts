@@ -37,6 +37,7 @@ import { describirMarcador, type Partido } from '../partidos/partido.mapper';
 import { PartidosService } from '../partidos/partidos.service';
 import { TiemposService, type ResultadoFinTiempo } from '../partidos/tiempos.service';
 import { ResumenService } from '../resumen/resumen.service';
+import { PASOS_CORREGIR, pasosCorregir, type GanchosCorregir } from './corregir.flujo';
 import { segundosDesde } from './dedup';
 import { admiteEquipoRival, esTipoDeEvento } from './evento.tipos';
 import { EventosService, type SolicitudEvento } from './eventos.service';
@@ -59,6 +60,8 @@ import {
   ID_JUGADOR_SIN_IDENTIFICAR,
   ID_NO,
   ID_RESUMEN,
+  ID_CORREGIR,
+  esCorregible,
   ID_SI,
   ID_YA_ESTABA,
   lineaDeBitacora,
@@ -167,10 +170,20 @@ const BOTONES_MODO_SIN_TITULAR = [
   { id: ID_MODO_POST, texto: '📝 Post partido' },
 ];
 
-const BOTONES_POST_REENTRADA = [
-  { id: ID_POST_CORREGIR, texto: 'Corregir todo' },
-  { id: ID_POST_LISTO, texto: 'Nada más' },
-];
+/**
+ * Reentrada a un post partido. "✏️ Corregir" (quién jugó, borrar un
+ * evento) solo en un partido reabierto: "Corregir todo" vuelve a cargar
+ * goleadores y tarjetas, pero conserva a quiénes jugaron.
+ */
+function botonesPostReentrada(partido: Partido) {
+  return [
+    { id: ID_POST_CORREGIR, texto: 'Corregir todo' },
+    ...(esCorregible(partido) ? [{ id: ID_CORREGIR, texto: '✏️ Corregir' }] : []),
+    { id: ID_POST_LISTO, texto: 'Nada más' },
+  ];
+}
+
+const SOLO_ADMIN_CORRIGE = 'Solo un admin puede corregir un partido.';
 
 /**
  * Carga de eventos durante el partido (§4 y §5 del flujo).
@@ -252,6 +265,12 @@ export class CargarFlujo {
           this.eventos,
           this.ganchosPostPartido(),
         ),
+        ...pasosCorregir({
+          eventos: this.eventos,
+          alineacion: this.alineacion,
+          jugadores: this.jugadores,
+          ganchos: this.ganchosCorregir(),
+        }),
       ],
     };
   }
@@ -351,7 +370,7 @@ export class CargarFlujo {
           '',
           '¿Agregas o corriges algo? "Corregir todo" empieza de nuevo: goleadores y tarjetas.',
         ].join('\n'),
-        botones: BOTONES_POST_REENTRADA,
+        botones: botonesPostReentrada(partido),
       };
     };
 
@@ -396,6 +415,19 @@ export class CargarFlujo {
 
         if (partido.modoCarga === 'post_partido') {
           if (seleccion === ID_POST_LISTO) return this.finalizarCon('Listo, no cambié nada.');
+
+          if (seleccion === ID_CORREGIR && esCorregible(partido)) {
+            if (!(await this.esAdmin(ctx))) {
+              const reentrada = await preguntarReentrada(ctx, partido);
+
+              return {
+                tipo: 'repetir',
+                respuesta: { ...reentrada, texto: `${SOLO_ADMIN_CORRIGE}\n\n${reentrada.texto}` },
+              };
+            }
+
+            return { tipo: 'ir', pasoId: PASOS_CORREGIR.menu, datos: this.datosPanel(ctx) };
+          }
 
           if (seleccion !== ID_POST_CORREGIR) {
             return { tipo: 'repetir', respuesta: await preguntarReentrada(ctx, partido) };
@@ -655,6 +687,12 @@ export class CargarFlujo {
           const resultado = await this.deshacer(ctx);
 
           return 'fin' in resultado ? resultado.fin : this.irAlPanel(ctx, resultado);
+        }
+
+        if (seleccion === ID_CORREGIR) {
+          if (!(await this.esAdmin(ctx))) return this.irAlPanel(ctx, { aviso: SOLO_ADMIN_CORRIGE });
+
+          return { tipo: 'ir', pasoId: PASOS_CORREGIR.menu, datos: this.datosPanel(ctx) };
         }
 
         if (seleccion === ID_RESUMEN) {
@@ -1626,6 +1664,28 @@ export class CargarFlujo {
       sinPermiso: () => this.sinPermiso(),
       partidoPerdido: () => this.partidoPerdido(),
     };
+  }
+
+  /** Lo que `corregir.flujo.ts` necesita prestado de acá. */
+  private ganchosCorregir(): GanchosCorregir {
+    return {
+      partidoDe: (ctx) => this.partidoDe(ctx),
+      equipoId: (ctx) => leerTexto(ctx.datos, CLAVE_EQUIPO_ID),
+      equipoNombre: (ctx) => leerTexto(ctx.datos, CLAVE_EQUIPO_NOMBRE, 'Tu equipo'),
+      esAdmin: (ctx) => this.esAdmin(ctx),
+      // `PASOS.modo` ya sabe a dónde volver: al panel en vivo o a la
+      // reentrada de post partido.
+      volver: (ctx) => ({ tipo: 'ir', pasoId: PASOS.modo, datos: this.datosPanel(ctx) }),
+      partidoPerdido: () => this.partidoPerdido(),
+      datosPanel: (ctx) => this.datosPanel(ctx),
+    };
+  }
+
+  /** Corregir un partido reabierto es de admin, como reabrirlo. */
+  private async esAdmin(ctx: ContextoFlujo): Promise<boolean> {
+    if (!ctx.usuarioId) return false;
+
+    return this.membresias.puede(ctx.usuarioId, leerTexto(ctx.datos, CLAVE_EQUIPO_ID), 'admin');
   }
 
   private sinPermiso(): Transicion {

@@ -15,6 +15,11 @@ export interface OpcionesSeleccionMultiple {
   obtenerOpciones(ctx: ContextoFlujo): Promise<OpcionLista[]>;
   /** Qué hacer con los ids elegidos al confirmar. */
   alConfirmar(ctx: ContextoFlujo, elegidos: string[]): Promise<Transicion>;
+  /**
+   * Lo que aparece ya marcado al entrar (por ejemplo, quiénes jugaron, para
+   * corregirlo). Por defecto, nada.
+   */
+  seleccionInicial?(ctx: ContextoFlujo): Promise<string[]>;
   /** Mínimo para poder confirmar. Por defecto 1: no tiene sentido un mínimo de 0. */
   minimo?: number;
   /** Rótulo del botón de confirmar, sin el conteo — por defecto "Listo". */
@@ -127,13 +132,16 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
       // `pasoParticipantesPost` comparten esta clave de sesión). Sin
       // limpiarla acá, una selección que quedó de la visita anterior se
       // cuela como si el usuario ya la hubiera marcado en esta -- aunque
-      // acá se muestre todo destildado. Se muta `ctx.datos` directo (no
-      // alcanza con `armar(lista, [])`, que solo arma la respuesta):
-      // `FlowEngine` relee `ctx.datos` después de `entrar`, así que
-      // mutarlo es lo que hace que la limpieza quede guardada.
-      ctx.datos[CLAVE_SELECCION] = [];
-
+      // acá se muestre otra cosa. Se arranca de `seleccionInicial` (o de
+      // nada) y se muta `ctx.datos` directo (no alcanza con `armar`, que
+      // solo arma la respuesta): `FlowEngine` relee `ctx.datos` después de
+      // `entrar`, así que mutarlo es lo que hace que quede guardada.
       const lista = await opciones.obtenerOpciones(ctx);
+      const inicial = opciones.seleccionInicial
+        ? (await opciones.seleccionInicial(ctx)).filter((id) => lista.some((o) => o.id === id))
+        : [];
+
+      ctx.datos[CLAVE_SELECCION] = inicial;
 
       if (lista.length === 0 && opciones.sinOpciones) {
         return {
@@ -141,7 +149,7 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
         };
       }
 
-      return { respuesta: armar(lista, []) };
+      return { respuesta: armar(lista, inicial) };
     },
 
     recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
