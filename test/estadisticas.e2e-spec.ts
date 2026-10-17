@@ -496,7 +496,7 @@ describe('Estadísticas (e2e)', () => {
       expect(rendimiento.texto).toContain('📈 Mejor promedio: Jacob #10 — 10.0 en 1 partido');
       expect(rendimiento.texto).not.toContain('📉 Promedio más bajo');
       expect(rendimiento.texto).toContain('🧤 PORTERÍA — 0 goles recibidos');
-      expect(rendimiento.texto).toContain('⭐ 10.0 · Jacob #10');
+      expect(rendimiento.texto).toContain('#10 Jacob · ⭐ 10.0');
     });
 
     it('/tabla con un solo campeonato muestra su bloque con goleador y MVP', async () => {

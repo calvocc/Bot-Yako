@@ -652,19 +652,19 @@ describe('EstadisticasHandler.tabla rendimiento', () => {
 
     // Listado de todo el plantel, de mayor a menor promedio; sin partidos al final.
     const listado = texto.slice(texto.indexOf('👥 JUGADORES'));
-    expect(listado.indexOf('Jacob #10')).toBeLessThan(listado.indexOf('Andrés #7'));
-    expect(listado.indexOf('Andrés #7')).toBeLessThan(listado.indexOf('Tomás #1'));
-    expect(listado).toContain('⭐ 7.5 · Jacob #10');
-    expect(listado).toContain('     2 partidos · ⚽ 6 · 🟨 1');
-    expect(listado).toContain('⭐ 6.0 · Andrés #7');
-    expect(listado).toContain('⭐ 5.5 · Tomás #1');
+    expect(listado.indexOf('#10 Jacob')).toBeLessThan(listado.indexOf('#7 Andrés'));
+    expect(listado.indexOf('#7 Andrés')).toBeLessThan(listado.indexOf('#1 Tomás'));
+    // Dorsal, nombre y promedio; debajo el mini resumen, sin sangría.
+    expect(listado).toContain('\n#10 Jacob · ⭐ 7.5\n2 partidos · ⚽ 6 · 🟨 1\n');
+    expect(listado).toContain('#7 Andrés · ⭐ 6.0');
+    expect(listado).toContain('#1 Tomás · ⭐ 5.5');
     expect(listado).toContain('4 goles recibidos · 🧤 9');
-    expect(listado).toContain('⭐ — · Nuevo #20');
+    expect(listado).toContain('#20 Nuevo · ⭐ —');
     expect(listado).toContain('sin partidos todavía');
     // Quien ya no está en la plantilla pero jugó esta temporada sigue en el
     // listado; quien se dio de baja sin jugar, no.
-    expect(listado).toContain('⭐ 6.0 · Ex #30');
-    expect(listado).not.toContain('Baja #31');
+    expect(listado).toContain('#30 Ex · ⭐ 6.0');
+    expect(listado).not.toContain('#31 Baja');
 
     expect(respuesta.botones?.map((b) => b.id)).toEqual([`cmd:stats:equipo:${EQUIPO_1}`]);
   });

@@ -353,10 +353,13 @@ export const textos = {
 
     lineas.push('', '👥 JUGADORES');
 
+    // Dorsal, nombre y promedio en la primera línea; el mini resumen debajo,
+    // sin sangría.
     for (const fila of datos.filas) {
+      const dorsal = fila.dorsal !== null ? `#${fila.dorsal} ` : '';
       const promedio = fila.promedio !== null ? `⭐ ${fila.promedio.toFixed(1)}` : '⭐ —';
 
-      lineas.push(`${promedio} · ${nombreConDorsal(fila)}`, `     ${miniResumen(fila)}`);
+      lineas.push(`${dorsal}${fila.nombre} · ${promedio}`, miniResumen(fila));
     }
 
     return lineas.join('\n');
