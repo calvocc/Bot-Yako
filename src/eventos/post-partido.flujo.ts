@@ -1,12 +1,8 @@
 import type { Boton, RespuestaBot } from '../channels/channel.types';
-import {
-  botonesPaginados,
-  ID_VER_MAS,
-  paginaSiguiente,
-} from '../conversacion/pasos-comunes/paginacion';
+import { botonesDeOpciones } from '../conversacion/pasos-comunes/opciones';
 import { CLAVE_EQUIPO_ID } from '../conversacion/pasos-comunes/selector-equipo';
 import type { ContextoFlujo, DatosFlujo, Paso, Transicion } from '../conversacion/flow.types';
-import { leerNumero, leerTexto } from '../conversacion/flow.types';
+import { leerTexto } from '../conversacion/flow.types';
 import {
   describirJugador,
   type Jugador,
@@ -61,19 +57,6 @@ const ID_TARJETAS_LISTO = 'pp:tarjetasListo';
 const ID_AMARILLA = 'pp:amarilla';
 const ID_ROJA = 'pp:roja';
 
-/**
- * "Listo" es el único fijo en todas las páginas. "Otro jugador" solo entra
- * en la última (cuando ya no hay "Ver más") -- ese lugar de más es un
- * jugador más visible por página mientras se sigue paginando la plantilla.
- */
-const RESERVA_BOTONES_FIJOS = 1;
-
-// Cada paso pagina la plantilla por separado -- si compartieran una sola
-// clave, avanzar de página cargando goleadores dejaría a tarjetas heredando
-// esa misma página en vez de arrancar en la 0, escondiendo a los primeros
-// jugadores de la plantilla en el selector de tarjetas.
-const CLAVE_PAGINA_GOLES = 'paginaGoleadoresPost';
-const CLAVE_PAGINA_TARJETAS = 'paginaTarjetasPost';
 export const CLAVE_GOLES_POST = 'golesPost';
 export const CLAVE_TARJETAS_POST = 'tarjetasPost';
 const CLAVE_TARJETA_JUGADOR_ID = 'tarjetaJugadorIdPost';
@@ -128,7 +111,6 @@ function finSiHizoFalta(
 type ResultadoElegir = { transicion: Transicion } | { continuar: true };
 
 interface ConfigElegirDeLaPlantilla {
-  clavePagina: string;
   claveTally: string;
   idOtroJugador: string;
   idListo: string;
@@ -153,24 +135,17 @@ function pasoElegirDeLaPlantilla(
 ): Paso {
   const preguntar = async (
     ctx: ContextoFlujo,
-    pagina: number,
     plantillaYaCargada?: Jugador[],
   ): Promise<RespuestaBot> => {
     const plantilla =
       plantillaYaCargada ?? (await cfg.jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID)));
     const cargados = leerLista(ctx.datos, cfg.claveTally);
 
-    const { botones, hayMas } = botonesPaginados(
+    const botones = botonesDeOpciones(
       plantilla.map((j) => ({ id: `${PREFIJO_JUGADOR}${j.id}`, texto: describirJugador(j) })),
-      pagina,
-      RESERVA_BOTONES_FIJOS,
     );
 
-    // "Otro jugador" recién aparece cuando esta página ya llegó al final de
-    // la plantilla: antes de eso ese lugar lo ocupa "Ver más".
-    if (!hayMas) {
-      botones.push({ id: cfg.idOtroJugador, texto: 'Otro jugador' });
-    }
+    botones.push({ id: cfg.idOtroJugador, texto: 'Otro jugador' });
 
     botones.push({
       id: cfg.idListo,
@@ -189,21 +164,11 @@ function pasoElegirDeLaPlantilla(
     id,
 
     entrar: async (ctx: ContextoFlujo) => ({
-      respuesta: await preguntar(ctx, leerNumero(ctx.datos, cfg.clavePagina, 0)),
+      respuesta: await preguntar(ctx),
     }),
 
     recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
       const seleccion = ctx.mensaje.seleccionId ?? '';
-      const pagina = leerNumero(ctx.datos, cfg.clavePagina, 0);
-
-      if (seleccion === ID_VER_MAS) {
-        const plantilla = await cfg.jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
-        const siguiente = paginaSiguiente(pagina, plantilla.length, RESERVA_BOTONES_FIJOS);
-
-        ctx.datos[cfg.clavePagina] = siguiente;
-
-        return { tipo: 'repetir', respuesta: await preguntar(ctx, siguiente, plantilla) };
-      }
 
       if (seleccion === cfg.idListo) {
         return { tipo: 'ir', pasoId: siguientePasoId, datos: cfg.ganchos.datosPanel(ctx) };
@@ -217,8 +182,7 @@ function pasoElegirDeLaPlantilla(
         const plantilla = await cfg.jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
         const jugador = plantilla.find((j) => j.id === seleccion.slice(PREFIJO_JUGADOR.length));
 
-        if (!jugador)
-          return { tipo: 'repetir', respuesta: await preguntar(ctx, pagina, plantilla) };
+        if (!jugador) return { tipo: 'repetir', respuesta: await preguntar(ctx, plantilla) };
 
         const resultado = await cfg.alElegir(ctx, jugador);
 
@@ -229,11 +193,11 @@ function pasoElegirDeLaPlantilla(
         // atribuir la tarjeta), así que no hace falta un tercer SELECT.
         return {
           tipo: 'repetir',
-          respuesta: await preguntar(ctx, leerNumero(ctx.datos, cfg.clavePagina, 0), plantilla),
+          respuesta: await preguntar(ctx, plantilla),
         };
       }
 
-      return { tipo: 'repetir', respuesta: await preguntar(ctx, pagina) };
+      return { tipo: 'repetir', respuesta: await preguntar(ctx) };
     },
   };
 }
@@ -290,7 +254,6 @@ export function pasoGoleadoresPost(
   ganchos: GanchosPostPartido,
 ): Paso {
   return pasoElegirDeLaPlantilla(id, siguientePasoId, {
-    clavePagina: CLAVE_PAGINA_GOLES,
     claveTally: CLAVE_GOLES_POST,
     idOtroJugador: ID_OTRO_JUGADOR,
     idListo: ID_GOLES_LISTO,
@@ -370,7 +333,6 @@ export function pasoTarjetasPost(
   ganchos: GanchosPostPartido,
 ): Paso {
   return pasoElegirDeLaPlantilla(id, siguientePasoId, {
-    clavePagina: CLAVE_PAGINA_TARJETAS,
     claveTally: CLAVE_TARJETAS_POST,
     idOtroJugador: ID_OTRO_JUGADOR,
     idListo: ID_TARJETAS_LISTO,

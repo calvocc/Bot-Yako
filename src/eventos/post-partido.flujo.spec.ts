@@ -1,5 +1,5 @@
 import { seleccionDePrueba } from '../channels/testing/fake.adapter';
-import type { ContextoFlujo, DatosFlujo, Transicion } from '../conversacion/flow.types';
+import type { ContextoFlujo, DatosFlujo } from '../conversacion/flow.types';
 import type { EventosService } from './eventos.service';
 import type { Jugador, JugadoresService } from '../jugadores/jugadores.service';
 import { pasoGoleadoresPost, type GanchosPostPartido } from './post-partido.flujo';
@@ -37,8 +37,8 @@ const contexto = (parcial: Partial<ContextoFlujo> = {}, datos: DatosFlujo = {}):
   ...parcial,
 });
 
-describe('pasoGoleadoresPost — "Otro jugador" solo al final de la plantilla', () => {
-  it('con poca plantilla, "Otro jugador" ya está en la primera (y única) página', async () => {
+describe('pasoGoleadoresPost — plantilla completa, sin paginar', () => {
+  it('con poca plantilla, ofrece "Otro jugador" y "Listo" al final', async () => {
     const paso = pasoGoleadoresPost(
       'goles',
       'golesLibre',
@@ -59,16 +59,13 @@ describe('pasoGoleadoresPost — "Otro jugador" solo al final de la plantilla', 
     ]);
   });
 
-  it('con plantilla grande, "Otro jugador" no aparece mientras queda gente por ver', async () => {
-    // Con 1 solo botón fijo reservado ("Listo") entran 8 por página: una
-    // plantilla de 9 no cabe entera en la primera.
-    const plantilla = Array.from({ length: 9 }, (_, i) => jugador(i + 1));
-    const jugadores = jugadoresFalsos(plantilla);
+  it('con plantilla grande, muestra a todos y "Otro jugador" en el mismo mensaje', async () => {
+    const plantilla = Array.from({ length: 22 }, (_, i) => jugador(i + 1));
     const paso = pasoGoleadoresPost(
       'goles',
       'golesLibre',
       'siguiente',
-      jugadores,
+      jugadoresFalsos(plantilla),
       eventosFalsos,
       ganchosFalsos,
     );
@@ -76,18 +73,11 @@ describe('pasoGoleadoresPost — "Otro jugador" solo al final de la plantilla', 
     const entrada = await paso.entrar(contexto());
 
     if (!('respuesta' in entrada)) throw new Error('esperaba una respuesta');
-    expect(entrada.respuesta.botones?.some((b) => b.id === 'pp:otro')).toBe(false);
-    expect(entrada.respuesta.botones?.some((b) => b.id === 'pag:mas')).toBe(true);
+    const ids = entrada.respuesta.botones?.map((b) => b.id) ?? [];
 
-    if (!paso.recibir) throw new Error('el paso no recibe mensajes');
-
-    const datos = { equipoId: 'eq1', paginaGoleadoresPost: 0 };
-    const siguiente: Transicion = await paso.recibir(
-      contexto({ mensaje: seleccionDePrueba('pag:mas') }, datos),
-    );
-
-    if (siguiente.tipo !== 'repetir') throw new Error('esperaba repetir');
-    expect(siguiente.respuesta.botones?.some((b) => b.id === 'pp:otro')).toBe(true);
-    expect(siguiente.respuesta.botones?.some((b) => b.id === 'pag:mas')).toBe(false);
+    expect(ids).toHaveLength(22 + 2);
+    expect(ids).toContain('pj:j22');
+    expect(ids).toContain('pp:otro');
+    expect(ids).not.toContain('pag:mas');
   });
 });

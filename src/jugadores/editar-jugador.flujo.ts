@@ -1,13 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import type { Boton, RespuestaBot } from '../channels/channel.types';
-import {
-  botonesPaginados,
-  ID_VER_MAS,
-  paginaSiguiente,
-} from '../conversacion/pasos-comunes/paginacion';
+import { botonesDeOpciones } from '../conversacion/pasos-comunes/opciones';
 import { CLAVE_EQUIPO_ID, pasoSelectorEquipo } from '../conversacion/pasos-comunes/selector-equipo';
 import type { ContextoFlujo, Entrada, Flujo, Paso, Transicion } from '../conversacion/flow.types';
-import { leerNumero, leerTexto } from '../conversacion/flow.types';
+import { leerTexto } from '../conversacion/flow.types';
 import { MembresiasService } from '../identidad/membresias.service';
 import { textos as textosComunes } from '../textos/comunes';
 import { textos } from '../textos/jugadores';
@@ -66,7 +62,6 @@ function pideDejarSinDorsal(texto: string): boolean {
 }
 
 const CLAVE_JUGADOR_ID = 'jugadorId';
-const CLAVE_PAGINA = 'paginaJugadores';
 /** Nota efímera que el menú muestra una vez y descarta ("Guardado ✅"). */
 const CLAVE_AVISO = 'aviso';
 
@@ -114,11 +109,10 @@ export class EditarJugadorFlujo {
   // --- Elegir jugador -----------------------------------------------------
 
   private pasoJugador(): Paso {
-    const preguntar = async (ctx: ContextoFlujo, pagina: number): Promise<RespuestaBot> => {
+    const preguntar = async (ctx: ContextoFlujo): Promise<RespuestaBot> => {
       const plantilla = await this.jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
-      const { botones } = botonesPaginados(
+      const botones = botonesDeOpciones(
         plantilla.map((j) => ({ id: `${PREFIJO_JUGADOR}${j.id}`, texto: describirJugador(j) })),
-        pagina,
       );
 
       return { texto: textos.editar.elegirJugador(), botones };
@@ -128,26 +122,14 @@ export class EditarJugadorFlujo {
       id: PASOS.jugador,
 
       entrar: async (ctx: ContextoFlujo): Promise<Entrada> => ({
-        respuesta: await preguntar(ctx, leerNumero(ctx.datos, CLAVE_PAGINA, 0)),
+        respuesta: await preguntar(ctx),
       }),
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
         const seleccion = ctx.mensaje.seleccionId ?? '';
-        const pagina = leerNumero(ctx.datos, CLAVE_PAGINA, 0);
-
-        if (seleccion === ID_VER_MAS) {
-          const plantilla = await this.jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
-          const siguiente = paginaSiguiente(pagina, plantilla.length);
-
-          return {
-            tipo: 'repetir',
-            respuesta: await preguntar(ctx, siguiente),
-            datos: { [CLAVE_PAGINA]: siguiente },
-          };
-        }
 
         if (!seleccion.startsWith(PREFIJO_JUGADOR)) {
-          return { tipo: 'repetir', respuesta: await preguntar(ctx, pagina) };
+          return { tipo: 'repetir', respuesta: await preguntar(ctx) };
         }
 
         return {

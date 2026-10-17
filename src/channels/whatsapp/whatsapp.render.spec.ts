@@ -110,7 +110,6 @@ describe('rotulosDemasiadoLargos', () => {
       partidos.nuevoPartido.botonFormatoHabitual,
       partidos.nuevoPartido.botonFormatoOtro,
       partidos.listar.botonCrearPartido,
-      pasosComunes.verMas,
       pasosComunes.confirmarListo,
       comunes.botonEmpezar(),
       comunes.botonAyuda(),

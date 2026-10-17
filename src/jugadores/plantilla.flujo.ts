@@ -1,16 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import type { ContextoFlujo, Entrada, Flujo, Paso, Transicion } from '../conversacion/flow.types';
-import { leerNumero, leerTexto } from '../conversacion/flow.types';
+import { leerTexto } from '../conversacion/flow.types';
 import {
   CLAVE_EQUIPO_ID,
   CLAVE_EQUIPO_NOMBRE,
   pasoSelectorEquipo,
 } from '../conversacion/pasos-comunes/selector-equipo';
-import {
-  botonesPaginados,
-  ID_VER_MAS,
-  paginaSiguiente,
-} from '../conversacion/pasos-comunes/paginacion';
+import { botonesDeOpciones } from '../conversacion/pasos-comunes/opciones';
 import { EquiposService } from '../equipos/equipos.service';
 import { MembresiasService } from '../identidad/membresias.service';
 import { textos as textosComunes } from '../textos/comunes';
@@ -43,9 +39,7 @@ const OPCION_MODO_LISTA = 'pl:m:lista';
 const OPCION_MODO_ACADEMIA = 'pl:m:academia';
 const PREFIJO_BAJA = 'pl:b:';
 const PREFIJO_CANDIDATO = 'pl:c:';
-const CLAVE_PAGINA = 'paginaBaja';
 const CLAVE_BUSQUEDA = 'busquedaAcademia';
-const CLAVE_PAGINA_CANDIDATOS = 'paginaCandidatos';
 
 @Injectable()
 export class PlantillaFlujo {
@@ -138,7 +132,6 @@ export class PlantillaFlujo {
           return Promise.resolve({
             tipo: 'ir',
             pasoId: PASOS.bajaElegir,
-            datos: { [CLAVE_PAGINA]: 0 },
           });
         }
 
@@ -219,7 +212,7 @@ export class PlantillaFlujo {
         return {
           tipo: 'ir',
           pasoId: PASOS.agregarElegirCandidato,
-          datos: { [CLAVE_BUSQUEDA]: nombre, [CLAVE_PAGINA_CANDIDATOS]: 0 },
+          datos: { [CLAVE_BUSQUEDA]: nombre },
         };
       },
     };
@@ -231,16 +224,14 @@ export class PlantillaFlujo {
 
       entrar: async (ctx: ContextoFlujo): Promise<Entrada> => {
         const candidatos = await this.candidatosDe(ctx);
-        const pagina = leerNumero(ctx.datos, CLAVE_PAGINA_CANDIDATOS);
-        const { botones } = botonesPaginados(
+        const botones = botonesDeOpciones(
           candidatos.map((c) => ({
             id: `${PREFIJO_CANDIDATO}${c.jugadorId}`,
             // El equipo va primero: el botón se recorta a 20 caracteres
-            // (`botonesPaginados`) y es lo que de verdad distingue entre
+            // (`botonesDeOpciones`) y es lo que de verdad distingue entre
             // candidatos — el nombre ya lo escribió el usuario recién.
             texto: `${c.equipoNombre} — ${describirJugador({ nombre: c.nombre, dorsal: c.dorsal ?? undefined })}`,
           })),
-          pagina,
         );
 
         return { respuesta: { texto: textos.agregar.elegirCandidato.pregunta(), botones } };
@@ -252,24 +243,11 @@ export class PlantillaFlujo {
         // La búsqueda por academia no hace falta para descartar un botón
         // viejo o un texto suelto: se pide solo en las dos ramas que sí la
         // usan, no antes de saber cuál es.
-        if (seleccion !== ID_VER_MAS && !seleccion.startsWith(PREFIJO_CANDIDATO)) {
+        if (!seleccion.startsWith(PREFIJO_CANDIDATO)) {
           return { tipo: 'finalizar', respuesta: { texto: textos.agregar.ningunoAgregado() } };
         }
 
         const candidatos = await this.candidatosDe(ctx);
-
-        if (seleccion === ID_VER_MAS) {
-          return {
-            tipo: 'ir',
-            pasoId: PASOS.agregarElegirCandidato,
-            datos: {
-              [CLAVE_PAGINA_CANDIDATOS]: paginaSiguiente(
-                leerNumero(ctx.datos, CLAVE_PAGINA_CANDIDATOS),
-                candidatos.length,
-              ),
-            },
-          };
-        }
 
         const jugadorOrigenId = seleccion.slice(PREFIJO_CANDIDATO.length);
         const candidato = candidatos.find((c) => c.jugadorId === jugadorOrigenId);
@@ -324,10 +302,8 @@ export class PlantillaFlujo {
 
       entrar: async (ctx: ContextoFlujo): Promise<Entrada> => {
         const lista = await this.jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
-        const pagina = leerNumero(ctx.datos, CLAVE_PAGINA);
-        const { botones } = botonesPaginados(
+        const botones = botonesDeOpciones(
           lista.map((j) => ({ id: `${PREFIJO_BAJA}${j.id}`, texto: describirJugador(j) })),
-          pagina,
         );
 
         return {
@@ -337,18 +313,6 @@ export class PlantillaFlujo {
 
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
         const seleccion = ctx.mensaje.seleccionId ?? '';
-
-        if (seleccion === ID_VER_MAS) {
-          const lista = await this.jugadores.listar(leerTexto(ctx.datos, CLAVE_EQUIPO_ID));
-
-          return {
-            tipo: 'ir',
-            pasoId: PASOS.bajaElegir,
-            datos: {
-              [CLAVE_PAGINA]: paginaSiguiente(leerNumero(ctx.datos, CLAVE_PAGINA), lista.length),
-            },
-          };
-        }
 
         if (!seleccion.startsWith(PREFIJO_BAJA)) {
           return { tipo: 'finalizar', respuesta: { texto: textos.baja.ningunoDeBaja() } };

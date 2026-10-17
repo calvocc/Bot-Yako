@@ -8,9 +8,6 @@ export interface Competencia {
   nombre: string;
 }
 
-/** Cuántas se ofrecen como botones antes de pasar a "Ver más". */
-export const COMPETENCIAS_POR_PAGINA = 8;
-
 @Injectable()
 export class CompetenciasService {
   constructor(private readonly db: DbService) {}
@@ -23,12 +20,9 @@ export class CompetenciasService {
    * torneo lo comparten. La fecha de "más reciente" sale de los partidos
    * que la usaron, no de cuándo se creó la fila: lo que importa para
    * ofrecerla primero es qué tan vigente está, no cuándo alguien la escribió
-   * por primera vez.
+   * por primera vez. Se devuelven todas: el bot las ofrece sin paginar.
    */
-  async deLaAcademia(
-    academiaId: string,
-    limite = COMPETENCIAS_POR_PAGINA * 3,
-  ): Promise<Competencia[]> {
+  async deLaAcademia(academiaId: string): Promise<Competencia[]> {
     const filas = await this.db.db
       .select({
         id: competencias.id,
@@ -39,8 +33,7 @@ export class CompetenciasService {
       .leftJoin(partidos, eq(partidos.competenciaId, competencias.id))
       .where(eq(competencias.academiaId, academiaId))
       .groupBy(competencias.id, competencias.nombre)
-      .orderBy(desc(sql`max(${partidos.fecha})`), desc(competencias.creadoEn))
-      .limit(limite);
+      .orderBy(desc(sql`max(${partidos.fecha})`), desc(competencias.creadoEn));
 
     return filas.map((f) => ({ id: f.id, nombre: f.nombre }));
   }

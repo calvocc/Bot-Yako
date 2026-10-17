@@ -1,12 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { TypedConfigService } from '../config/config.service';
 import type { ContextoFlujo, Entrada, Flujo, Paso, Transicion } from '../conversacion/flow.types';
-import { leerNumero, leerTexto } from '../conversacion/flow.types';
-import {
-  botonesPaginados,
-  ID_VER_MAS,
-  paginaSiguiente,
-} from '../conversacion/pasos-comunes/paginacion';
+import { leerTexto } from '../conversacion/flow.types';
+import { botonesDeOpciones } from '../conversacion/pasos-comunes/opciones';
 import { CLAVE_EQUIPO_ID, pasoSelectorEquipo } from '../conversacion/pasos-comunes/selector-equipo';
 import { MembresiasService } from '../identidad/membresias.service';
 import { describirJugador, JugadoresService } from '../jugadores/jugadores.service';
@@ -19,7 +15,6 @@ export const FLUJO_INVITAR_JUGADOR = 'invitar-jugador';
 const PASOS = { equipo: 'equipo', jugador: 'jugador' } as const;
 
 const PREFIJO_JUGADOR = 'invj:';
-const CLAVE_PAGINA = 'paginaInvitarJugador';
 
 /**
  * `/invitarjugador`: código para vincular a un papá/tutor con un jugador
@@ -70,10 +65,8 @@ export class InvitarJugadorFlujo {
           };
         }
 
-        const pagina = leerNumero(ctx.datos, CLAVE_PAGINA);
-        const { botones } = botonesPaginados(
+        const botones = botonesDeOpciones(
           lista.map((j) => ({ id: `${PREFIJO_JUGADOR}${j.id}`, texto: describirJugador(j) })),
-          pagina,
         );
 
         return { respuesta: { texto: textos.invitarJugador.preguntaJugador, botones } };
@@ -82,18 +75,6 @@ export class InvitarJugadorFlujo {
       recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
         const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
         const seleccion = ctx.mensaje.seleccionId ?? '';
-
-        if (seleccion === ID_VER_MAS) {
-          const lista = await this.jugadores.listar(equipoId);
-
-          return {
-            tipo: 'ir',
-            pasoId: PASOS.jugador,
-            datos: {
-              [CLAVE_PAGINA]: paginaSiguiente(leerNumero(ctx.datos, CLAVE_PAGINA), lista.length),
-            },
-          };
-        }
 
         if (!seleccion.startsWith(PREFIJO_JUGADOR)) {
           return {

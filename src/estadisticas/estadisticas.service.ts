@@ -124,6 +124,21 @@ export class EstadisticasService {
     return filas.map(mapearEstadisticaJugador);
   }
 
+  /** Todas las filas de la temporada del equipo, para el rendimiento de `/tabla`. */
+  async jugadoresDeEquipo(
+    equipoId: string,
+    temporada: number = temporadaActual(),
+  ): Promise<EstadisticaJugador[]> {
+    const filas = await this.db.db.execute<Record<string, unknown>>(sql`
+      select *
+      from estadisticas_jugador
+      where equipo_id = ${equipoId} and temporada = ${temporada}
+      order by nombre
+    `);
+
+    return filas.map(mapearEstadisticaJugador);
+  }
+
   async deEquipo(
     equipoId: string,
     temporada: number = temporadaActual(),

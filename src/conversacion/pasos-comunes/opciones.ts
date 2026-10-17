@@ -1,0 +1,21 @@
+import type { Boton } from '../../channels/channel.types';
+
+export interface OpcionLista {
+  id: string;
+  texto: string;
+}
+
+/**
+ * Todas las opciones como botones, sin paginar.
+ *
+ * Telegram admite teclados largos, así que la lista se muestra completa
+ * siempre: tener que tocar "Ver más" en medio de un partido para encontrar
+ * a un jugador es más lento que deslizar el teclado.
+ */
+export function botonesDeOpciones(opciones: readonly OpcionLista[]): Boton[] {
+  return opciones.map((o) => ({ id: o.id, texto: recortar(o.texto, 20) }));
+}
+
+function recortar(texto: string, maximo: number): string {
+  return texto.length <= maximo ? texto : `${texto.slice(0, maximo - 1)}…`;
+}

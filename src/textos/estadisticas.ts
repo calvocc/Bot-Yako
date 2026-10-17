@@ -1,5 +1,7 @@
 /** Textos de `/stats` y `/tabla`. */
 
+import type { Destacados, FilaRendimiento } from '../estadisticas/rendimiento';
+
 /** Lo que los bloques de la ficha necesitan: común a `lineaJugador` y `totalPersona`. */
 interface CamposFicha {
   partidosJugados: number;
@@ -291,12 +293,129 @@ export const textos = {
     ];
   },
 
+  /**
+   * Botón "📈 Rendimiento" de `/tabla`: destacados de la temporada, goles
+   * recibidos por los arqueros y el listado de todo el equipo con su
+   * promedio (0–10, el de la nota por partido) y un mini resumen.
+   */
+  rendimientoEquipo: (datos: {
+    equipoNombre: string;
+    temporada: number;
+    golesContra: number;
+    destacados: Destacados;
+    filas: FilaRendimiento[];
+  }): string => {
+    const { goleador, mejorPromedio, peorPromedio, masAmonestado, arqueros } = datos.destacados;
+    const lineas = [
+      `📈 Rendimiento — ${datos.equipoNombre} · Temporada ${datos.temporada}`,
+      '',
+      '⭐ DESTACADOS',
+      goleador
+        ? `🥇 Goleador: ${nombreConDorsal(goleador)} (${plural(goleador.goles, 'gol', 'goles')})`
+        : '🥇 Goleador: nadie anotó todavía',
+    ];
+
+    if (mejorPromedio) {
+      lineas.push(
+        `📈 Mejor promedio: ${nombreConDorsal(mejorPromedio)} — ${promedioDe(mejorPromedio)}`,
+      );
+    }
+
+    if (peorPromedio) {
+      lineas.push(
+        `📉 Promedio más bajo: ${nombreConDorsal(peorPromedio)} — ${promedioDe(peorPromedio)}`,
+      );
+    }
+
+    lineas.push(
+      masAmonestado
+        ? `🟨 Más amonestado: ${nombreConDorsal(masAmonestado)} (${tarjetas(masAmonestado)})`
+        : '🟨 Más amonestado: nadie vio tarjeta 👏',
+      '',
+      `🧤 PORTERÍA — ${plural(datos.golesContra, 'gol recibido', 'goles recibidos')}`,
+    );
+
+    if (arqueros.length === 0) {
+      lineas.push(
+        'Sin arquero registrado en los partidos (asígnale la posición con /editarjugador).',
+      );
+    }
+
+    for (const arquero of arqueros) {
+      const recibidos = arquero.golesRecibidos ?? 0;
+      const porPartido =
+        arquero.partidosAtajados > 0 ? (recibidos / arquero.partidosAtajados).toFixed(1) : '—';
+
+      lineas.push(
+        `${nombreConDorsal(arquero)}: ${plural(recibidos, 'gol', 'goles')} en ${plural(arquero.partidosAtajados, 'partido', 'partidos')} (${porPartido} por partido)`,
+      );
+    }
+
+    lineas.push('', '👥 JUGADORES');
+
+    for (const fila of datos.filas) {
+      const promedio = fila.promedio !== null ? `⭐ ${fila.promedio.toFixed(1)}` : '⭐ —';
+
+      lineas.push(`${promedio} · ${nombreConDorsal(fila)}`, `     ${miniResumen(fila)}`);
+    }
+
+    return lineas.join('\n');
+  },
+
   /** Siempre visible: un "0 amarillas · 0 rojas" también informa. */
   disciplinaEquipo: (datos: { amarillas: number; rojas: number; autogoles: number }): string[] => [
     '🟨 DISCIPLINA',
     `🟨 ${plural(datos.amarillas, 'amarilla', 'amarillas')} · 🟥 ${plural(datos.rojas, 'roja', 'rojas')} · 🙃 ${plural(datos.autogoles, 'autogol', 'autogoles')}`,
   ],
 };
+
+/** `Jacob #10` / `Jacob`: mismo formato que el encabezado de la ficha. */
+function nombreConDorsal(fila: { nombre: string; dorsal: number | null }): string {
+  return fila.dorsal !== null ? `${fila.nombre} #${fila.dorsal}` : fila.nombre;
+}
+
+/** `7.4 en 6 partidos`. */
+function promedioDe(fila: FilaRendimiento): string {
+  return `${(fila.promedio ?? 0).toFixed(1)} en ${plural(fila.partidosConNota, 'partido', 'partidos')}`;
+}
+
+/** `2 amarillas · 1 roja`, omitiendo la que esté en cero. */
+function tarjetas(fila: { amarillas: number; rojas: number }): string {
+  return [
+    fila.amarillas > 0 ? plural(fila.amarillas, 'amarilla', 'amarillas') : undefined,
+    fila.rojas > 0 ? plural(fila.rojas, 'roja', 'rojas') : undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/**
+ * Lo importante del jugador en una línea: partidos y solo los números que
+ * no están en cero, para que el listado de todo el equipo siga entrando en
+ * la pantalla del teléfono.
+ */
+function miniResumen(fila: FilaRendimiento): string {
+  if (fila.partidosJugados === 0 && fila.partidosConNota === 0) return 'sin partidos todavía';
+
+  const partes = [
+    plural(Math.max(fila.partidosJugados, fila.partidosConNota), 'partido', 'partidos'),
+  ];
+
+  if (fila.goles > 0) partes.push(`⚽ ${fila.goles}`);
+  if (fila.asistencias > 0) partes.push(`🅰️ ${fila.asistencias}`);
+  if (fila.golesRecibidos !== null) {
+    partes.push(plural(fila.golesRecibidos, 'gol recibido', 'goles recibidos'));
+  }
+  if (fila.atajadas > 0) partes.push(`🧤 ${fila.atajadas}`);
+  if (fila.penalesAtajados > 0) {
+    partes.push(`🥅 ${plural(fila.penalesAtajados, 'penal atajado', 'penales atajados')}`);
+  }
+  if (fila.recuperaciones > 0) partes.push(`🔄 ${fila.recuperaciones}`);
+  if (fila.amarillas > 0) partes.push(`🟨 ${fila.amarillas}`);
+  if (fila.rojas > 0) partes.push(`🟥 ${fila.rojas}`);
+
+  return partes.join(' · ');
+}
 
 /** `12 pts` / `12.5 pts`: sin decimal colgando cuando la suma es exacta. */
 function puntosTexto(puntos: number): string {

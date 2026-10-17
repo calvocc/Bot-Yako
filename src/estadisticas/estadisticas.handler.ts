@@ -17,6 +17,12 @@ import {
   type EstadisticaEquipoCompetencia,
   type EstadisticaJugador,
 } from './estadisticas.service';
+import {
+  destacados,
+  ordenarPorPromedio,
+  rendimientoDeTemporada,
+  type FilaRendimiento,
+} from './rendimiento';
 
 /**
  * Selección interna que viaja en el argumento de los botones `cmd:stats:...`
@@ -30,6 +36,8 @@ import {
  */
 const PREFIJO_EQUIPO = 'equipo:';
 const PREFIJO_JUGADOR = 'jugador:';
+/** `/tabla rendimiento:<equipoId>` (`cmd:tabla:rendimiento:` + uuid = 58 bytes, límite 64). */
+const PREFIJO_RENDIMIENTO = 'rendimiento:';
 
 /**
  * `/stats [jugador]` y `/tabla` (RF-6). Cualquier rol puede usarlos —Viewer
@@ -318,6 +326,16 @@ export class EstadisticasHandler {
 
     const nombre = argumento?.trim();
 
+    if (nombre?.startsWith(PREFIJO_RENDIMIENTO)) {
+      const equipo = equipos.find((e) => e.equipoId === nombre.slice(PREFIJO_RENDIMIENTO.length));
+
+      if (!equipo) {
+        return { texto: textosComunes.noEncontre('ese equipo entre los tuyos') };
+      }
+
+      return this.rendimientoDeEquipo(equipo);
+    }
+
     if (nombre?.startsWith(PREFIJO_EQUIPO)) {
       const equipo = equipos.find((e) => e.equipoId === nombre.slice(PREFIJO_EQUIPO.length));
 
@@ -407,9 +425,82 @@ export class EstadisticasHandler {
 
     return {
       texto: bloques.join('\n'),
-      // Lleva al listado seleccionable de jugadores de este equipo (el
-      // mismo `equipo:<id>` de `/stats`): la ficha individual ya existe y
-      // no se duplica nada acá.
+      // "Ver jugadores" lleva al listado seleccionable de este equipo (el
+      // mismo `equipo:<id>` de `/stats`): la ficha individual ya existe y no
+      // se duplica nada acá. "Rendimiento" resume a todo el plantel.
+      botones: [
+        botonComando('stats', '👥 Ver jugadores', `${PREFIJO_EQUIPO}${equipo.equipoId}`),
+        botonComando('tabla', '📈 Rendimiento', `${PREFIJO_RENDIMIENTO}${equipo.equipoId}`),
+      ],
+    };
+  }
+
+  /**
+   * Rendimiento de la temporada del equipo: goleador, mejor y peor
+   * promedio, más amonestado, goles recibidos por cada arquero y el listado
+   * de todo el plantel con su promedio y un mini resumen.
+   *
+   * El promedio es la media de la nota por partido (la misma del resumen,
+   * con bonos de cierre), recalculada sobre los cerrados de la temporada
+   * —acotados a los últimos 60, como el MVP—; los totales (goles, tarjetas,
+   * atajadas) salen de `estadisticas_jugador`.
+   */
+  private async rendimientoDeEquipo(equipo: EquipoDelUsuario): Promise<RespuestaBot> {
+    const temporada = temporadaActual();
+    const [stat, filas, plantilla, cerrados] = await Promise.all([
+      this.estadisticas.deEquipo(equipo.equipoId, temporada),
+      this.estadisticas.jugadoresDeEquipo(equipo.equipoId, temporada),
+      this.jugadores.listar(equipo.equipoId),
+      this.partidos.cerradosDe(equipo.equipoId, 60),
+    ]);
+
+    if (!stat) {
+      return { texto: textos.sinPartidosCerrados(equipo.equipoNombre, temporada) };
+    }
+
+    const deLaTemporada = cerrados.filter((p) => p.fecha.startsWith(String(temporada)));
+    const { promedios, arqueros } = rendimientoDeTemporada(
+      await Promise.all(deLaTemporada.map((partido) => this.resumen.rendimientoDe(partido))),
+    );
+    const porJugador = new Map(filas.map((f) => [f.jugadorId, f]));
+
+    // Toda la plantilla activa, más quien ya no está en ella pero jugó esta
+    // temporada (tiene fila en la vista): nadie que sumó queda afuera.
+    const ids = [...new Set([...plantilla.map((j) => j.id), ...filas.map((f) => f.jugadorId)])];
+    const rendimiento: FilaRendimiento[] = ids.map((jugadorId) => {
+      const ficha = plantilla.find((j) => j.id === jugadorId);
+      const fila = porJugador.get(jugadorId);
+      const promedio = promedios.get(jugadorId);
+      const arquero = arqueros.get(jugadorId);
+
+      return {
+        jugadorId,
+        nombre: ficha?.nombre ?? fila?.nombre ?? 'Sin nombre',
+        dorsal: ficha?.dorsal ?? fila?.dorsal ?? null,
+        esArquero: ficha?.posicion === 'arquero',
+        promedio: promedio?.promedio ?? null,
+        partidosConNota: promedio?.partidos ?? 0,
+        partidosJugados: fila?.partidosJugados ?? 0,
+        goles: fila?.goles ?? 0,
+        asistencias: fila?.asistencias ?? 0,
+        amarillas: fila?.amarillas ?? 0,
+        rojas: fila?.rojas ?? 0,
+        atajadas: fila?.atajadas ?? 0,
+        penalesAtajados: fila?.penalesAtajados ?? 0,
+        recuperaciones: fila?.recuperaciones ?? 0,
+        golesRecibidos: arquero?.golesRecibidos ?? null,
+        partidosAtajados: arquero?.partidos ?? 0,
+      };
+    });
+
+    return {
+      texto: textos.rendimientoEquipo({
+        equipoNombre: equipo.equipoNombre,
+        temporada: stat.temporada,
+        golesContra: stat.golesContra,
+        destacados: destacados(rendimiento),
+        filas: ordenarPorPromedio(rendimiento),
+      }),
       botones: [botonComando('stats', '👥 Ver jugadores', `${PREFIJO_EQUIPO}${equipo.equipoId}`)],
     };
   }

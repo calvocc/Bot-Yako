@@ -1,27 +1,18 @@
 import type { Boton, RespuestaBot } from '../../channels/channel.types';
 import { textos } from '../../textos/pasos-comunes';
 import type { ContextoFlujo, DatosFlujo, Entrada, Paso, Transicion } from '../flow.types';
-import { leerNumero } from '../flow.types';
-import { botonesPaginados, ID_VER_MAS, type OpcionPaginable, paginaSiguiente } from './paginacion';
+import { botonesDeOpciones, type OpcionLista } from './opciones';
 
 const CLAVE_SELECCION = 'seleccionMultiple';
-const CLAVE_PAGINA = 'paginaSeleccionMultiple';
 const ID_CONFIRMAR = 'sm:listo';
 const ID_TODOS = 'sm:todos';
 const ID_NINGUNO = 'sm:ninguno';
-/**
- * "Listo" y "Todos" (más "Ninguno" cuando el paso lo pide): botones fijos, a
- * descontar del tamaño de página. "Todos"/"Ninguno" solo se agregan cuando
- * la página ya muestra el final de la lista (no hay "Ver más"), así que
- * ocupan el mismo lugar que ese botón — nunca compiten por espacio.
- */
-const RESERVA_BOTONES_BASE = 2;
 
 export interface OpcionesSeleccionMultiple {
   /** Texto de la pregunta, arriba de la lista. */
   pregunta: string;
   /** Las opciones para esta visita al paso — ids estables, no posicionales. */
-  obtenerOpciones(ctx: ContextoFlujo): Promise<OpcionPaginable[]>;
+  obtenerOpciones(ctx: ContextoFlujo): Promise<OpcionLista[]>;
   /** Qué hacer con los ids elegidos al confirmar. */
   alConfirmar(ctx: ContextoFlujo, elegidos: string[]): Promise<Transicion>;
   /** Mínimo para poder confirmar. Por defecto 1: no tiene sentido un mínimo de 0. */
@@ -53,7 +44,7 @@ export interface OpcionesSeleccionMultiple {
   interpretarTexto?(
     ctx: ContextoFlujo,
     texto: string,
-    lista: readonly OpcionPaginable[],
+    lista: readonly OpcionLista[],
   ):
     | { ids: string[]; sinReconocer: string[] }
     | null
@@ -63,25 +54,21 @@ export interface OpcionesSeleccionMultiple {
 }
 
 /**
- * Selección de varios elementos de una lista, con toggle y paginación.
+ * Selección de varios elementos de una lista, con toggle, sin paginar.
  *
  * Cada opción es su propio botón; tocarlo prende o apaga una marca (✅) sin
  * cambiar de paso, y "Listo" confirma. Los ids que entrega `obtenerOpciones`
  * viajan tal cual como id de botón —igual que `pasoSelectorEquipo`—, así que
- * no hay ventana de carrera por índices posicionales: paginar o que la lista
- * cambie entre toques no corre lo ya marcado.
+ * no hay ventana de carrera por índices posicionales: que la lista cambie
+ * entre toques no corre lo ya marcado.
  *
  * Cada toque edita el mismo mensaje en vez de mandar uno nuevo — con una
  * plantilla de 15 jugadores, marcar la titular a los golpes no puede dejar 15
  * mensajes en el chat. "Todos"/"Ninguno" y el atajo por texto (si el paso lo
  * ofrece) existen por la misma razón: menos toques para el caso común.
- * "Todos"/"Ninguno" recién aparecen en la última página: antes de eso, ese
- * lugar lo ocupa "Ver más" y mostrar un jugador extra por página importa más
- * que tener el atajo a mano de entrada.
  */
 export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMultiple): Paso {
   const minimo = opciones.minimo ?? 1;
-  const reserva = RESERVA_BOTONES_BASE + (opciones.mostrarNinguno ? 1 : 0);
 
   const leerSeleccion = (datos: DatosFlujo): string[] => {
     const valor = datos[CLAVE_SELECCION];
@@ -90,26 +77,20 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
   };
 
   const armar = (
-    lista: readonly OpcionPaginable[],
+    lista: readonly OpcionLista[],
     elegidos: readonly string[],
-    pagina: number,
     aviso?: string,
   ): { texto: string; botones: Boton[] } => {
     const marcadas = lista.map((o) => ({
       id: o.id,
       texto: elegidos.includes(o.id) ? textos.marcaSeleccionado(o.texto) : o.texto,
     }));
-    const { botones, hayMas } = botonesPaginados(marcadas, pagina, reserva);
+    const botones = botonesDeOpciones(marcadas);
 
-    // "Todos" (y "Ninguno", si el paso lo pide) solo entran cuando esta
-    // página ya llegó al final de la lista: antes de eso ese lugar lo ocupa
-    // "Ver más", y dejarlo libre es un jugador más visible por página.
-    if (!hayMas) {
-      botones.push({ id: ID_TODOS, texto: textos.todos });
+    botones.push({ id: ID_TODOS, texto: textos.todos });
 
-      if (opciones.mostrarNinguno) {
-        botones.push({ id: ID_NINGUNO, texto: textos.ninguno });
-      }
+    if (opciones.mostrarNinguno) {
+      botones.push({ id: ID_NINGUNO, texto: textos.ninguno });
     }
 
     botones.push({
@@ -127,13 +108,12 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
    * nuevo, si la entrada fue texto y no hay nada que editar). */
   const repetir = (
     ctx: ContextoFlujo,
-    lista: readonly OpcionPaginable[],
+    lista: readonly OpcionLista[],
     elegidos: readonly string[],
-    pagina: number,
     aviso?: string,
   ): { respuesta: RespuestaBot } => ({
     respuesta: {
-      ...armar(lista, elegidos, pagina, aviso),
+      ...armar(lista, elegidos, aviso),
       editarMensajeId: ctx.mensaje.mensajeOrigenId,
     },
   });
@@ -148,11 +128,10 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
       // limpiarla acá, una selección que quedó de la visita anterior se
       // cuela como si el usuario ya la hubiera marcado en esta -- aunque
       // acá se muestre todo destildado. Se muta `ctx.datos` directo (no
-      // alcanza con `armar(lista, [], 0)`, que solo arma la respuesta):
+      // alcanza con `armar(lista, [])`, que solo arma la respuesta):
       // `FlowEngine` relee `ctx.datos` después de `entrar`, así que
       // mutarlo es lo que hace que la limpieza quede guardada.
       ctx.datos[CLAVE_SELECCION] = [];
-      ctx.datos[CLAVE_PAGINA] = 0;
 
       const lista = await opciones.obtenerOpciones(ctx);
 
@@ -162,31 +141,20 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
         };
       }
 
-      return { respuesta: armar(lista, [], 0) };
+      return { respuesta: armar(lista, []) };
     },
 
     recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
       const seleccion = ctx.mensaje.seleccionId ?? '';
       const lista = await opciones.obtenerOpciones(ctx);
       const elegidos = leerSeleccion(ctx.datos);
-      const pagina = leerNumero(ctx.datos, CLAVE_PAGINA, 0);
-
-      if (seleccion === ID_VER_MAS) {
-        const siguiente = paginaSiguiente(pagina, lista.length, reserva);
-
-        return {
-          tipo: 'repetir',
-          ...repetir(ctx, lista, elegidos, siguiente),
-          datos: { [CLAVE_PAGINA]: siguiente },
-        };
-      }
 
       if (seleccion === ID_TODOS) {
         const todos = lista.map((o) => o.id);
 
         return {
           tipo: 'repetir',
-          ...repetir(ctx, lista, todos, pagina),
+          ...repetir(ctx, lista, todos),
           datos: { [CLAVE_SELECCION]: todos },
         };
       }
@@ -194,7 +162,7 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
       if (seleccion === ID_NINGUNO) {
         return {
           tipo: 'repetir',
-          ...repetir(ctx, lista, [], pagina),
+          ...repetir(ctx, lista, []),
           datos: { [CLAVE_SELECCION]: [] },
         };
       }
@@ -203,7 +171,7 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
         if (elegidos.length < minimo) {
           return {
             tipo: 'repetir',
-            ...repetir(ctx, lista, elegidos, pagina, textos.eligeAlMenos(minimo)),
+            ...repetir(ctx, lista, elegidos, textos.eligeAlMenos(minimo)),
           };
         }
 
@@ -218,7 +186,7 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
 
         return {
           tipo: 'repetir',
-          ...repetir(ctx, lista, nuevos, pagina),
+          ...repetir(ctx, lista, nuevos),
           datos: { [CLAVE_SELECCION]: nuevos },
         };
       }
@@ -242,7 +210,7 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
 
           return {
             tipo: 'repetir',
-            ...repetir(ctx, lista, resultado.ids, pagina, aviso),
+            ...repetir(ctx, lista, resultado.ids, aviso),
             datos: { [CLAVE_SELECCION]: resultado.ids },
           };
         }
@@ -253,13 +221,12 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
             ctx,
             lista,
             elegidos,
-            pagina,
             opciones.avisoTextoNoReconocido ?? textos.textoNoReconocido,
           ),
         };
       }
 
-      return { tipo: 'repetir', ...repetir(ctx, lista, elegidos, pagina) };
+      return { tipo: 'repetir', ...repetir(ctx, lista, elegidos) };
     },
   };
 }

@@ -9,6 +9,7 @@ import {
   type NotaJugador,
 } from '../eventos/puntaje';
 import { JugadoresService, type Jugador } from '../jugadores/jugadores.service';
+import { golesRecibidosPorArquero, type CambioJugado } from '../partidos/alineacion';
 import { AlineacionService } from '../partidos/alineacion.service';
 import { describirFecha } from '../partidos/fechas';
 import { marcadorDe, type Partido } from '../partidos/partido.mapper';
@@ -30,6 +31,13 @@ const PORCENTAJE_MINIMO_BONO = 0.6;
 const PUNTOS_VALLA_INVICTA = 3;
 /** Se resta 1 por cada 2 goles recibidos (redondeando hacia abajo: 1 gol no cuesta nada). */
 const GOLES_POR_PUNTO_PENALIZADO = 2;
+const TIPOS_GOL = new Set<string>(['gol', 'gol_penal', 'gol_tiro_libre']);
+
+/** Notas del partido más los goles en contra de cada arquero que jugó. */
+export interface RendimientoPartido {
+  notas: NotaJugador[];
+  golesRecibidos: Map<string, number>;
+}
 
 @Injectable()
 export class ResumenService {
@@ -55,6 +63,48 @@ export class ResumenService {
     const { cargados, participantes, bonos } = await this.base(partido);
 
     return calcularNotas(cargados, participantes, bonos);
+  }
+
+  /**
+   * Lo de `notasDe` más los goles que recibió cada arquero (ver
+   * `golesRecibidosPorArquero`): lo usa el rendimiento de la temporada de
+   * `/tabla`. Los titulares se piden aparte porque solo hacen falta acá.
+   */
+  async rendimientoDe(partido: Partido): Promise<RendimientoPartido> {
+    const [{ cargados, participantes, bonos }, titulares] = await Promise.all([
+      this.base(partido),
+      this.alineacion.titularesDe(partido.id),
+    ]);
+
+    const notas = calcularNotas(cargados, participantes, bonos);
+    const arqueros = notas.filter((n) => n.posicion === 'arquero').map((n) => n.jugadorId);
+    const cambios: CambioJugado[] = cargados
+      .filter((e) => e.tipo === 'cambio' && e.jugadorId && e.jugadorEntraId)
+      .map((e) => ({
+        sale: e.jugadorId as string,
+        entra: e.jugadorEntraId as string,
+        minuto: e.minutoCalculado,
+      }));
+    // Mismo criterio del trigger del marcador: un gol suma para quien lo
+    // marcó y un autogol para el rival de quien lo marcó.
+    const minutosEnContra = cargados
+      .filter(
+        (e) =>
+          (e.equipoOrigen === 'rival' && TIPOS_GOL.has(e.tipo)) ||
+          (e.equipoOrigen === 'propio' && e.tipo === 'autogol'),
+      )
+      .map((e) => e.minutoCalculado);
+
+    return {
+      notas,
+      golesRecibidos: golesRecibidosPorArquero(
+        arqueros,
+        titulares,
+        cambios,
+        minutosEnContra,
+        marcadorDe(partido).rival,
+      ),
+    };
   }
 
   private async base(partido: Partido): Promise<{

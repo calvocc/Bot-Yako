@@ -91,6 +91,8 @@ interface Mundo {
   agregado?: AgregadoEquipo;
   /** Notas por partido (`partidoId -> notas`), para el MVP de `/tabla`. */
   notas?: Record<string, NotaJugador[]>;
+  /** Goles recibidos por arquero en cada partido (`partidoId -> jugadorId -> goles`). */
+  golesRecibidos?: Record<string, Record<string, number>>;
 }
 
 function nota(
@@ -158,6 +160,7 @@ function handlerDe(mundo: Mundo): EstadisticasHandler {
   const estadisticas = {
     deJugador: (equipoId: string) => Promise.resolve(mundo.stats[equipoId] ?? []),
     deEquipo: () => Promise.resolve(mundo.tabla ?? null),
+    jugadoresDeEquipo: (equipoId: string) => Promise.resolve(mundo.stats[equipoId] ?? []),
     porCompetencia: () => Promise.resolve(mundo.campeonatos ?? []),
     agregadoEquipo: () =>
       Promise.resolve(
@@ -196,6 +199,11 @@ function handlerDe(mundo: Mundo): EstadisticasHandler {
 
   const resumen = {
     notasDe: (partido: Partido) => Promise.resolve(mundo.notas?.[partido.id] ?? []),
+    rendimientoDe: (partido: Partido) =>
+      Promise.resolve({
+        notas: mundo.notas?.[partido.id] ?? [],
+        golesRecibidos: new Map(Object.entries(mundo.golesRecibidos?.[partido.id] ?? {})),
+      }),
   } as unknown as ResumenService;
 
   return new EstadisticasHandler(
@@ -429,9 +437,16 @@ describe('EstadisticasHandler.tabla por botones', () => {
 
     const respuesta = await handler.tabla(undefined, 'user-1');
 
-    // El botón lleva al listado seleccionable de jugadores de ese equipo.
-    expect(respuesta.botones?.map((b) => b.id)).toEqual([`cmd:stats:equipo:${EQUIPO_1}`]);
-    expect(respuesta.botones?.map((b) => b.texto)).toEqual(['👥 Ver jugadores']);
+    // Un botón lleva al listado seleccionable de jugadores de ese equipo y
+    // el otro al rendimiento de todo el plantel.
+    expect(respuesta.botones?.map((b) => b.id)).toEqual([
+      `cmd:stats:equipo:${EQUIPO_1}`,
+      `cmd:tabla:rendimiento:${EQUIPO_1}`,
+    ]);
+    expect(respuesta.botones?.map((b) => b.texto)).toEqual(['👥 Ver jugadores', '📈 Rendimiento']);
+    for (const boton of respuesta.botones ?? []) {
+      expect(bytesDe(boton.id)).toBeLessThanOrEqual(LIMITE_BYTES_ID_BOTON);
+    }
     expect(respuesta.texto).toContain('📋 Sub-11 — Temporada');
     expect(respuesta.texto).toContain('🏟️ RESULTADOS');
     expect(respuesta.texto).toContain('9 partidos · 🟢 2 ganados');
@@ -552,5 +567,124 @@ describe('EstadisticasHandler.tabla por botones', () => {
     expect(respuesta.texto).toContain('🏆 Liga');
     expect(respuesta.texto).not.toContain('⭐ MVP');
     expect(respuesta.texto).not.toContain('Goleador');
+  });
+});
+
+describe('EstadisticasHandler.tabla rendimiento', () => {
+  const ARQUERO = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+  const SUPLENTE = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+
+  function conNota(base: NotaJugador, valor: number): NotaJugador {
+    return { ...base, nota: valor };
+  }
+
+  function mundoRendimiento(): Mundo {
+    const temporada = temporadaActual();
+
+    return {
+      equipos: [equipo(EQUIPO_1, 'Sub-11')],
+      plantillas: {
+        [EQUIPO_1]: [
+          jugador(JACOB_1, 'Jacob', 10),
+          jugador(ANDRES_1, 'Andrés', 7),
+          jugador(ARQUERO, 'Tomás', 1, 'arquero'),
+          jugador(SUPLENTE, 'Nuevo', 20),
+        ],
+      },
+      stats: {
+        [EQUIPO_1]: [
+          { ...fila(JACOB_1, EQUIPO_1, 'Jacob'), goles: 6, amarillas: 1 },
+          {
+            ...fila(ANDRES_1, EQUIPO_1, 'Andrés'),
+            dorsal: 7,
+            goles: 1,
+            asistencias: 3,
+            amarillas: 2,
+            rojas: 1,
+          },
+          {
+            ...fila(ARQUERO, EQUIPO_1, 'Tomás'),
+            dorsal: 1,
+            goles: 0,
+            asistencias: 0,
+            amarillas: 0,
+            atajadas: 9,
+          },
+        ],
+      },
+      tabla: tablaEquipo(),
+      cerrados: {
+        [EQUIPO_1]: [
+          partido('p1', `${temporada}-03-01`),
+          partido('p2', `${temporada}-03-08`),
+          // Otra temporada: no entra en el promedio.
+          partido('p0', `${temporada - 1}-11-01`),
+        ],
+      },
+      notas: {
+        p1: [
+          conNota(nota(JACOB_1, 'Jacob', 4), 8),
+          conNota(nota(ANDRES_1, 'Andrés', 0), 6),
+          conNota(nota(ARQUERO, 'Tomás', 0), 5),
+        ],
+        p2: [
+          conNota(nota(JACOB_1, 'Jacob', 2), 7),
+          conNota(nota(ANDRES_1, 'Andrés', 0), 6),
+          conNota(nota(ARQUERO, 'Tomás', 0), 6),
+        ],
+        p0: [conNota(nota(ANDRES_1, 'Andrés', 0), 10)],
+      },
+      golesRecibidos: { p1: { [ARQUERO]: 3 }, p2: { [ARQUERO]: 1 }, p0: { [ARQUERO]: 9 } },
+    };
+  }
+
+  it('muestra destacados, arqueros y el listado completo con promedio', async () => {
+    const handler = handlerDe(mundoRendimiento());
+
+    const respuesta = await handler.tabla(`rendimiento:${EQUIPO_1}`, 'user-1');
+    const texto = respuesta.texto;
+
+    expect(texto).toContain('📈 Rendimiento — Sub-11 · Temporada');
+    expect(texto).toContain('🥇 Goleador: Jacob #10 (6 goles)');
+    expect(texto).toContain('📈 Mejor promedio: Jacob #10 — 7.5 en 2 partidos');
+    expect(texto).toContain('📉 Promedio más bajo: Tomás #1 — 5.5 en 2 partidos');
+    expect(texto).toContain('🧤 PORTERÍA — 18 goles recibidos');
+    expect(texto).toContain('🟨 Más amonestado: Andrés #7 (2 amarillas · 1 roja)');
+    expect(texto).toContain('Tomás #1: 4 goles en 2 partidos (2.0 por partido)');
+
+    // Listado de todo el plantel, de mayor a menor promedio; sin partidos al final.
+    const listado = texto.slice(texto.indexOf('👥 JUGADORES'));
+    expect(listado.indexOf('Jacob #10')).toBeLessThan(listado.indexOf('Andrés #7'));
+    expect(listado.indexOf('Andrés #7')).toBeLessThan(listado.indexOf('Tomás #1'));
+    expect(listado).toContain('⭐ 7.5 · Jacob #10');
+    expect(listado).toContain('⭐ 6.0 · Andrés #7');
+    expect(listado).toContain('⭐ 5.5 · Tomás #1');
+    expect(listado).toContain('4 goles recibidos');
+    expect(listado).toContain('🧤 9');
+    expect(listado).toContain('⭐ — · Nuevo #20');
+    expect(listado).toContain('sin partidos todavía');
+
+    expect(respuesta.botones?.map((b) => b.id)).toEqual([`cmd:stats:equipo:${EQUIPO_1}`]);
+  });
+
+  it('sin tarjetas ni arquero registrado lo dice', async () => {
+    const mundo = mundoRendimiento();
+    mundo.stats[EQUIPO_1] = [fila(JACOB_1, EQUIPO_1, 'Jacob')].map((f) => ({ ...f, amarillas: 0 }));
+    mundo.golesRecibidos = {};
+
+    const respuesta = await handlerDe(mundo).tabla(`rendimiento:${EQUIPO_1}`, 'user-1');
+
+    expect(respuesta.texto).toContain('🟨 Más amonestado: nadie vio tarjeta 👏');
+    expect(respuesta.texto).toContain('Sin arquero registrado');
+  });
+
+  it('un equipo ajeno no muestra nada y sin cerrados lo dice', async () => {
+    const handler = handlerDe({ ...mundoRendimiento(), tabla: null });
+
+    const ajeno = await handler.tabla('rendimiento:equipo-ajeno', 'user-1');
+    expect(ajeno.texto).toContain('No encontré ese equipo entre los tuyos');
+
+    const vacio = await handler.tabla(`rendimiento:${EQUIPO_1}`, 'user-1');
+    expect(vacio.texto).toContain('Sin partidos cerrados todavía.');
   });
 });

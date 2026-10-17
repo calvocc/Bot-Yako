@@ -11,8 +11,6 @@ import { textos as comunes } from './comunes';
  * botón, así que la redacción completa sí difiere.
  */
 export const textos = {
-  verMas: 'Ver más',
-
   eligeAlMenos: (minimo: number) =>
     minimo === 1 ? 'Elige al menos uno.' : `Elige al menos ${minimo}.`,
   confirmarListo: 'Listo',
