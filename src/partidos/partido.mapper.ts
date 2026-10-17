@@ -28,6 +28,8 @@ export interface Partido {
   creadoPor: string;
   cerradoEn: Date | null;
   cerradoPor: string | null;
+  /** Cuándo se reabrió con `/reabrir`; `null` si nunca se reabrió. Habilita "✏️ Corregir" en `/cargar`. */
+  reabiertoEn: Date | null;
 }
 
 export function mapearPartido(
@@ -56,6 +58,7 @@ export function mapearPartido(
     creadoPor: fila.creadoPor,
     cerradoEn: fila.cerradoEn,
     cerradoPor: fila.cerradoPor,
+    reabiertoEn: fila.reabiertoEn,
   };
 }
 

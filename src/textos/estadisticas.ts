@@ -353,10 +353,12 @@ export const textos = {
 
     lineas.push('', '👥 JUGADORES');
 
+    // Dorsal, nombre y promedio en la primera línea; el mini resumen debajo,
+    // sin sangría.
     for (const fila of datos.filas) {
       const promedio = fila.promedio !== null ? `⭐ ${fila.promedio.toFixed(1)}` : '⭐ —';
 
-      lineas.push(`${promedio} · ${nombreConDorsal(fila)}`, `     ${miniResumen(fila)}`);
+      lineas.push(`${nombreConDorsal(fila)} · ${promedio}`, miniResumen(fila));
     }
 
     return lineas.join('\n');
@@ -369,9 +371,9 @@ export const textos = {
   ],
 };
 
-/** `Jacob #10` / `Jacob`: mismo formato que el encabezado de la ficha. */
+/** `#10 Jacob` / `Jacob`: el dorsal primero, en todo el mensaje de rendimiento. */
 function nombreConDorsal(fila: { nombre: string; dorsal: number | null }): string {
-  return fila.dorsal !== null ? `${fila.nombre} #${fila.dorsal}` : fila.nombre;
+  return fila.dorsal !== null ? `#${fila.dorsal} ${fila.nombre}` : fila.nombre;
 }
 
 /** `7.4 en 6 partidos`. */

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { DbService, type EjecutorDb } from '../db/db.service';
-import { eventos, partidoTitulares } from '../db/schema';
+import { eventos, partidos, partidoTitulares } from '../db/schema';
 import { calcularMinutosJugados, type CambioJugado, derivarEnCancha } from './alineacion';
 
 @Injectable()
@@ -189,6 +189,57 @@ export class AlineacionService {
       titulares,
       cambios,
     };
+  }
+
+  /**
+   * Corrige quiénes jugaron en un partido ya cargado ("✏️ Corregir" de
+   * `/cargar`): saca de `partido_titulares` a quien no jugó y suma a quien
+   * faltó, en una sola transacción. Quien entró por cambio no está en esa
+   * tabla: para sacarlo hay que borrar el evento del cambio.
+   *
+   * Toma el mismo `for update` sobre el partido que `EventosService.borrar`
+   * y revalida que siga abierto: sin eso, un cierre que se confirma entre
+   * que se mostró la lista y se tocó "Guardar" dejaría cambiando quién jugó
+   * en un partido ya cerrado.
+   */
+  async ajustarParticipantes(
+    partidoId: string,
+    usuarioId: string,
+    cambios: { agregar: readonly string[]; quitar: readonly string[] },
+  ): Promise<'ajustado' | 'partido_cerrado' | 'no_existe'> {
+    return this.db.db.transaction(async (tx) => {
+      const [partido] = await tx
+        .select({ estado: partidos.estado })
+        .from(partidos)
+        .where(eq(partidos.id, partidoId))
+        .for('update')
+        .limit(1);
+
+      if (!partido) return 'no_existe';
+      if (partido.estado === 'cerrado') return 'partido_cerrado';
+
+      if (cambios.quitar.length > 0) {
+        await tx
+          .delete(partidoTitulares)
+          .where(
+            and(
+              eq(partidoTitulares.partidoId, partidoId),
+              inArray(partidoTitulares.jugadorId, [...cambios.quitar]),
+            ),
+          );
+      }
+
+      if (cambios.agregar.length > 0) {
+        await tx
+          .insert(partidoTitulares)
+          .values(
+            cambios.agregar.map((jugadorId) => ({ partidoId, jugadorId, creadoPor: usuarioId })),
+          )
+          .onConflictDoNothing();
+      }
+
+      return 'ajustado';
+    });
   }
 
   /**

@@ -25,6 +25,7 @@ const partido = (parcial: Partial<Partido> = {}): Partido => ({
   creadoPor: 'u1',
   cerradoEn: null,
   cerradoPor: null,
+  reabiertoEn: null,
   ...parcial,
 });
 
@@ -134,6 +135,20 @@ describe('panelEnVivo', () => {
 
     expect(panel.texto).toContain('era el último');
     expect(panel.botones.map((b) => b.id)).not.toContain('pa:fintiempo');
+  });
+
+  it('ofrece "✏️ Corregir" solo en un partido reabierto', () => {
+    const ids = (reabiertoEn: Date | null) =>
+      panelEnVivo({
+        partido: partido({ reabiertoEn }),
+        equipoNombre: 'Ringo Amaya',
+        minuto: { minuto: 23, adicion: 0, baseMostrada: 23 },
+      }).botones.map((b) => b.id);
+
+    expect(ids(null)).not.toContain('pa:corregir');
+    expect(ids(new Date())).toContain('pa:corregir');
+    // Antes de "Finalizar", que sigue siendo el último.
+    expect(ids(new Date()).slice(-2)).toEqual(['pa:corregir', 'pa:finpartido']);
   });
 
   it('respeta el límite de rótulo de los botones', () => {

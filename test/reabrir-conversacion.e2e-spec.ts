@@ -19,7 +19,10 @@ import { IdentidadService } from '../src/identidad/identidad.service';
 import { JugadoresService } from '../src/jugadores/jugadores.service';
 import { OrganizacionModule } from '../src/organizacion.module';
 import { PartidosModule } from '../src/partidos.module';
+import { EventosService } from '../src/eventos/eventos.service';
+import { AlineacionService } from '../src/partidos/alineacion.service';
 import { PartidosService } from '../src/partidos/partidos.service';
+import { TiemposService } from '../src/partidos/tiempos.service';
 
 /**
  * `/reabrir` como conversación completa: además del propio flujo (elegir
@@ -186,5 +189,221 @@ describe('Reabrir, conversación completa (e2e)', () => {
     await tocar(`cmd:continuarcarga:${partido.id}`);
 
     expect(adaptador.ultimoTexto).toContain('permiso');
+  });
+
+  it('"✏️ Corregir" saca a quien no jugó y borra un evento que no es el último', async () => {
+    const { equipo, usuarioId, decir, tocar } = await escenario('Corregir');
+    const [jacob] = await jugadores.listar(equipo.id);
+    const andres = await jugadores.crear(equipo.id, 'Andrés', 7);
+    const pedro = await jugadores.crear(equipo.id, 'Pedro', 5);
+    const partido = await partidos.crear({
+      equipoId: equipo.id,
+      rival: 'Rival',
+      fecha: '2026-01-17',
+      formato: { cantidadTiempos: 2, minutosPorTiempo: 25 },
+      creadoPor: usuarioId,
+    });
+    const eventos = app.get(EventosService);
+
+    // Cargado post partido con Pedro marcado por error como que jugó.
+    await app.get(TiemposService).iniciarPostPartido(partido.id, usuarioId);
+    await app
+      .get(AlineacionService)
+      .guardarTitulares(partido.id, usuarioId, [jacob.id, andres.id, pedro.id]);
+    for (const jugadorId of [jacob.id, andres.id]) {
+      await eventos.registrar({
+        partidoId: partido.id,
+        tipo: 'gol',
+        equipoOrigen: 'propio',
+        jugadorId,
+        reportadoPor: usuarioId,
+        origen: 'post_partido',
+      });
+    }
+    await partidos.cerrar(partido.id, usuarioId, { propio: 2, rival: 0 });
+
+    await decir('/reabrir');
+    await tocar(adaptador.ultimosBotones[0].id);
+    await tocar(`cmd:continuarcarga:${partido.id}`);
+
+    expect(adaptador.ultimosBotones.map((b) => b.id)).toContain('pa:corregir');
+
+    await tocar('pa:corregir');
+    expect(adaptador.ultimoTexto).toContain('¿Qué quieres corregir?');
+
+    // Quiénes jugaron: los tres ya vienen marcados; se desmarca a Pedro.
+    await tocar('cr:jugaron');
+    expect(
+      adaptador.ultimosBotones.filter((b) => b.texto.startsWith('✅')).map((b) => b.id),
+    ).toEqual(expect.arrayContaining([`jg:${jacob.id}`, `jg:${andres.id}`, `jg:${pedro.id}`]));
+
+    await tocar(`jg:${pedro.id}`);
+    await tocar('sm:listo');
+
+    expect(adaptador.ultimoTexto).toContain('✅ Guardado.');
+    expect(adaptador.ultimoTexto).toContain('Ya no jugaron:');
+    expect(adaptador.ultimoTexto).toContain('Pedro');
+
+    const titulares = await app.get(AlineacionService).titularesDe(partido.id);
+    expect(titulares.sort()).toEqual([jacob.id, andres.id].sort());
+
+    // Borrar el gol de Jacob, que no es el último cargado.
+    await tocar('cr:eventos');
+    expect(adaptador.ultimoTexto).toContain('1. ⚽ Gol de');
+    expect(adaptador.ultimoTexto).toContain('2. ⚽ Gol de');
+
+    const [golDeJacob] = await eventos.delPartido(partido.id);
+    await tocar(`cr:b:${golDeJacob.id}`);
+    expect(adaptador.ultimoTexto).toContain('¿Borro este evento?');
+
+    await tocar('cr:si');
+    expect(adaptador.ultimoTexto).toContain('🗑️ Se borró: ⚽ Gol de Jacob #10 — 1-0');
+
+    const vigentes = await eventos.delPartido(partido.id);
+    expect(vigentes.map((e) => e.jugadorId)).toEqual([andres.id]);
+    expect((await partidos.obtener(partido.id))?.marcadorPropio).toBe(1);
+  });
+
+  it('"✏️ Corregir" es solo para admin', async () => {
+    const { equipo, usuarioId, decir, tocar } = await escenario('Corregir editor');
+    const partido = await partidos.crear({
+      equipoId: equipo.id,
+      rival: 'Rival',
+      fecha: '2026-01-24',
+      formato: { cantidadTiempos: 2, minutosPorTiempo: 25 },
+      creadoPor: usuarioId,
+    });
+
+    await app.get(TiemposService).iniciarPostPartido(partido.id, usuarioId);
+    await partidos.cerrar(partido.id, usuarioId, { propio: 0, rival: 0 });
+
+    await decir('/reabrir');
+    await tocar(adaptador.ultimosBotones[0].id);
+    await tocar(`cmd:continuarcarga:${partido.id}`);
+    expect(adaptador.ultimosBotones.map((b) => b.id)).toContain('pa:corregir');
+
+    // Le bajan el rol a editor después de reabrir.
+    await db.db.execute(
+      sql`update usuarios_equipos set rol = 'editor' where equipo_id = ${equipo.id} and usuario_id = ${usuarioId}`,
+    );
+
+    await tocar('pa:corregir');
+
+    expect(adaptador.ultimoTexto).toContain('Solo un admin puede corregir');
+    expect(adaptador.ultimoTexto).not.toContain('¿Qué quieres corregir?');
+  });
+
+  /** Un partido en vivo con Jacob, Andrés y Pedro titulares; Jacob sale por Tomás. Cerrado y reabierto. */
+  const partidoEnVivoReabierto = async (nombre: string) => {
+    const ctx = await escenario(nombre);
+    const [jacob] = await jugadores.listar(ctx.equipo.id);
+    const andres = await jugadores.crear(ctx.equipo.id, 'Andrés', 7);
+    const pedro = await jugadores.crear(ctx.equipo.id, 'Pedro', 5);
+    const tomas = await jugadores.crear(ctx.equipo.id, 'Tomás', 14);
+    const partido = await partidos.crear({
+      equipoId: ctx.equipo.id,
+      rival: 'Rival',
+      fecha: '2026-02-07',
+      formato: { cantidadTiempos: 2, minutosPorTiempo: 25 },
+      creadoPor: ctx.usuarioId,
+    });
+
+    await app
+      .get(TiemposService)
+      .iniciarEnVivo(partido.id, ctx.usuarioId, [jacob.id, andres.id, pedro.id]);
+    await app.get(EventosService).registrar({
+      partidoId: partido.id,
+      tipo: 'cambio',
+      equipoOrigen: 'propio',
+      jugadorId: jacob.id,
+      jugadorEntraId: tomas.id,
+      reportadoPor: ctx.usuarioId,
+    });
+    await partidos.cerrar(partido.id, ctx.usuarioId, { propio: 0, rival: 0 });
+
+    await ctx.decir('/reabrir');
+    await ctx.tocar(adaptador.ultimosBotones[0].id);
+    await ctx.tocar(`cmd:continuarcarga:${partido.id}`);
+
+    return { ...ctx, partido, jacob, andres, pedro, tomas };
+  };
+
+  it('en vivo: solo se desmarca, y quien aparece en un cambio no se saca', async () => {
+    const { tocar, partido, jacob, andres, pedro, tomas } =
+      await partidoEnVivoReabierto('Corregir en vivo');
+
+    expect(adaptador.ultimosBotones.map((b) => b.id)).toContain('pa:corregir');
+    await tocar('pa:corregir');
+    await tocar('cr:jugaron');
+
+    // Solo los que figuran (los tres titulares y Tomás, que entró): en vivo
+    // no se suma a nadie desde acá.
+    const ids = adaptador.ultimosBotones.map((b) => b.id).filter((id) => id.startsWith('jg:'));
+    expect(ids.sort()).toEqual(
+      [jacob.id, andres.id, pedro.id, tomas.id].map((id) => `jg:${id}`).sort(),
+    );
+    expect(adaptador.ultimoTexto).toContain('Quien entró se carga con 🔄 Cambio');
+
+    // Jacob salió en un cambio: desmarcarlo no lo saca. Pedro sí sale.
+    await tocar(`jg:${jacob.id}`);
+    await tocar(`jg:${pedro.id}`);
+    await tocar('sm:listo');
+
+    expect(adaptador.ultimoTexto).toContain('Ya no jugaron: #5 Pedro');
+    expect(adaptador.ultimoTexto).toContain('No saqué a #10 Jacob: aparece en un cambio');
+
+    const titulares = await app.get(AlineacionService).titularesDe(partido.id);
+    expect(titulares.sort()).toEqual([jacob.id, andres.id].sort());
+  });
+
+  it('guardar compara contra la lista mostrada: no saca a quien se sumó mientras tanto', async () => {
+    const { usuarioId, tocar, partido, andres } = await partidoEnVivoReabierto('Corregir foto');
+    const nuevo = await jugadores.crear(partido.equipoId, 'Nuevo', 30);
+
+    await tocar('pa:corregir');
+    await tocar('cr:jugaron');
+
+    // Otra persona lo suma mientras la lista está abierta.
+    await app.get(AlineacionService).agregarSiHaceFalta(partido.id, nuevo.id, usuarioId);
+
+    await tocar(`jg:${andres.id}`);
+    await tocar('sm:listo');
+
+    const titulares = await app.get(AlineacionService).titularesDe(partido.id);
+    expect(titulares).toContain(nuevo.id);
+    expect(titulares).not.toContain(andres.id);
+  });
+
+  it('"Volver" sale de la lista sin guardar nada', async () => {
+    const { tocar, partido, pedro } = await partidoEnVivoReabierto('Corregir volver');
+
+    await tocar('pa:corregir');
+    await tocar('cr:jugaron');
+    await tocar(`jg:${pedro.id}`);
+    await tocar('sm:volver');
+
+    expect(adaptador.ultimoTexto).toContain('¿Qué quieres corregir?');
+    expect(await app.get(AlineacionService).titularesDe(partido.id)).toContain(pedro.id);
+  });
+
+  it('un "✏️ Corregir" viejo en un partido que nunca se reabrió no entra', async () => {
+    const { equipo, usuarioId, decir, tocar } = await escenario('Corregir sin reabrir');
+    const [jacob] = await jugadores.listar(equipo.id);
+    const partido = await partidos.crear({
+      equipoId: equipo.id,
+      rival: 'Rival',
+      fecha: '2026-02-14',
+      formato: { cantidadTiempos: 2, minutosPorTiempo: 25 },
+      creadoPor: usuarioId,
+    });
+
+    await app.get(TiemposService).iniciarEnVivo(partido.id, usuarioId, [jacob.id]);
+    await decir('/cargar');
+    expect(adaptador.ultimosBotones.map((b) => b.id)).not.toContain('pa:corregir');
+
+    await tocar('pa:corregir');
+
+    expect(adaptador.ultimoTexto).not.toContain('¿Qué quieres corregir?');
+    expect(adaptador.ultimoTexto).toContain('Rival');
   });
 });

@@ -62,6 +62,13 @@ export type ResultadoRegistro =
   | { tipo: 'partido_cerrado'; partido: Partido }
   | { tipo: 'no_existe' };
 
+export type ResultadoBorrado =
+  | { tipo: 'borrado'; evento: EventoCargado; marcador: Marcador }
+  /** De otro partido, o ya borrado por alguien más. */
+  | { tipo: 'ya_no_esta' }
+  | { tipo: 'partido_cerrado' }
+  | { tipo: 'no_existe' };
+
 export type ResultadoDeshacer =
   | { tipo: 'deshecho'; evento: EventoCargado; marcador: Marcador }
   | { tipo: 'sin_eventos' }
@@ -215,6 +222,54 @@ export class EventosService {
 
       return {
         tipo: 'deshecho' as const,
+        evento: detalle,
+        marcador: { propio: actualizado.marcadorPropio, rival: actualizado.marcadorRival },
+      };
+    });
+  }
+
+  /**
+   * Borra (soft-delete) un evento puntual de un partido abierto: "✏️
+   * Corregir" de `/cargar`, para un partido reabierto donde el error no es
+   * el último evento y "Deshacer" no alcanza. El marcador lo recalcula el
+   * trigger, igual que al deshacer. Mismo `for update` sobre el partido que
+   * `registrar()`, para no intercalarse con una carga en curso.
+   */
+  async borrar(partidoId: string, eventoId: string, usuarioId: string): Promise<ResultadoBorrado> {
+    return this.db.db.transaction(async (tx) => {
+      const partido = await this.leerPartido(tx, partidoId);
+
+      if (!partido) return { tipo: 'no_existe' as const };
+      if (partido.estado === 'cerrado') return { tipo: 'partido_cerrado' as const };
+
+      const detalle = await this.detalleDe(tx, eventoId);
+
+      const borradas = await tx
+        .update(eventos)
+        .set({ eliminadoEn: new Date(), eliminadoPor: usuarioId })
+        .where(
+          and(
+            eq(eventos.id, eventoId),
+            eq(eventos.partidoId, partidoId),
+            isNull(eventos.eliminadoEn),
+          ),
+        )
+        .returning({ id: eventos.id });
+
+      // De otro partido, o alguien ya lo borró entre que se listó y se tocó.
+      if (!detalle || borradas.length === 0) return { tipo: 'ya_no_esta' as const };
+
+      const [actualizado] = await tx
+        .select({
+          marcadorPropio: partidos.marcadorPropio,
+          marcadorRival: partidos.marcadorRival,
+        })
+        .from(partidos)
+        .where(eq(partidos.id, partidoId))
+        .limit(1);
+
+      return {
+        tipo: 'borrado' as const,
         evento: detalle,
         marcador: { propio: actualizado.marcadorPropio, rival: actualizado.marcadorRival },
       };
