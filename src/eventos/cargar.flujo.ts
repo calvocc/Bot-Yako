@@ -37,7 +37,12 @@ import { describirMarcador, type Partido } from '../partidos/partido.mapper';
 import { PartidosService } from '../partidos/partidos.service';
 import { TiemposService, type ResultadoFinTiempo } from '../partidos/tiempos.service';
 import { ResumenService } from '../resumen/resumen.service';
-import { PASOS_CORREGIR, pasosCorregir, type GanchosCorregir } from './corregir.flujo';
+import {
+  PASOS_CORREGIR,
+  pasosCorregir,
+  SOLO_ADMIN_CORREGIR,
+  type GanchosCorregir,
+} from './corregir.flujo';
 import { segundosDesde } from './dedup';
 import { admiteEquipoRival, esTipoDeEvento } from './evento.tipos';
 import { EventosService, type SolicitudEvento } from './eventos.service';
@@ -182,8 +187,6 @@ function botonesPostReentrada(partido: Partido) {
     { id: ID_POST_LISTO, texto: 'Nada más' },
   ];
 }
-
-const SOLO_ADMIN_CORRIGE = 'Solo un admin puede corregir un partido.';
 
 /**
  * Carga de eventos durante el partido (§4 y §5 del flujo).
@@ -422,7 +425,7 @@ export class CargarFlujo {
 
               return {
                 tipo: 'repetir',
-                respuesta: { ...reentrada, texto: `${SOLO_ADMIN_CORRIGE}\n\n${reentrada.texto}` },
+                respuesta: { ...reentrada, texto: `${SOLO_ADMIN_CORREGIR}\n\n${reentrada.texto}` },
               };
             }
 
@@ -690,7 +693,13 @@ export class CargarFlujo {
         }
 
         if (seleccion === ID_CORREGIR) {
-          if (!(await this.esAdmin(ctx))) return this.irAlPanel(ctx, { aviso: SOLO_ADMIN_CORRIGE });
+          const partido = await this.partidoDe(ctx);
+
+          // Un callback viejo o armado a mano en un partido que nunca se
+          // reabrió no entra: el botón solo se muestra en uno reabierto.
+          if (!partido || !esCorregible(partido)) return this.irAlPanel(ctx, {});
+          if (!(await this.esAdmin(ctx)))
+            return this.irAlPanel(ctx, { aviso: SOLO_ADMIN_CORREGIR });
 
           return { tipo: 'ir', pasoId: PASOS_CORREGIR.menu, datos: this.datosPanel(ctx) };
         }
@@ -1522,11 +1531,12 @@ export class CargarFlujo {
     if (!(await this.siguePudiendoCargar(ctx))) return { fin: this.sinPermiso() };
 
     const partidoId = leerTexto(ctx.datos, CLAVE_PARTIDO_ID);
-    const equipoId = leerTexto(ctx.datos, CLAVE_EQUIPO_ID);
     const usuarioId = ctx.usuarioId ?? '';
-    const esAdmin = await this.membresias.puede(usuarioId, equipoId, 'admin');
-
-    const resultado = await this.eventos.deshacerUltimo(partidoId, usuarioId, esAdmin);
+    const resultado = await this.eventos.deshacerUltimo(
+      partidoId,
+      usuarioId,
+      await this.esAdmin(ctx),
+    );
 
     switch (resultado.tipo) {
       case 'deshecho': {
@@ -1681,7 +1691,7 @@ export class CargarFlujo {
     };
   }
 
-  /** Corregir un partido reabierto es de admin, como reabrirlo. */
+  /** Corregir un partido reabierto es de admin, como reabrirlo; deshacer lo ajeno, también. */
   private async esAdmin(ctx: ContextoFlujo): Promise<boolean> {
     if (!ctx.usuarioId) return false;
 

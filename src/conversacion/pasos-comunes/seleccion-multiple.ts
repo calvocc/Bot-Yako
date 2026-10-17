@@ -7,10 +7,11 @@ const CLAVE_SELECCION = 'seleccionMultiple';
 const ID_CONFIRMAR = 'sm:listo';
 const ID_TODOS = 'sm:todos';
 const ID_NINGUNO = 'sm:ninguno';
+const ID_VOLVER = 'sm:volver';
 
 export interface OpcionesSeleccionMultiple {
-  /** Texto de la pregunta, arriba de la lista. */
-  pregunta: string;
+  /** Texto de la pregunta, arriba de la lista; puede depender de los datos del flujo. */
+  pregunta: string | ((ctx: ContextoFlujo) => string);
   /** Las opciones para esta visita al paso — ids estables, no posicionales. */
   obtenerOpciones(ctx: ContextoFlujo): Promise<OpcionLista[]>;
   /** Qué hacer con los ids elegidos al confirmar. */
@@ -20,6 +21,11 @@ export interface OpcionesSeleccionMultiple {
    * corregirlo). Por defecto, nada.
    */
   seleccionInicial?(ctx: ContextoFlujo): Promise<string[]>;
+  /**
+   * Si se da, agrega "↩️ Volver" para salir sin confirmar —sin esto, la
+   * única salida es "Listo", que guarda—.
+   */
+  alVolver?(ctx: ContextoFlujo): Transicion | Promise<Transicion>;
   /** Mínimo para poder confirmar. Por defecto 1: no tiene sentido un mínimo de 0. */
   minimo?: number;
   /** Rótulo del botón de confirmar, sin el conteo — por defecto "Listo". */
@@ -82,6 +88,7 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
   };
 
   const armar = (
+    ctx: ContextoFlujo,
     lista: readonly OpcionLista[],
     elegidos: readonly string[],
     aviso?: string,
@@ -103,8 +110,17 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
       texto: `${opciones.textoConfirmar ?? textos.confirmarListo} (${elegidos.length})`,
     });
 
+    if (opciones.alVolver) {
+      botones.push({ id: ID_VOLVER, texto: '↩️ Volver' });
+    }
+
     return {
-      texto: [aviso, opciones.pregunta].filter(Boolean).join('\n\n'),
+      texto: [
+        aviso,
+        typeof opciones.pregunta === 'string' ? opciones.pregunta : opciones.pregunta(ctx),
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
       botones,
     };
   };
@@ -118,7 +134,7 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
     aviso?: string,
   ): { respuesta: RespuestaBot } => ({
     respuesta: {
-      ...armar(lista, elegidos, aviso),
+      ...armar(ctx, lista, elegidos, aviso),
       editarMensajeId: ctx.mensaje.mensajeOrigenId,
     },
   });
@@ -149,11 +165,14 @@ export function pasoSeleccionMultiple(id: string, opciones: OpcionesSeleccionMul
         };
       }
 
-      return { respuesta: armar(lista, inicial) };
+      return { respuesta: armar(ctx, lista, inicial) };
     },
 
     recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
       const seleccion = ctx.mensaje.seleccionId ?? '';
+
+      if (seleccion === ID_VOLVER && opciones.alVolver) return opciones.alVolver(ctx);
+
       const lista = await opciones.obtenerOpciones(ctx);
       const elegidos = leerSeleccion(ctx.datos);
 

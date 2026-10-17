@@ -12,7 +12,7 @@ import { describirJugador, type JugadoresService } from '../jugadores/jugadores.
 import type { AlineacionService } from '../partidos/alineacion.service';
 import type { Partido } from '../partidos/partido.mapper';
 import type { EventoCargado, EventosService } from './eventos.service';
-import { describirEvento, lineaDeBitacora } from './mensajes';
+import { describirEvento, esCorregible, lineaDeBitacora } from './mensajes';
 
 /**
  * "✏️ Corregir" de `/cargar`, para un partido reabierto con `/reabrir`.
@@ -42,6 +42,15 @@ const PREFIJO_JUGADOR = 'jg:';
 
 const CLAVE_EVENTO = 'corregirEventoId';
 const CLAVE_AVISO = 'corregirAviso';
+/**
+ * Foto de quiénes jugaban al abrir "👥 Quiénes jugaron": se toma una vez al
+ * entrar y al guardar se compara contra ella, no contra la base en ese
+ * momento —así un titular que otra persona sumó mientras tanto, que nunca
+ * se vio en la lista, no se saca sin aviso—.
+ */
+const CLAVE_FOTO_PARTICIPANTES = 'corregirParticipantes';
+const CLAVE_FOTO_TITULARES = 'corregirTitulares';
+const CLAVE_FOTO_EN_VIVO = 'corregirEnVivo';
 
 /** Lo que estos pasos necesitan prestado de `CargarFlujo`. */
 export interface GanchosCorregir {
@@ -62,7 +71,7 @@ export interface DependenciasCorregir {
   ganchos: GanchosCorregir;
 }
 
-const SOLO_ADMIN = 'Solo un admin puede corregir un partido.';
+export const SOLO_ADMIN_CORREGIR = 'Solo un admin puede corregir un partido.';
 
 export function pasosCorregir(deps: DependenciasCorregir): Paso[] {
   return [pasoMenu(deps), pasoParticipantes(deps), pasoEventos(deps), pasoConfirmarBorrado(deps)];
@@ -87,8 +96,11 @@ function irA(
 }
 
 /**
- * Lo común a cada paso: el partido tiene que seguir abierto y quien corrige
- * seguir siendo admin. Devuelve la transición de salida si algo no cuadra.
+ * Lo común a cada paso: el partido tiene que haber sido reabierto, seguir
+ * abierto, y quien corrige seguir siendo admin. Devuelve la transición de
+ * salida si algo no cuadra. Lo de "reabierto" no queda solo en que el botón
+ * se muestre: un callback viejo o armado a mano no entra en un partido que
+ * nunca se cerró.
  */
 async function validar(
   deps: DependenciasCorregir,
@@ -107,10 +119,12 @@ async function validar(
     };
   }
 
+  if (!esCorregible(partido)) return { salida: deps.ganchos.volver(ctx) };
+
   // `/cargar` ya lo chequeó al tocar "✏️ Corregir"; esto cubre que le
   // hayan quitado el rol a mitad de la corrección (la sesión dura una hora).
   if (!(await deps.ganchos.esAdmin(ctx))) {
-    return { salida: { tipo: 'finalizar', respuesta: { texto: SOLO_ADMIN } } };
+    return { salida: { tipo: 'finalizar', respuesta: { texto: SOLO_ADMIN_CORREGIR } } };
   }
 
   return { partido };
@@ -147,57 +161,121 @@ function pasoMenu(deps: DependenciasCorregir): Paso {
     recibir: async (ctx: ContextoFlujo): Promise<Transicion> => {
       const seleccion = ctx.mensaje.seleccionId ?? '';
 
-      if (seleccion === ID_PARTICIPANTES) return irA(deps, ctx, PASOS_CORREGIR.participantes);
-      if (seleccion === ID_EVENTOS) return irA(deps, ctx, PASOS_CORREGIR.eventos);
       if (seleccion === ID_VOLVER) return deps.ganchos.volver(ctx);
 
+      // Antes de abrir cualquiera de las dos listas: la de quiénes jugaron
+      // es un paso genérico que no valida al entrar.
       const validado = await validar(deps, ctx);
 
       if ('salida' in validado) return validado.salida;
+
+      if (seleccion === ID_PARTICIPANTES) {
+        // Sin foto: la lista se arma de nuevo con lo que hay ahora.
+        return irA(deps, ctx, PASOS_CORREGIR.participantes, {
+          [CLAVE_FOTO_PARTICIPANTES]: null,
+          [CLAVE_FOTO_TITULARES]: null,
+          [CLAVE_FOTO_EN_VIVO]: null,
+        });
+      }
+
+      if (seleccion === ID_EVENTOS) return irA(deps, ctx, PASOS_CORREGIR.eventos);
 
       return { tipo: 'repetir', respuesta: preguntar(ctx, validado.partido) };
     },
   };
 }
 
+interface FotoParticipantes {
+  participantes: string[];
+  titulares: string[];
+  enVivo: boolean;
+}
+
+function leerIds(datos: DatosFlujo, clave: string): string[] | null {
+  const valor = datos[clave];
+
+  return Array.isArray(valor) ? valor.filter((v): v is string => typeof v === 'string') : null;
+}
+
 /**
- * Quiénes jugaron, con los actuales ya marcados: se desmarca a quien no
- * jugó y se marca a quien faltó. La lista es la plantilla activa más quien
- * ya figuraba en el partido aunque hoy esté inactivo.
+ * Quiénes jugaron, con los actuales ya marcados.
  *
- * Quien jugó porque entró por cambio, o porque tiene eventos propios,
- * sigue contando como que jugó aunque se lo desmarque: eso sale de los
- * eventos, no de esta lista. Se avisa con su nombre para que borre esos
- * eventos en "🗑️ Borrar un evento".
+ * - Post partido: la plantilla activa (más quien ya figuraba aunque hoy
+ *   esté inactivo) para desmarcar a quien no jugó y marcar a quien faltó.
+ * - En vivo: solo los que figuran, para desmarcar. Sumar a alguien lo
+ *   dejaría como titular jugando todo el partido —minutos y bonos de
+ *   cierre de más—; quien entró se carga con "🔄 Cambio" desde el panel.
+ *
+ * Quien aparece en un cambio no se saca de acá: hay que borrar ese cambio
+ * primero, o la titular y los cambios quedan inconsistentes. Quien tiene
+ * eventos propios (un gol, una tarjeta) se saca de la lista pero sigue
+ * contando como que jugó por esos eventos: se avisa con su nombre.
  */
 function pasoParticipantes(deps: DependenciasCorregir): Paso {
-  const participantes = async (ctx: ContextoFlujo): Promise<string[]> => {
+  const foto = async (ctx: ContextoFlujo): Promise<FotoParticipantes> => {
+    const participantes = leerIds(ctx.datos, CLAVE_FOTO_PARTICIPANTES);
+
+    if (participantes) {
+      return {
+        participantes,
+        titulares: leerIds(ctx.datos, CLAVE_FOTO_TITULARES) ?? [],
+        enVivo: ctx.datos[CLAVE_FOTO_EN_VIVO] === true,
+      };
+    }
+
     const partido = await deps.ganchos.partidoDe(ctx);
 
-    if (!partido) return [];
+    if (!partido) return { participantes: [], titulares: [], enVivo: false };
 
-    const { participantes: ids } = await deps.alineacion.datosDeParticipacion(partido.id, 0);
+    const datos = await deps.alineacion.datosDeParticipacion(partido.id, 0);
+    const tomada: FotoParticipantes = {
+      participantes: datos.participantes,
+      titulares: datos.titulares,
+      enVivo: partido.modoCarga === 'en_vivo',
+    };
 
-    return ids;
+    // Se guarda en la sesión al entrar (`FlowEngine` relee `ctx.datos`
+    // después de `entrar`): cada toque del paso la reusa sin volver a
+    // consultar alineación.
+    ctx.datos[CLAVE_FOTO_PARTICIPANTES] = tomada.participantes;
+    ctx.datos[CLAVE_FOTO_TITULARES] = tomada.titulares;
+    ctx.datos[CLAVE_FOTO_EN_VIVO] = tomada.enVivo;
+
+    return tomada;
+  };
+
+  const limpiarFoto: DatosFlujo = {
+    [CLAVE_FOTO_PARTICIPANTES]: null,
+    [CLAVE_FOTO_TITULARES]: null,
+    [CLAVE_FOTO_EN_VIVO]: null,
   };
 
   return pasoSeleccionMultiple(PASOS_CORREGIR.participantes, {
-    pregunta: '👥 ¿Quiénes jugaron? Desmarca a quien no jugó y marca a quien faltó.',
+    pregunta: (ctx) =>
+      ctx.datos[CLAVE_FOTO_EN_VIVO] === true
+        ? '👥 ¿Quiénes jugaron? Desmarca a quien no jugó. (Quien entró se carga con 🔄 Cambio desde el panel.)'
+        : '👥 ¿Quiénes jugaron? Desmarca a quien no jugó y marca a quien faltó.',
     textoConfirmar: 'Guardar',
 
     obtenerOpciones: async (ctx) => {
-      const [plantilla, actuales] = await Promise.all([
+      const [plantilla, actual] = await Promise.all([
         deps.jugadores.listar(deps.ganchos.equipoId(ctx), true),
-        participantes(ctx),
+        foto(ctx),
       ]);
 
       return plantilla
-        .filter((j) => j.activo || actuales.includes(j.id))
+        .filter((j) =>
+          actual.enVivo
+            ? actual.participantes.includes(j.id)
+            : j.activo || actual.participantes.includes(j.id),
+        )
         .map((j) => ({ id: `${PREFIJO_JUGADOR}${j.id}`, texto: describirJugador(j) }));
     },
 
     seleccionInicial: async (ctx) =>
-      (await participantes(ctx)).map((id) => `${PREFIJO_JUGADOR}${id}`),
+      (await foto(ctx)).participantes.map((id) => `${PREFIJO_JUGADOR}${id}`),
+
+    alVolver: (ctx) => irA(deps, ctx, PASOS_CORREGIR.menu, limpiarFoto),
 
     alConfirmar: async (ctx, elegidos) => {
       const validado = await validar(deps, ctx);
@@ -205,30 +283,53 @@ function pasoParticipantes(deps: DependenciasCorregir): Paso {
       if ('salida' in validado) return validado.salida;
 
       const { partido } = validado;
+      const mostrada = await foto(ctx);
       const elegidosIds = elegidos.map((id) => id.slice(PREFIJO_JUGADOR.length));
-      const [{ participantes: actuales, titulares }, plantilla, cargados] = await Promise.all([
-        deps.alineacion.datosDeParticipacion(partido.id, 0),
+      const [plantilla, cargados] = await Promise.all([
         deps.jugadores.listar(partido.equipoId, true),
         deps.eventos.delPartido(partido.id),
       ]);
 
-      const quitar = titulares.filter((id) => !elegidosIds.includes(id));
-      const agregar = elegidosIds.filter((id) => !actuales.includes(id));
+      const enUnCambio = (id: string): boolean =>
+        cargados.some(
+          (e) => e.tipo === 'cambio' && (e.jugadorId === id || e.jugadorEntraId === id),
+        );
+      const desmarcados = mostrada.participantes.filter((id) => !elegidosIds.includes(id));
+      const bloqueados = desmarcados.filter(enUnCambio);
+      const quitar = desmarcados.filter(
+        (id) => mostrada.titulares.includes(id) && !bloqueados.includes(id),
+      );
+      const agregar = mostrada.enVivo
+        ? []
+        : elegidosIds.filter((id) => !mostrada.participantes.includes(id));
 
-      await deps.alineacion.ajustarParticipantes(partido.id, ctx.usuarioId ?? '', {
-        agregar,
-        quitar,
-      });
+      const resultado = await deps.alineacion.ajustarParticipantes(
+        partido.id,
+        ctx.usuarioId ?? '',
+        { agregar, quitar },
+      );
 
-      const nombre = (id: string): string => {
-        const jugador = plantilla.find((j) => j.id === id);
+      if (resultado === 'no_existe') return deps.ganchos.partidoPerdido();
 
-        return jugador ? describirJugador(jugador) : 'Sin nombre';
-      };
-      // Desmarcados que igual siguen contando como que jugaron.
-      const conEventos = actuales
-        .filter((id) => !elegidosIds.includes(id))
-        .filter((id) => cargados.some((e) => e.jugadorId === id || e.jugadorEntraId === id));
+      if (resultado === 'partido_cerrado') {
+        return {
+          tipo: 'finalizar',
+          respuesta: { texto: 'Ese partido se cerró mientras corregías; no cambié nada.' },
+        };
+      }
+
+      const nombres = (ids: readonly string[]): string =>
+        ids
+          .map((id) => {
+            const jugador = plantilla.find((j) => j.id === id);
+
+            return jugador ? describirJugador(jugador) : 'Sin nombre';
+          })
+          .join(', ');
+      // Sacados de la lista que igual siguen contando por sus propios eventos.
+      const conEventos = quitar.filter((id) =>
+        cargados.some((e) => e.tipo !== 'cambio' && e.jugadorId === id),
+      );
 
       const lineas = [
         agregar.length === 0 && quitar.length === 0
@@ -236,16 +337,25 @@ function pasoParticipantes(deps: DependenciasCorregir): Paso {
           : '✅ Guardado.',
       ];
 
-      if (quitar.length > 0) lineas.push(`Ya no jugaron: ${quitar.map(nombre).join(', ')}.`);
-      if (agregar.length > 0) lineas.push(`Ahora jugaron: ${agregar.map(nombre).join(', ')}.`);
+      if (quitar.length > 0) lineas.push(`Ya no jugaron: ${nombres(quitar)}.`);
+      if (agregar.length > 0) lineas.push(`Ahora jugaron: ${nombres(agregar)}.`);
 
       if (conEventos.length > 0) {
         lineas.push(
-          `⚠️ ${conEventos.map(nombre).join(', ')} todavía tiene eventos cargados (o entró por cambio) y sigue contando como que jugó: bórralos en "🗑️ Borrar un evento".`,
+          `⚠️ ${nombres(conEventos)}: tiene eventos cargados (un gol, una tarjeta…) y por eso sigue contando como que jugó. Bórralos en "🗑️ Borrar un evento".`,
         );
       }
 
-      return irA(deps, ctx, PASOS_CORREGIR.menu, { [CLAVE_AVISO]: lineas.join('\n') });
+      if (bloqueados.length > 0) {
+        lineas.push(
+          `⚠️ No saqué a ${nombres(bloqueados)}: aparece en un cambio. Borra ese cambio en "🗑️ Borrar un evento" y vuelve a desmarcarlo.`,
+        );
+      }
+
+      return irA(deps, ctx, PASOS_CORREGIR.menu, {
+        ...limpiarFoto,
+        [CLAVE_AVISO]: lineas.join('\n'),
+      });
     },
   });
 }

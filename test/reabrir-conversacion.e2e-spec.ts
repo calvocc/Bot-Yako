@@ -292,4 +292,118 @@ describe('Reabrir, conversación completa (e2e)', () => {
     expect(adaptador.ultimoTexto).toContain('Solo un admin puede corregir');
     expect(adaptador.ultimoTexto).not.toContain('¿Qué quieres corregir?');
   });
+
+  /** Un partido en vivo con Jacob, Andrés y Pedro titulares; Jacob sale por Tomás. Cerrado y reabierto. */
+  const partidoEnVivoReabierto = async (nombre: string) => {
+    const ctx = await escenario(nombre);
+    const [jacob] = await jugadores.listar(ctx.equipo.id);
+    const andres = await jugadores.crear(ctx.equipo.id, 'Andrés', 7);
+    const pedro = await jugadores.crear(ctx.equipo.id, 'Pedro', 5);
+    const tomas = await jugadores.crear(ctx.equipo.id, 'Tomás', 14);
+    const partido = await partidos.crear({
+      equipoId: ctx.equipo.id,
+      rival: 'Rival',
+      fecha: '2026-02-07',
+      formato: { cantidadTiempos: 2, minutosPorTiempo: 25 },
+      creadoPor: ctx.usuarioId,
+    });
+
+    await app
+      .get(TiemposService)
+      .iniciarEnVivo(partido.id, ctx.usuarioId, [jacob.id, andres.id, pedro.id]);
+    await app.get(EventosService).registrar({
+      partidoId: partido.id,
+      tipo: 'cambio',
+      equipoOrigen: 'propio',
+      jugadorId: jacob.id,
+      jugadorEntraId: tomas.id,
+      reportadoPor: ctx.usuarioId,
+    });
+    await partidos.cerrar(partido.id, ctx.usuarioId, { propio: 0, rival: 0 });
+
+    await ctx.decir('/reabrir');
+    await ctx.tocar(adaptador.ultimosBotones[0].id);
+    await ctx.tocar(`cmd:continuarcarga:${partido.id}`);
+
+    return { ...ctx, partido, jacob, andres, pedro, tomas };
+  };
+
+  it('en vivo: solo se desmarca, y quien aparece en un cambio no se saca', async () => {
+    const { tocar, partido, jacob, andres, pedro, tomas } =
+      await partidoEnVivoReabierto('Corregir en vivo');
+
+    expect(adaptador.ultimosBotones.map((b) => b.id)).toContain('pa:corregir');
+    await tocar('pa:corregir');
+    await tocar('cr:jugaron');
+
+    // Solo los que figuran (los tres titulares y Tomás, que entró): en vivo
+    // no se suma a nadie desde acá.
+    const ids = adaptador.ultimosBotones.map((b) => b.id).filter((id) => id.startsWith('jg:'));
+    expect(ids.sort()).toEqual(
+      [jacob.id, andres.id, pedro.id, tomas.id].map((id) => `jg:${id}`).sort(),
+    );
+    expect(adaptador.ultimoTexto).toContain('Quien entró se carga con 🔄 Cambio');
+
+    // Jacob salió en un cambio: desmarcarlo no lo saca. Pedro sí sale.
+    await tocar(`jg:${jacob.id}`);
+    await tocar(`jg:${pedro.id}`);
+    await tocar('sm:listo');
+
+    expect(adaptador.ultimoTexto).toContain('Ya no jugaron: #5 Pedro');
+    expect(adaptador.ultimoTexto).toContain('No saqué a #10 Jacob: aparece en un cambio');
+
+    const titulares = await app.get(AlineacionService).titularesDe(partido.id);
+    expect(titulares.sort()).toEqual([jacob.id, andres.id].sort());
+  });
+
+  it('guardar compara contra la lista mostrada: no saca a quien se sumó mientras tanto', async () => {
+    const { usuarioId, tocar, partido, andres } = await partidoEnVivoReabierto('Corregir foto');
+    const nuevo = await jugadores.crear(partido.equipoId, 'Nuevo', 30);
+
+    await tocar('pa:corregir');
+    await tocar('cr:jugaron');
+
+    // Otra persona lo suma mientras la lista está abierta.
+    await app.get(AlineacionService).agregarSiHaceFalta(partido.id, nuevo.id, usuarioId);
+
+    await tocar(`jg:${andres.id}`);
+    await tocar('sm:listo');
+
+    const titulares = await app.get(AlineacionService).titularesDe(partido.id);
+    expect(titulares).toContain(nuevo.id);
+    expect(titulares).not.toContain(andres.id);
+  });
+
+  it('"Volver" sale de la lista sin guardar nada', async () => {
+    const { tocar, partido, pedro } = await partidoEnVivoReabierto('Corregir volver');
+
+    await tocar('pa:corregir');
+    await tocar('cr:jugaron');
+    await tocar(`jg:${pedro.id}`);
+    await tocar('sm:volver');
+
+    expect(adaptador.ultimoTexto).toContain('¿Qué quieres corregir?');
+    expect(await app.get(AlineacionService).titularesDe(partido.id)).toContain(pedro.id);
+  });
+
+  it('un "✏️ Corregir" viejo en un partido que nunca se reabrió no entra', async () => {
+    const { equipo, usuarioId, decir, tocar } = await escenario('Corregir sin reabrir');
+    const [jacob] = await jugadores.listar(equipo.id);
+    const partido = await partidos.crear({
+      equipoId: equipo.id,
+      rival: 'Rival',
+      fecha: '2026-02-14',
+      formato: { cantidadTiempos: 2, minutosPorTiempo: 25 },
+      creadoPor: usuarioId,
+    });
+
+    await app.get(TiemposService).iniciarEnVivo(partido.id, usuarioId, [jacob.id]);
+    await decir('/cargar');
+    expect(adaptador.ultimosBotones.map((b) => b.id)).not.toContain('pa:corregir');
+
+    await tocar('pa:corregir');
+
+    expect(adaptador.ultimoTexto).not.toContain('¿Qué quieres corregir?');
+    expect(adaptador.ultimoTexto).toContain('Rival');
+  });
 });
