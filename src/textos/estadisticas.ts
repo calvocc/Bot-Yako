@@ -354,7 +354,8 @@ export const textos = {
     lineas.push('', '👥 JUGADORES');
 
     // Posición, dorsal, nombre y promedio en la primera línea; el mini
-    // resumen debajo, sin sangría. Las filas ya vienen de mayor a menor
+    // resumen debajo, colgado con `└` para que se lea como parte del mismo
+    // jugador (unos espacios no alinean: Telegram usa fuente proporcional). Las filas ya vienen de mayor a menor
     // promedio: el podio lleva medalla y el resto su número. Quien todavía
     // no tiene nota no tiene puesto en el ranking y va sin posición.
     let puesto = 0;
@@ -363,7 +364,7 @@ export const textos = {
       const promedio = fila.promedio !== null ? `⭐ ${fila.promedio.toFixed(1)}` : '⭐ —';
       const posicion = fila.promedio !== null ? `${marcaDePuesto(++puesto)} ` : '';
 
-      lineas.push(`${posicion}${nombreConDorsal(fila)} · ${promedio}`, miniResumen(fila));
+      lineas.push(`${posicion}${nombreConDorsal(fila)} · ${promedio}`, `   └ ${miniResumen(fila)}`);
     }
 
     return lineas.join('\n');

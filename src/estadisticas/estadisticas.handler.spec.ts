@@ -655,14 +655,14 @@ describe('EstadisticasHandler.tabla rendimiento', () => {
     expect(listado.indexOf('#10 Jacob')).toBeLessThan(listado.indexOf('#7 Andrés'));
     expect(listado.indexOf('#7 Andrés')).toBeLessThan(listado.indexOf('#1 Tomás'));
     // Medalla o puesto, dorsal, nombre y promedio; debajo el mini resumen,
-    // sin sangría. Andrés y Ex empatan en 6.0: desempata el dorsal.
-    expect(listado).toContain('\n🥇 #10 Jacob · ⭐ 7.5\n2 partidos · ⚽ 6 · 🟨 1\n');
+    // colgado con `└`. Andrés y Ex empatan en 6.0: desempata el dorsal.
+    expect(listado).toContain('\n🥇 #10 Jacob · ⭐ 7.5\n   └ 2 partidos · ⚽ 6 · 🟨 1\n');
     expect(listado).toContain('🥈 #7 Andrés · ⭐ 6.0');
     expect(listado).toContain('🥉 #30 Ex · ⭐ 6.0');
     expect(listado).toContain('4. #1 Tomás · ⭐ 5.5');
     expect(listado).toContain('4 goles recibidos · 🧤 9');
     // Sin nota no tiene puesto en el ranking.
-    expect(listado).toContain('\n#20 Nuevo · ⭐ —\nsin partidos todavía');
+    expect(listado).toContain('\n#20 Nuevo · ⭐ —\n   └ sin partidos todavía');
     expect(listado).toContain('sin partidos todavía');
     // Quien ya no está en la plantilla pero jugó esta temporada sigue en el
     // listado; quien se dio de baja sin jugar, no.
